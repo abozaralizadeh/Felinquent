@@ -896,14 +896,15 @@
   const mug = document.getElementById("mug");
   const splash = document.getElementById("splash");
   const layers = [...cat.querySelectorAll("i")];
-  const FW = 383, FH = 319;      // one frame, in sprite pixels
+  const FW = 392, FH = 330;      // one frame, in sprite pixels
   const STRIDE = 89.2;           // how far a planted paw travels in one walk cycle (src/playground/gaits.ts)
   const REACH = 166;             // from the middle of the frame to the paw tip in swat_b, in sprite pixels
   const MUG_AT = 0.87;           // where the mug stands, as a share of the window width
   const STRIPS = {
     poses: { src: "assets/tabby-poses.webp", n: 16 },
     walk: { src: "assets/tabby-walk.webp", n: 32 },
-    groom: { src: "assets/tabby-groom.webp", n: 27 },
+    groom: { src: "assets/tabby-groom.webp", n: 45 },
+    turn: { src: "assets/tabby-turn.webp", n: 12 },
   };
   const POSES = ["sit", "blink", "stand", "curious", "lookup", "swat_a", "swat_b", "proud", "yawn", "lowering", "loaf", "sleep", "love", "startled", "annoyed", "joy"];
 
@@ -979,7 +980,6 @@
   function walkTo(to, g) {
     return new Promise((res, rej) => {
       busy = true; render();
-      dir = to > x ? 1 : -1;
       let phase = 0, t = 0, last = performance.now();
       const step = (now) => {
         if (g !== gen) { busy = false; dir = 1; placeCat(); return rej(0); }
@@ -991,7 +991,7 @@
         phase = (phase + dx / cycle) % 1;
         frame = ["walk", Math.floor(phase * 32) % 32];
         render(); placeCat();
-        if (left - dx < 0.3) { busy = false; dir = 1; placeCat(); return res(); }
+        if (left - dx < 0.3) { busy = false; placeCat(); return res(); }
         requestAnimationFrame(step);
       };
       requestAnimationFrame(step);
@@ -1030,20 +1030,56 @@
     requestAnimationFrame(step);
   }
 
+  // Turning round on the spot, like the app: the drawn turn (head round, three quarters, the front,
+  // the far side) one drawing at a time over 0.6 s, slow at both ends, never a flip. Its last drawing
+  // is the stand facing the other way, so it swaps for the mirrored stand without a jump.
+  async function turnRound(g) {
+    busy = true;
+    if (!reduce) {
+      await load("turn");
+      const t0 = performance.now();
+      for (;;) {
+        const u = Math.min(1, (performance.now() - t0) / 600);
+        frame = ["turn", Math.round(u * u * (3 - 2 * u) * 11)]; render();
+        if (u >= 1) break;
+        await wait(16, g);
+      }
+    }
+    busy = false; dir = -dir; pose("stand", false); placeCat();
+  }
+
   async function blink(g) {
     if (frame[0] !== "poses" || POSES[frame[1]] !== "sit") return;
     pose("blink", false); await wait(140, g); pose("sit", false);
   }
-  async function groom(g, loops) {
+  // One wash from the head down, the way the app plays it: a few licks of the paw, a wipe over the
+  // ear and cheek, the nose, the chest, a hind leg, a content blink. It stays on each part a while.
+  // A lick is one drawing nodding (frames at+1 to at+5 in the strip), about 1.4 a second.
+  function bout() {
+    const steps = [];
+    const glide = (a, b, ms) => { for (let i = a; i <= b; i++) steps.push([i, ms / (b - a + 1)]); };
+    const licks = (at, n, ms = 714) => {
+      for (let k = 0; k < n; k++) { for (let i = 1; i <= 5; i++) steps.push([at + i, ms / 6]); steps.push([at, ms / 6]); }
+    };
+    glide(0, 3, 450); licks(3, 3 + Math.floor(Math.random() * 2));
+    glide(9, 11, 350); steps.push([11, 120]); glide(12, 14, 350); steps.push([14, 150]); glide(15, 17, 400); steps.push([17, 100]);
+    glide(18, 20, 300); licks(20, 2, 480);
+    glide(26, 28, 450); licks(28, 2);
+    glide(34, 36, 500); licks(36, 3);
+    glide(42, 44, 500); steps.push([44, 1100]);
+    return steps;
+  }
+  async function groom(g) {
     await load("groom");
-    for (let i = 0; i < 27 * loops; i++) { frame = ["groom", i % 27]; render(i === 0); await wait(1000 / 12, g); }
+    let first = true;
+    for (const [i, ms] of bout()) { frame = ["groom", i]; render(first); first = false; await wait(ms, g); }
   }
   // After the deed: sits, grooms, yawns, and naps until something happens.
   async function idle(g) {
     pose("sit");
     for (let k = 0; k < 2; k++) { await wait(2200 + Math.random() * 1800, g); await blink(g); }
     await wait(1200, g);
-    await groom(g, 2);
+    await groom(g);
     pose("sit"); await wait(2600, g); await blink(g); await wait(2400, g);
     pose("yawn"); await wait(1500, g);
     pose("sit"); await wait(900, g); await blink(g); await wait(700, g);
@@ -1055,8 +1091,11 @@
     const target = (MUG_AT * W - m * 0.42 - REACH * s) / W;
     if (Math.abs(target - x) * W > 4) {
       pose("stand"); await wait(500, g);
+      if ((target > x ? 1 : -1) !== dir) { await turnRound(g); await wait(150, g); }
       await walkTo(target, g);
       pose("stand"); await wait(280, g);
+      // The mug is on its right: it turns back to face it.
+      if (dir < 0) { await turnRound(g); await wait(200, g); }
     }
     pose("curious"); await wait(1300, g);
     pose("sit"); await wait(900, g);

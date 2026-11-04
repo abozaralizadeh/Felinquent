@@ -2,6 +2,9 @@ import type { Beat } from "./executor";
 import type { Rng } from "./rng";
 import type { IntentName } from "./types";
 
+/** How long an ear scratch with a hind leg takes, start to end (src/playground/sprites.ts plays it). */
+export const SCRATCH_SEC = 4.8;
+
 /** Short ways to write a beat. */
 export const doing = (anim: Extract<Beat, { do: unknown }>["do"], sec: number, face?: "cursor" | "away"): Beat => ({ do: anim, sec, face });
 export const go = (to: "cursor" | "away" | "stroll", by: number, speed: "walk" | "saunter" | "sneak" | "run", anim?: Extract<Beat, { go: unknown }>["anim"]): Beat => ({ go: to, by, speed, anim });
@@ -62,7 +65,8 @@ function rawScene(intent: IntentName, staySec: number, rng: Rng): Beat[] | null 
     case "howl":
       return [doing("look", 0.8), doing("howl", rng.range(3, 4.5)), doing("happy", 1.2)];
     case "scratch":
-      return [doing("scratch", rng.range(3, 5.5)), doing("stretch", 2)];
+      // An ear scratch with a hind leg (sprites.ts plays it), then it licks the paw a little.
+      return [doing("scratch", SCRATCH_SEC), doing("groom", rng.range(2.2, 3.4))];
     case "beg":
       return [doing("curious", 0.8, "cursor"), doing("beg", rng.range(3, 5), "cursor"), doing("love", 1.5, "cursor"), doing("happy", 1.2)];
     case "spook":

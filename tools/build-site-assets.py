@@ -15,11 +15,20 @@ ROOT = Path(__file__).resolve().parent.parent
 SPRITES = ROOT / "src/playground/public/sprites"
 OUT = ROOT / "site/assets"
 
-# The hero cat: what it does on the top edge of the window.
-GROOM = [f"groom{i}{t}" for i in range(1, 10) for t in ("", "t1", "t2")]
+# The hero cat: what it does on the top edge of the window. The wash is the frames of one bout from
+# the head down (the page plays them in order with a lick nod on each part): to the paw, the paw
+# licks, one wipe over the ear and cheek, the nose, the chest, a hind leg, a content blink.
+NOD = ["n1", "n2", "n3", "n4", "n5"]
+GROOM = (["groom1", "groom1t1", "groom1t2", "groom2"] + [f"groom2{n}" for n in NOD]
+         + ["groom2t1", "groom2t2", "groom3", "groom3t1", "groom3t2", "groom4", "groom4t1", "groom4t2", "groom5", "groom5t1", "groom5t2", "groom6"]
+         + [f"groom6{n}" for n in NOD] + ["groom6t1", "groom6t2", "groom7"] + [f"groom7{n}" for n in NOD]
+         + ["groom7t1", "groom7t2", "groom8"] + [f"groom8{n}" for n in NOD] + ["groom8t1", "groom8t2", "groom9"])
+# Turning round, as the app steps through it: side, head round, three quarters, front, the far side.
+TURN = ["stand", "standt1", "standt2", "turn_s1", "turn_s1t1", "turn_s1t2", "turn_s2", "turn_s3", "turn_s4", "turn_s4t1", "turn_s4t2", "turn_s5"]
 HERO = {
     "walk": [f"gw{i:02d}" for i in range(32)],
     "groom": GROOM,
+    "turn": TURN,
     "poses": ["sit", "blink", "stand", "curious", "lookup", "swat_a", "swat_b", "proud", "yawn", "lowering", "loaf", "sleep", "love", "startled", "annoyed", "joy"],
 }
 HERO_SCALE = 0.6

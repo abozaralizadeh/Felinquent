@@ -1,13 +1,15 @@
 #!/usr/bin/env -S uv run --with pillow --with numpy --with scipy python
-"""Cuts a 3x3 frame sheet on a flat green background into transparent WebP sprites.
+"""Cuts a frame sheet on a flat green background into transparent WebP sprites.
 
-Usage: tools/cut-sprites.py <sheet.png> <out-dir> name1 ... name9
-           [--scale 0.6] [--ref-dim w|h --ref-val N --ref-count K]
+Usage: tools/cut-sprites.py <sheet.png> <out-dir> name1 ... nameN
+           [--scale 0.6] [--ref-dim w|h --ref-val N --ref-count K | --ref-pick 1,5]
 
-Frames are read in grid order (left to right, top to bottom). Each frame is trimmed, its feet are
-the bottom edge, and it is padded so its centre of mass sits in the middle (so a walk cycle does
-not slide). With --ref-dim and --ref-val the median width or height of the first K frames is
-scaled to N (in sheet pixels), so sheets drawn at slightly different sizes match.
+Frames are read in grid order (left to right, top to bottom). Rows are found from where the
+frames sit, so a sheet can have any number of columns and a short last row. A name of "-" skips
+that frame. Each frame is trimmed, its feet are the bottom edge, and it is padded so its centre of
+mass sits in the middle (so a walk cycle does not slide). With --ref-dim and --ref-val the median
+width or height of the first K kept frames is scaled to N (in sheet pixels), so sheets drawn at
+slightly different sizes match. --ref-pick names the grid positions to measure instead.
 """
 import sys
 from pathlib import Path
@@ -34,6 +36,8 @@ align_count = int(opt("--align-count", "9") or 9)
 ref_dim = opt("--ref-dim", None)
 ref_val = float(opt("--ref-val", "0") or 0)
 ref_count = int(opt("--ref-count", "9") or 9)
+# 1-based grid positions (skipped frames count) whose median size sets the scale, instead of the first K.
+ref_pick = [int(v) - 1 for v in (opt("--ref-pick", "") or "").split(",") if v]
 sheet, out_dir, names = Path(args[0]), Path(args[1]), args[2:]
 out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,10 +72,17 @@ for lab in keep:
     ys, xs = np.where(region)
     found.append((lab, ys.min(), ys.max(), xs.min(), xs.max(), (ys.min() + ys.max()) / 2, (xs.min() + xs.max()) / 2))
 
-# Grid order: three rows by vertical centre, then left to right inside a row.
+# Grid order: rows by vertical centre (a new row starts where the centres jump by more than half a
+# frame), then left to right inside a row.
 found.sort(key=lambda t: t[5])
-rows = [sorted(found[i : i + 3], key=lambda t: t[6]) for i in range(0, len(found), 3)]
-ordered = [t for row in rows for t in row]
+tall_med = float(np.median([t[2] - t[1] for t in found]))
+rows: list[list[tuple]] = []
+for t in found:
+    if rows and t[5] - rows[-1][-1][5] < 0.5 * tall_med:
+        rows[-1].append(t)
+    else:
+        rows.append([t])
+ordered = [t for row in rows for t in sorted(row, key=lambda t: t[6])]
 
 frames = []
 for lab, y0, y1, x0, x1, _, _ in ordered:
@@ -86,9 +97,11 @@ for lab, y0, y1, x0, x1, _, _ in ordered:
         im = im.crop(bbox)
     frames.append(im)
 
+kept = [f for f, nm in zip(frames, names) if nm != "-"]
 factor = scale
 if ref_dim and ref_val > 0:
-    dims = [f.width if ref_dim == "w" else f.height for f in frames[:ref_count]]
+    pool = [frames[i] for i in ref_pick] if ref_pick else kept[:ref_count]
+    dims = [f.width if ref_dim == "w" else f.height for f in pool]
     factor = scale * ref_val / float(np.median(dims))
     print(f"matching median {ref_dim} {np.median(dims):.0f} -> {ref_val:.0f} (scale {factor:.3f})")
 
@@ -122,6 +135,8 @@ if align == "head":
     cycle = (anchors, left, wide, shift, tall)
 
 for idx, (name, im) in enumerate(zip(names, frames)):
+    if name == "-":
+        continue
     if cycle is not None and idx < align_count:
         anchors, left, wide, shift, tall = cycle
         canvas = Image.new("RGBA", (wide, tall), (0, 0, 0, 0))

@@ -1,6 +1,6 @@
 // A sheet of every character in a few poses, for checking the art and for docs.
 import { CHARACTERS } from "../core/characters";
-import type { Anim, CatBody } from "../core/executor";
+import { TURN_SEC, type Anim, type CatBody } from "../core/executor";
 import { drawCat } from "./draw";
 import { spritesReady } from "./sprites";
 
@@ -33,7 +33,51 @@ ctx.font = "600 13px system-ui";
 // with turns and the gait chosen by speed (?speed=64 is a walk, 100 a dog's walk, 230 a run).
 // ?film=8 draws 8 moments instead, every ?every=3 frames (1/60 s each), each over the same patch of
 // floor, to check that a planted paw stays on its mark. ?zoom=3 sets the size.
-if (q.has("walk")) {
+// ?film=12&anim=groom&only=tabby draws 12 moments of one animal doing `anim`, in one drawing slot
+// played frame by frame at 60 a second, so the programs (washing, the ear scratch, turning round)
+// run as they do in the app. ?from=idle_sit is the pose before and ?at=0.5 when it changes;
+// ?start is the first moment kept (default ?at) and ?every=0.1 the time between moments. ?flip=1
+// turns it round at that second. ?zoom=2 sets the size, ?cols=6 the moments in a row.
+if (q.has("film") && q.has("anim")) {
+  const c = (list[0] ?? CHARACTERS[0]) as (typeof CHARACTERS)[number];
+  const n = Number(q.get("film"));
+  const anim = q.get("anim") as Anim;
+  const from = (q.get("from") ?? "idle_sit") as Anim;
+  const at = Number(q.get("at") ?? "0.5");
+  const start = Number(q.get("start") ?? String(at));
+  const every = Number(q.get("every") ?? "0.1");
+  const flip = q.has("flip") ? Number(q.get("flip")) : Infinity;
+  const zoom = Number(q.get("zoom") ?? "2");
+  const cols = Number(q.get("cols") ?? "6");
+  const cellW = 130 * zoom;
+  const cellH = 115 * zoom;
+  canvas.width = cols * cellW;
+  canvas.height = Math.ceil(n / cols) * cellH;
+  void spritesReady().then(() => {
+    const off = document.createElement("canvas").getContext("2d") as CanvasRenderingContext2D;
+    let kept = 0;
+    for (let f = 1; kept < n && f < 60 * 600; f++) {
+      const ft = f / 60;
+      const body: CatBody = { x: 0, y: 0, vx: 0, vy: 0, facing: ft >= flip ? -1 : 1, platformId: "dock", anim: ft < at ? from : anim, hidden: false };
+      if (ft + 1e-6 < start + kept * every) {
+        drawCat(off, body, { scale: 1, t: ft, character: c.id, slot: "film" });
+        continue;
+      }
+      const cx = (kept % cols) * cellW;
+      const cy = Math.floor(kept / cols) * cellH;
+      ctx.fillStyle = kept % 2 ? "#f6ecdf" : "#efe4d6";
+      ctx.fillRect(cx, cy, cellW - 3, cellH - 3);
+      ctx.save();
+      ctx.translate(cx + cellW / 2, cy + cellH - 12 * zoom);
+      ctx.scale(zoom, zoom);
+      drawCat(ctx, body, { scale: 1, t: ft, character: c.id, slot: "film" });
+      ctx.restore();
+      ctx.fillStyle = "#7a6656";
+      ctx.fillText(`${ft.toFixed(2)} s`, cx + 6, cy + 16);
+      kept++;
+    }
+  });
+} else if (q.has("walk")) {
   const c = (list[0] ?? CHARACTERS[0]) as (typeof CHARACTERS)[number];
   const speed = Number(q.get("speed") ?? "64");
   const film = Number(q.get("film") ?? "0");
@@ -56,7 +100,7 @@ if (q.has("walk")) {
     st.x += st.dir * speed * dt;
     if ((st.dir === 1 && st.x > right) || (st.dir === -1 && st.x < 60)) {
       st.dir = st.dir === 1 ? -1 : 1;
-      st.turn = 0.28;
+      st.turn = TURN_SEC;
     }
   };
   /** Draws the floor and the animal in a cell whose left edge is world x `wx`. */

@@ -2,7 +2,7 @@ import { behavior } from "./behaviors";
 import { planRoute, type JumpLimits, type PathStep } from "./pathfinding";
 import { buildPlatforms, segmentsOf, type Platform } from "./platforms";
 import type { Rng } from "./rng";
-import { sceneFor } from "./scenes";
+import { SCRATCH_SEC, sceneFor } from "./scenes";
 import { INSTINCTS, type Instinct } from "./species";
 import type { Approach, Intent, IntentName, Rect, WorldSnapshot } from "./types";
 
@@ -58,8 +58,12 @@ type Step =
  * a walk is about 2.4 steps cycles a second and a fast walker (a dog) breaks into a trot.
  */
 const SPEED: Record<Approach, number> = { walk: 64, saunter: 42, sneak: 28, run: 230 };
-/** How long an animal stands to turn round before it walks the other way. */
-const TURN_SEC = 0.28;
+/**
+ * How long an animal takes to turn round on the spot, standing before it walks the other way (or
+ * sitting, to face you). The sprites play their drawn turn over the same time (sprites.ts): head
+ * round, three quarters, the front view, the other side. A real cat takes about half a second.
+ */
+export const TURN_SEC = 0.6;
 /** Poses that can simply go on when an action is over. Anything else settles back to sitting. */
 const CALM: ReadonlySet<Anim> = new Set<Anim>(["idle_sit", "loaf", "sleep", "perch", "box", "sulk", "turn_away", "sprawl", "peek"]);
 
@@ -71,7 +75,7 @@ const CALM: ReadonlySet<Anim> = new Set<Anim>(["idle_sit", "loaf", "sleep", "per
 const ONCE: Partial<Record<Anim, [number, Anim]>> = {
   stretch: [3.2, "idle_sit"], swat: [1.8, "idle_sit"], push_toy: [3, "idle_sit"], headbutt: [3, "idle_sit"],
   meow: [2.6, "idle_sit"], sneeze: [1.6, "idle_sit"], hairball: [3.5, "idle_sit"], chatter: [2.8, "idle_sit"],
-  chase_tail: [5, "idle_sit"], knead: [12, "loaf"], yawn: [2.6, "idle_sit"], scratch: [2.6, "idle_sit"],
+  chase_tail: [5, "idle_sit"], knead: [12, "loaf"], yawn: [2.6, "idle_sit"], scratch: [SCRATCH_SEC, "idle_sit"],
   happy: [3, "idle_sit"], bark: [2.4, "idle_sit"], play_bow: [2.2, "idle_sit"], proud: [3, "idle_sit"],
   curious: [3, "idle_sit"], puffed: [2, "idle_sit"], giggle: [2.2, "idle_sit"], sniff: [3, "idle_sit"],
 };
@@ -383,9 +387,10 @@ export class Executor {
       if (CALM.has(anim) || anim === "blink" || anim === "look" || anim === "stare") {
         out.push({ k: "do", anim, sec: rest });
       } else {
-        // A lively thing (a bark, a hop, a stretch) is short, then the animal just sits a while.
-        const busy = Math.min(rest * 0.35, ONCE[anim]?.[0] ?? 3);
-        out.push({ k: "do", anim, sec: busy }, { k: "do", anim: "idle_sit", sec: rest - busy });
+        // A lively thing (a bark, a hop, a stretch) is short, then the animal just sits a while. An
+        // ear scratch plays whole: cut short, the leg would vanish mid-stroke.
+        const busy = anim === "scratch" ? SCRATCH_SEC : Math.min(rest * 0.35, ONCE[anim]?.[0] ?? 3);
+        out.push({ k: "do", anim, sec: busy }, { k: "do", anim: "idle_sit", sec: Math.max(0.5, rest - busy) });
       }
       t += rest;
       // Not every stop ends in a stroll: sometimes it just stays where it is.
@@ -635,7 +640,7 @@ export class Executor {
     if (s.k === "walk") {
       const dx = s.x - b.x;
       if (this.turnSec > 0) {
-        // Stand and turn round first (the drawing squeezes and opens up the other way), then set off.
+        // Stand and turn round first (the sprites play the drawn turn meanwhile), then set off.
         this.turnSec -= dt;
         if (dx !== 0) b.facing = dx > 0 ? 1 : -1;
         b.anim = s.anim ?? (s.speed >= 200 ? "run" : "walk");

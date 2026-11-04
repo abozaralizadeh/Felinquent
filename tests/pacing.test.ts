@@ -9,7 +9,7 @@ import { sceneFor } from "../src/core/scenes";
 import type { Kind } from "../src/core/species";
 import type { IntentName } from "../src/core/types";
 import { makeWorld } from "../src/core/world";
-import { planFor } from "../src/playground/sprites";
+import { LOOKS, planFor } from "../src/playground/sprites";
 import { T0, at, newCat } from "./helpers";
 
 const FLINCH = ["surprise", "startled", "puffed", "swat"];
@@ -124,10 +124,11 @@ describe("pace: one thing at a time, at an animal's speed", () => {
     for (let i = 0; i < minutes * 60 * 50; i++) {
       const t = i / 50;
       const k = planFor("idle_sit", t).key;
-      if (k !== prev) {
+      // Only blinks and the held looks count here (a slow blink at you turns through other frames).
+      if (k !== prev && (k === "blink" || k === "sit" || LOOKS.has(k))) {
         if (k === "blink") blinks++;
-        if (k !== "blink" && k !== "sit") (looks++, (lookStart = t));
-        if (prev !== "blink" && prev !== "sit") holds.push(t - lookStart);
+        if (LOOKS.has(k)) (looks++, (lookStart = t));
+        if (LOOKS.has(prev as never)) holds.push(t - lookStart);
         prev = k;
       }
     }

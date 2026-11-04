@@ -23,7 +23,7 @@
 |---|---|---|---|---|---|---|---|
 | B-01 | Nap | Loafs, curls up or sprawls, with a slow breathing loop | Low energy, nothing better to do (the default) | 0 | Rule | none | MVP |
 | B-02 | Wander & perch | Walks along window tops, jumps between windows, sits on a ledge with its legs dangling | Curiosity, just woke up | 0 | Rule (LLM may pick the target) | none | MVP |
-| B-03 | Groom | Washes its face and paws | Idle filler; right after being petted or dropped ("I meant to do that") | 0 | Rule | none | MVP |
+| B-03 | Groom | Washes from the head down, in long bouts: licks a paw, wipes it over the ear and cheek a few times, then the nose, the chest and a hind leg, and ends with a content blink. It stays on one part for a while and never jumps back and forth | Idle filler; right after being petted or dropped ("I meant to do that") | 0 | Rule | none | MVP |
 | B-04 | Watch the cursor | Its head follows your cursor | Cursor moving nearby while it's awake | 0 | Rule | none | MVP |
 | B-05 | Stretch & yawn | A big stretch after a nap | Waking up | 0 | Rule | none | MVP |
 | B-06 | Nap on the warmest window | Moves to the window of the app using the most CPU and sleeps there | Low energy plus a "hot" app | 0 | LLM | none | v1 |
@@ -34,7 +34,7 @@
 | B-34 | Sniff about | Strolls with its nose down and stops to sniff | Curiosity | 0 | Rule | none | MVP |
 | B-35 | Dig | Sniffs, digs, looks proud | Curiosity and energy | 0 | Rule | none | MVP |
 | B-36 | Howl | Head back, sings a long note | More at night | 0 | Rule | none | MVP |
-| B-37 | Scratch | Scratches behind the ear (or a post), then stretches | Anytime | 0 | Rule | none | MVP |
+| B-37 | Scratch | Scratches behind the ear with a hind leg: tilts its head, a quick burst of strokes, shakes its head, then licks a paw | Anytime | 0 | Rule | none | MVP |
 | B-38 | Sit pretty | Comes to the cursor, sits up and begs | Attention need and trust, cursor a little way off | 1 | Rule | none | MVP |
 | B-39 | Spooked by nothing | Puffs up, leaps back, runs, then washes as if nothing happened | Random, awake | 0 | Rule | none | MVP |
 | B-40 | Sprawl | Lies flat on its side and rests, not asleep | Tired and lazy | 0 | Rule | none | MVP |

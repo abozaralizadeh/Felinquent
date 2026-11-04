@@ -263,6 +263,10 @@ async function main(): Promise<void> {
   let lastLog = -10000;
   let lastErr = -10000;
   let lastT = performance.now();
+  // Frame pacing, for the log: frames drawn and the longest gap since the last log line.
+  let frames = 0;
+  let worstGap = 0;
+  let nextDue = performance.now();
   let cursor = { x: -9999, y: -9999 };
   let down = false;
   let lastDemo = 0;
@@ -287,6 +291,8 @@ async function main(): Promise<void> {
   async function frame(): Promise<void> {
     const now = performance.now();
     const dt = Math.min(0.1, (now - lastT) / 1000);
+    worstGap = Math.max(worstGap, now - lastT);
+    frames++;
     lastT = now;
     try {
       if (now - lastSensorsAt > 250) await pollSensors();
@@ -324,16 +330,24 @@ async function main(): Promise<void> {
       applyHit(st);
       if (others.length > 0) void tauri?.event.emit("cat-state", st);
       if (now - lastLog > 3000) {
+        const fps = (frames * 1000) / (now - lastLog);
         lastLog = now;
         const cur = cat.mind.current;
         const b = st.body;
         say(
-          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} clickThrough=${clickThrough} down=${down}`,
+          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms`,
         );
+        frames = 0;
+        worstGap = 0;
       }
     }
     // Timers, not animation frames: WebKit stops animation frames in a transparent click-through window.
-    setTimeout(() => void frame(), 16);
+    // Each frame is due 1/60 s after the last one was due, so the time spent drawing does not add up
+    // (a plain 16 ms wait after the work ran at about 52 frames a second). After a stall it starts again
+    // from now instead of rushing to catch up.
+    const clock = performance.now();
+    nextDue = nextDue + 1000 / 60 < clock ? clock : nextDue + 1000 / 60;
+    setTimeout(() => void frame(), nextDue - clock);
   }
 
   say(`character ${character.id}, memory events ${memory.events().length}`);

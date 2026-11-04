@@ -1,10 +1,11 @@
 #!/usr/bin/env -S uv run --with opencv-python-headless --with pillow --with numpy python
 """Makes in-between frames for a cycle of sprites, so motion plays smooth and not as a slideshow.
 
-Usage: tools/tween-sprites.py <sprite-dir> <count> <loop|once> name1 name2 ...
+Usage: tools/tween-sprites.py <sprite-dir> <count> <loop|once> name1 name2 ... [--tag u]
 
 For every neighbouring pair (and last to first when "loop") it writes <count> new frames named
-<name>t1 ... <name>t<count>, which sit between <name> and the next one. The frames are made by
+<name>t1 ... <name>t<count>, which sit between <name> and the next one. --tag changes the "t", for a
+second link out of the same frame (groom5 to groom6 is groom5t1, groom5 back to groom2 groom5u1). The frames are made by
 optical flow (DIS) in both directions, each half warped to the middle moment and blended, with the
 colour premultiplied by alpha so soft edges do not smear. Frames of different size are padded to a common canvas,
 feet on the bottom edge and centred.
@@ -17,6 +18,11 @@ import numpy as np
 from PIL import Image
 
 args = sys.argv[1:]
+tag = "t"
+if "--tag" in args:
+    i = args.index("--tag")
+    tag = args[i + 1]
+    del args[i : i + 2]
 folder, count, mode, names = Path(args[0]), int(args[1]), args[2], args[3:]
 
 
@@ -91,5 +97,5 @@ pairs = len(names) if mode == "loop" else len(names) - 1
 for i in range(pairs):
     a, b = frames[i], frames[(i + 1) % len(names)]
     for k in range(1, count + 1):
-        save(between(a, b, k / (count + 1)), f"{names[i]}t{k}")
+        save(between(a, b, k / (count + 1)), f"{names[i]}{tag}{k}")
 print(f"{folder.name}: {pairs * count} in-betweens for {names[0]}..{names[-1]}")

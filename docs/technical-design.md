@@ -260,7 +260,7 @@ The platform builder turns window rectangles into walkable segments:
 ### 7.2 Movement and paths
 
 - Speeds: walk 64 pt/s, saunter 42, sneak 28, run 230, times the species speed and the character's size. Gravity ~2000 pt/s².
-- **Gait and turns.** The player picks the gait from the speed: a walk in lateral sequence, a trot once the walk would need more than 2.9 steps a second (back below 2.5), and a run. The cycle advances by distance over the gait's stride (`gaits.ts`, measured by `rig-gait.py`), so planted feet stay put. Turning round stops for 0.28 s and squashes the sprite through its edge over 0.22 s instead of flipping it in one frame. Walking slows down before a stop unless the next step goes on the same way.
+- **Gait and turns.** The player picks the gait from the speed: a walk in lateral sequence, a trot once the walk would need more than 2.9 steps a second (back below 2.5), and a run. The cycle advances by distance over the gait's stride (`gaits.ts`, measured by `rig-gait.py`), so planted feet stay put. Turning round stops for 0.6 s (`TURN_SEC`, a real cat takes about half a second) while the sprites play the drawn turn: the head comes round, three quarters, the front, the far side. It never flips in one frame. Walking slows down before a stop unless the next step goes on the same way.
 - Jumps: up to ~9× the cat's height (cartoon leaps), gaps up to ~4× its body length, any drop.
 - A* over a graph of platforms, with walk edges and jump edges.
 - **Unreachable target** → walk to the nearest reachable point and *stare at it* (a real cat move).

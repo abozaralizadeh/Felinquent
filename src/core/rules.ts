@@ -200,7 +200,7 @@ const MOOD_THOUGHTS: Partial<Record<IntentName, string[]>> = {
   tour: ["inspecting my property."],
   cozy: ["knead, turn around three times, sleep. the rules."],
   spook: ["did you see that. neither did i."],
-  scratch: ["this sofa is mine. not yet. it will be."],
+  scratch: ["an itch. behind the ear. very serious."],
   dig: ["buried it. you will never know where."],
   sprawl: ["flat is a valid shape."],
 };
