@@ -10,8 +10,9 @@ rm -rf /Applications/Felinquent.app "$HOME/Applications/Felinquent.app"
 launchctl unload "$HOME/Library/LaunchAgents/app.felinquent.plist" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/app.felinquent.plist"
 if [ "$PURGE" = 1 ]; then
-  rm -rf "$HOME/Library/Application Support/app.felinquent.spike" "$HOME/Library/Logs/Felinquent"
+  # app.felinquent.spike is the folder of builds before 0.1.0.
+  rm -rf "$HOME/Library/Application Support/app.felinquent" "$HOME/Library/Application Support/app.felinquent.spike" "$HOME/Library/Logs/Felinquent"
   echo "Removed the app, its memory, settings and logs."
 else
-  echo "Removed the app. Its memory and settings are still in ~/Library/Application Support/app.felinquent.spike (use --purge to delete them)."
+  echo "Removed the app. Its memory and settings are still in ~/Library/Application Support/app.felinquent (use --purge to delete them)."
 fi

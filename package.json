@@ -1,6 +1,6 @@
 {
   "name": "felinquent",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
@@ -20,6 +20,7 @@
     "bundle:win": "tauri build --bundles nsis",
     "probe": "cd src-tauri && cargo run --release --bin probe",
     "bundle:mac-dmg": "tauri build --bundles app,dmg",
+    "bundle:mac-universal": "tauri build --target universal-apple-darwin --bundles app,dmg",
     "install:mac": "bash scripts/install-mac.sh",
     "uninstall:mac": "bash scripts/uninstall-mac.sh"
   },

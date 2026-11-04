@@ -1,14 +1,16 @@
 //! Felinquent overlay spike: a transparent, click-through window over every display
 //! that shows the cat, with real Mac sensors behind it (spikes S-1 and S-2).
 mod logfile;
+#[cfg(target_os = "macos")]
+mod login;
 mod sensors;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 #[cfg(not(windows))]
 use tauri::{LogicalPosition, LogicalSize};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Wry};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 #[derive(Serialize)]
@@ -46,6 +48,55 @@ struct Config {
     brain: String,
     ollama_url: String,
     ollama_model: String,
+}
+
+/// What the page says is current, so the menu can tick it.
+#[derive(Deserialize)]
+struct Choices {
+    character: String,
+    chaos: String,
+    model: bool,
+    panic: bool,
+    shoo: bool,
+}
+
+/// The menu items that carry a tick. The page owns the state and the menu only shows it.
+struct Ticks {
+    /// Character and chaos level: one tick in each group.
+    picks: Vec<CheckMenuItem<Wry>>,
+    panic: CheckMenuItem<Wry>,
+    shoo: CheckMenuItem<Wry>,
+    model: CheckMenuItem<Wry>,
+}
+
+/// The page calls this after every change, so the ticks match what the cat really does.
+#[tauri::command]
+async fn show_choices(app: AppHandle, choices: Choices) {
+    let Some(t) = app.try_state::<Ticks>() else { return };
+    let current = [format!("character:{}", choices.character), format!("chaos:{}", choices.chaos)];
+    for item in &t.picks {
+        let _ = item.set_checked(current.iter().any(|c| c == item.id().as_ref()));
+    }
+    let _ = t.panic.set_checked(choices.panic);
+    let _ = t.shoo.set_checked(choices.shoo);
+    let _ = t.model.set_checked(choices.model);
+    // Read the ticks back from the menu itself, so the log shows what the user sees.
+    let on: Vec<String> = t.picks.iter().chain([&t.panic, &t.shoo, &t.model]).filter(|i| i.is_checked().unwrap_or(false)).map(|i| i.id().as_ref().to_string()).collect();
+    logfile::write(&format!("menu ticks: {}", on.join(" ")));
+}
+
+/// Builds before 0.1.0 used the identifier app.felinquent.spike. Bring their settings and memory along once.
+fn move_old_state(app: &AppHandle) {
+    let Ok(dir) = app.path().app_config_dir() else { return };
+    let Some(old) = dir.parent().map(|p| p.join("app.felinquent.spike")) else { return };
+    if dir.exists() || !old.exists() {
+        return;
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    for name in ["settings.json", "memory.json"] {
+        let _ = std::fs::copy(old.join(name), dir.join(name));
+    }
+    logfile::write("moved settings and memory from the old app folder");
 }
 
 /// Saved settings and memory live in the app's config folder. Only these two names are allowed.
@@ -141,46 +192,64 @@ fn control(app: &AppHandle, msg: &str) {
     let _ = app.emit_to("overlay", "ctl", msg.to_string());
 }
 
+// Keep this list in step with src/core/characters.ts (a test checks it).
+const CHARACTERS: [(&str, &str); 6] = [
+    ("character:tabby", "Tabby (orange cat)"),
+    ("character:inky", "Inky (black cat)"),
+    ("character:pearl", "Pearl (white cat)"),
+    ("character:mochi", "Mochi (fox)"),
+    ("character:bandit", "Bandit (raccoon)"),
+    ("character:biscuit", "Biscuit (puppy)"),
+];
+const CHAOS: [(&str, &str); 3] = [("chaos:chill", "Chill"), ("chaos:normal", "Normal"), ("chaos:gremlin", "Gremlin")];
+
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let panic = MenuItem::with_id(app, "panic", "Panic: hide the cat (Cmd+Opt+Shift+P)", true, None::<&str>)?;
-    let shoo = MenuItem::with_id(app, "shoo", "Shoo for 1 hour", true, None::<&str>)?;
-    let unshoo = MenuItem::with_id(app, "unshoo", "Call the cat back (end shoo)", true, None::<&str>)?;
-    let chaos = Submenu::with_items(
-        app,
-        "Chaos level",
-        true,
-        &[
-            &MenuItem::with_id(app, "chaos:chill", "Chill", true, None::<&str>)?,
-            &MenuItem::with_id(app, "chaos:normal", "Normal", true, None::<&str>)?,
-            &MenuItem::with_id(app, "chaos:gremlin", "Gremlin", true, None::<&str>)?,
-        ],
-    )?;
-    // Keep this list in step with src/core/characters.ts (a test checks it).
-    let character = Submenu::with_items(
-        app,
-        "Character",
-        true,
-        &[
-            &MenuItem::with_id(app, "character:tabby", "Tabby (orange cat)", true, None::<&str>)?,
-            &MenuItem::with_id(app, "character:inky", "Inky (black cat)", true, None::<&str>)?,
-            &MenuItem::with_id(app, "character:pearl", "Pearl (white cat)", true, None::<&str>)?,
-            &MenuItem::with_id(app, "character:mochi", "Mochi (fox)", true, None::<&str>)?,
-            &MenuItem::with_id(app, "character:bandit", "Bandit (raccoon)", true, None::<&str>)?,
-            &MenuItem::with_id(app, "character:biscuit", "Biscuit (puppy)", true, None::<&str>)?,
-        ],
-    )?;
+    // Every tick starts off. The page sends what is current as soon as it has loaded its settings.
+    let check = |id: &str, text: &str| CheckMenuItem::with_id(app, id, text, true, false, None::<&str>);
+    let group = |items: &[(&str, &str)]| items.iter().map(|(id, text)| check(id, text)).collect::<tauri::Result<Vec<_>>>();
+    fn as_items(v: &[CheckMenuItem<Wry>]) -> Vec<&dyn IsMenuItem<Wry>> {
+        v.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect()
+    }
+    let characters = group(&CHARACTERS)?;
+    let chaos_levels = group(&CHAOS)?;
+    let character = Submenu::with_items(app, "Character", true, &as_items(&characters))?;
+    let chaos = Submenu::with_items(app, "Chaos level", true, &as_items(&chaos_levels))?;
+
+    let version = MenuItem::with_id(app, "version", format!("Felinquent {}", app.package_info().version), false, None::<&str>)?;
     let treat = MenuItem::with_id(app, "treat", "Give a treat", true, None::<&str>)?;
+    let panic = check("panic", "Panic: hide the cat (Cmd+Opt+Shift+P)")?;
+    let shoo = check("shoo", "Shoo for 1 hour")?;
+    let model = check("model", "Use the local model (needs Ollama)")?;
+    #[cfg(target_os = "macos")]
+    let login = CheckMenuItem::with_id(app, "login", "Start at login", true, login::is_on(), None::<&str>)?;
     let forget = MenuItem::with_id(app, "forget", "Forget everything it learned", true, None::<&str>)?;
     let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Felinquent", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&treat, &character, &chaos, &panic, &shoo, &unshoo, &PredefinedMenuItem::separator(app)?, &forget, &logs, &quit])?;
+    let line = || PredefinedMenuItem::separator(app);
+    let (line1, line2, line3) = (line()?, line()?, line()?);
+
+    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version, &line1, &treat, &character, &chaos, &panic, &shoo, &line2, &model];
+    #[cfg(target_os = "macos")]
+    items.push(&login);
+    items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
+    let menu = Menu::with_items(app, &items)?;
+
+    app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone() });
+
     let mut tray = TrayIconBuilder::new().menu(&menu).tooltip("Felinquent");
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
-    tray.on_menu_event(|app, event| match event.id().as_ref() {
+    tray.on_menu_event(move |app, event| match event.id().as_ref() {
         "quit" => app.exit(0),
         "logs" => logfile::open_folder(),
+        #[cfg(target_os = "macos")]
+        "login" => {
+            let on = login::set(!login::is_on());
+            let _ = login.set_checked(on);
+            logfile::write(&format!("menu: start at login {}", if on { "on" } else { "off" }));
+        }
+        // The rest is the page's business. It answers with show_choices, which moves the ticks.
         other => control(app, other),
     })
     .build(app)?;
@@ -256,6 +325,7 @@ fn main() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            move_old_state(app.handle());
             build_tray(app)?;
             // The panic hotkey. A listener only: it never sends keys to anything.
             if let Err(e) = app.global_shortcut().register("CmdOrCtrl+Alt+Shift+P") {
@@ -289,7 +359,7 @@ fn main() {
             if std::env::var("FELINQUENT_SELFTEST").is_ok() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    for (secs, msg) in [(12, "character:mochi"), (3, "treat"), (3, "panic"), (4, "panic"), (3, "chaos:chill"), (3, "character:biscuit"), (3, "shoo")] {
+                    for (secs, msg) in [(12, "character:mochi"), (3, "treat"), (3, "panic"), (4, "panic"), (3, "chaos:chill"), (3, "model"), (3, "model"), (3, "character:biscuit"), (3, "shoo")] {
                         std::thread::sleep(std::time::Duration::from_secs(secs));
                         control(&handle, msg);
                     }
@@ -324,6 +394,7 @@ fn main() {
             read_config,
             load_state,
             save_state,
+            show_choices,
             debug_log
         ])
         .run(tauri::generate_context!())

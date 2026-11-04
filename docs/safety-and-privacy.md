@@ -42,6 +42,8 @@ These are rules in the code and in CI, not settings.
 | Cat memory (events, favorite spots, trust) | Personality | SQLite, local | No |
 | Diary | Fun, sharing | Local | Only if you share a card |
 | Logs | Fixing bugs | Local, max 15 MB, no titles | Only if you send them |
+| Settings (character, chaos level, local model on or off) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
+| Start at login | Opening the app when you log in | Only if you turn it on: one file, `~/Library/LaunchAgents/app.felinquent.plist`. Turning it off deletes it | No |
 
 ## 4. Network
 
@@ -77,13 +79,14 @@ Window titles come from apps and web pages, so a page could be titled *"ignore y
 
 - Chaos level: Chill / Normal / Gremlin.
 - **Panic hotkey** (instant hide), **Shoo for 1 hour**, quiet hours.
-- Brain: off / built-in / Ollama / custom.
+- Brain: off / built-in / Ollama / custom. In 0.1.0 the menu has **Use the local model** on or off.
+- **Start at login** on/off (0.1.0: in the menu).
 - Smart targeting (titles) on/off. Accessibility features on/off.
 - **Export memory** · **Forget everything** · **Open logs folder** · **Copy diagnostics**.
 
 ## 8. Security basics
 
-- Signed and notarized app. Signed auto-updates.
+- Signed and notarized app. Signed auto-updates. Today (0.1.0) the DMG is signed ad hoc, not with a Developer ID, and not notarized, so macOS asks you to confirm it once. Its SHA-256 is published next to it on the release. No auto-updates yet.
 - Model downloads are checksum-verified.
 - Dependencies are audited in CI (`cargo audit`/`cargo deny`, `pnpm audit`).
 - No secrets in the repo. Signing keys live only in CI secrets.

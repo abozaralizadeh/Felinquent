@@ -2,7 +2,7 @@
 // of the Mac. Runs inside the Tauri windows (src-tauri), one per display.
 // The window on the main display runs the cat and broadcasts its state. The others only draw it.
 // Reads geometry and idle time only. No screenshots, no titles, no key contents.
-import { isLocalUrl, LlmBrain, OllamaClient } from "../core/brain";
+import { isLocalUrl, LlmBrain, OllamaClient, RulesBrain } from "../core/brain";
 import { Cat } from "../core/cat";
 import type { CatBody } from "../core/executor";
 import type { Activity, Rect, WindowInfo, WorldSnapshot } from "../core/types";
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   }
 
   // What the user chose and what the cat remembers survive a restart (local files only).
-  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin" } = {};
+  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean } = {};
   try {
     const text = await invoke<string | null>("load_state", { name: "settings.json" });
     if (text) saved = JSON.parse(text) as typeof saved;
@@ -166,7 +166,15 @@ async function main(): Promise<void> {
     memory,
     log: (message, fields) => say(`${message} ${JSON.stringify(fields ?? {})}`),
   });
-  const saveSettings = (): void => void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos }) }).catch(() => {});
+  // Whether to ask the local model at all. The menu turns it off and on.
+  let useModel = saved.model ?? true;
+  const saveSettings = (): void =>
+    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel }) }).catch(() => {});
+  // The menu bar ticks what is current. This page owns that state, so it tells the menu after every change.
+  const showChoices = (): void =>
+    void invoke("show_choices", {
+      choices: { character: character.id, chaos: cat.settings.chaos, model: useModel, panic: world.panic, shoo: world.shooedUntilMs > Date.now() },
+    }).catch(() => {});
   let memoryJson = memory.exportJson();
   setInterval(() => {
     const now = memory.exportJson();
@@ -179,6 +187,7 @@ async function main(): Promise<void> {
   // on a timeout, an error or an answer that is not on the menu, and pauses the model after 3 failures.
   async function chooseBrain(): Promise<string> {
     if (config.brain === "rules") return "rules (asked for)";
+    if (!useModel) return "rules (the local model is off in the menu)";
     if (!isLocalUrl(config.ollama_url)) return "rules (the model address is not local)";
     try {
       const r = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(2000) });
@@ -186,6 +195,8 @@ async function main(): Promise<void> {
       if (!tags.models?.some((m) => m.name === config.ollama_model || m.name.startsWith(`${config.ollama_model}:`))) {
         return `rules (model ${config.ollama_model} is not installed)`;
       }
+      // The menu may have turned the model off while we waited for Ollama.
+      if (!useModel) return "rules (the local model is off in the menu)";
       cat.setBrain(new LlmBrain(new OllamaClient(config.ollama_url, config.ollama_model), 8000));
       cat.updateSettings({ brain: "llm", llmUrl: config.ollama_url, llmModel: config.ollama_model });
       return `llm ${config.ollama_model} with rules as the fallback`;
@@ -194,19 +205,34 @@ async function main(): Promise<void> {
     }
   }
   void chooseBrain().then((b) => say(`brain: ${b}`));
+  showChoices();
 
-  // Menu bar and hotkey controls. Panic toggles; Shoo keeps the cat away for an hour.
+  // Menu bar and hotkey controls. Panic, shoo and the model toggle; shoo keeps the cat away for an hour.
   void tauri?.event.listen<string>("ctl", (e) => {
     const msg = e.payload;
     if (msg === "panic") {
       world = { ...world, panic: !world.panic };
       say(`panic ${world.panic ? "on" : "off"}`);
     } else if (msg === "shoo") {
-      world = { ...world, shooedUntilMs: Date.now() + 3_600_000 };
-      say("shoo for 1 hour");
-    } else if (msg === "unshoo") {
-      world = { ...world, shooedUntilMs: 0 };
-      say("shoo ended, the cat may come back");
+      if (world.shooedUntilMs > Date.now()) {
+        world = { ...world, shooedUntilMs: 0 };
+        say("shoo ended, the cat may come back");
+      } else {
+        world = { ...world, shooedUntilMs: Date.now() + 3_600_000 };
+        say("shoo for 1 hour");
+        // Untick the menu when the hour is up.
+        setTimeout(showChoices, 3_601_000);
+      }
+    } else if (msg === "model") {
+      useModel = !useModel;
+      saveSettings();
+      if (useModel) {
+        void chooseBrain().then((b) => say(`brain: ${b}`));
+      } else {
+        cat.setBrain(new RulesBrain());
+        cat.updateSettings({ brain: "rules" });
+        say("brain: rules (the local model is off in the menu)");
+      }
     } else if (msg.startsWith("chaos:")) {
       const level = msg.slice(6);
       if (level === "chill" || level === "normal" || level === "gremlin") {
@@ -230,6 +256,7 @@ async function main(): Promise<void> {
       void invoke("save_state", { name: "memory.json", text: memoryJson }).catch(() => {});
       say("memory cleared");
     }
+    showChoices();
   });
 
   let placed = false;

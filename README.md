@@ -14,7 +14,15 @@ There are six characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a racc
 
 ![Eight moments of the walk cycle over the same patch of floor](docs/assets/rigged-walk-film.jpg)
 
-**Status: early.** The brain, rules, movement and animation are built and tested, and a browser playground runs all of it on pretend windows. The Mac app is a working prototype: a transparent overlay where the cat stands on your real windows. There's no signed installer yet. Windows support is written but has never been run.
+**Status: early.** The brain, rules, movement and animation are built and tested, and a browser playground runs all of it on pretend windows. The Mac app is a working prototype: a transparent overlay where the cat stands on your real windows. Windows support is written but has never been run.
+
+## Install on a Mac
+
+[Download Felinquent.dmg](https://github.com/abozaralizadeh/Felinquent/releases/latest/download/Felinquent.dmg), open it and drag Felinquent into Applications. It needs macOS 13 or newer and runs on Apple Silicon and Intel.
+
+The first time you open it, macOS says it can't check the app, because it isn't signed with an Apple Developer ID yet. Click Done, open System Settings > Privacy & Security, scroll down and click Open Anyway. You only do this once.
+
+After that it lives in the menu bar. Pick a character, set the chaos level, hide it, shoo it for an hour, turn the local model on or off, make it start at login. A tick shows what's on. More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
 
 ## What it will and won't do
 
@@ -25,9 +33,9 @@ There are six characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a racc
 
 The full list is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).
 
-## Quick start
+## Try it in the browser
 
-You need [Node.js](https://nodejs.org) 22 or newer.
+No install, just the playground. You need [Node.js](https://nodejs.org) 22 or newer.
 
 ```bash
 npm install
@@ -36,7 +44,7 @@ npm run dev
 
 Open http://localhost:5173. Drag the pretend windows, hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Try the Meeting and Panic switches, and the chaos level.
 
-To run the real thing on a Mac (needs Rust), see [docs/INSTALL.md](docs/INSTALL.md). In short:
+To build the Mac app from source instead of downloading it (needs Rust):
 
 ```bash
 bash scripts/install-mac.sh

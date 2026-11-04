@@ -383,8 +383,16 @@
     .copy svg { width: 14px; height: 14px; }
     .copy.done { background: var(--ink); color: var(--bg); border-color: var(--ink); }
     .opts { margin: 18px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; color: var(--ink-soft); font-size: .98rem; }
-    .opts code, .panel p code, .faq code { font-size: .86em; padding: 1px 6px; border-radius: 6px; background: var(--code); border: 1px solid var(--line); color: var(--ink); }
+    .opts code, .panel p code, .faq code { font-size: .86em; padding: 1px 6px; border-radius: 6px; background: var(--code); border: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
     .note { margin-top: 18px; font-size: .95rem; color: var(--ink-soft); }
+    .get { margin-top: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+    .get small { color: var(--ink-soft); font-size: .92rem; }
+    .dl-steps { margin: 22px 0 0; padding-left: 1.4em; display: grid; gap: 10px; color: var(--ink-soft); font-size: .98rem; }
+    .dl-steps li { padding-left: 4px; }
+    .dl-steps li::marker { color: var(--ginger-text); font-weight: 700; }
+    .dl-steps b { color: var(--ink); font-weight: 600; }
+    .dl-steps + .note { margin-top: 18px; }
+    .panel h4 { margin-top: 30px; padding-top: 24px; border-top: 1px solid var(--line); font: 600 1.05rem "Instrument Sans", system-ui, sans-serif; }
     .note a { color: var(--ginger-text); font-weight: 600; }
     .panel.peek { position: relative; overflow: hidden; }
     .panel-pet { position: absolute; right: 34px; bottom: -3px; width: 104px; pointer-events: none; }
@@ -474,6 +482,7 @@
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="paw" viewBox="0 0 24 24"><ellipse cx="12" cy="15.8" rx="5.2" ry="4.4"/><ellipse cx="5.6" cy="9.6" rx="2.2" ry="2.6"/><ellipse cx="9.8" cy="5.8" rx="2.2" ry="2.7"/><ellipse cx="14.2" cy="5.8" rx="2.2" ry="2.7"/><ellipse cx="18.4" cy="9.6" rx="2.2" ry="2.6"/></symbol>
   <symbol id="gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></symbol>
+  <symbol id="dl" viewBox="0 0 24 24"><path d="M12 3.5v11.5m0 0-4.5-4.5M12 15l4.5-4.5M4.5 16.5v1.5a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="copy" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 3.5V3a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 2 3v6A1.5 1.5 0 0 0 3.5 10.5H4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
 </svg>
 
@@ -716,21 +725,27 @@
   <section class="band" id="install">
     <div class="wrap">
       <p class="kicker reveal">04 / get it</p>
-      <h2 class="reveal">Build it on your Mac.</h2>
-      <p class="lead reveal">There's no signed download yet, so a script builds it for you. It takes a few minutes the first time.</p>
+      <h2 class="reveal">Get it for your Mac.</h2>
+      <p class="lead reveal">A normal Mac app. Drag it into Applications and it lives in your menu bar.</p>
       <div class="install">
         <div class="panel reveal">
           <h3>On a Mac</h3>
-          <p>You need macOS 13 or newer and <a href="https://brew.sh">Homebrew</a>. The script installs Node and Rust if they're missing, builds the app, puts it in Applications and starts it.</p>
-          <div class="code"><div class="code-bar">Terminal<button class="copy" type="button" aria-label="Copy the install commands"><svg><use href="#copy"/></svg><span>Copy</span></button></div><pre><code><span class="p">$ </span>git clone https://github.com/abozaralizadeh/Felinquent
+          <div class="get">
+            <a class="btn primary" href="https://github.com/abozaralizadeh/Felinquent/releases/latest/download/Felinquent.dmg"><svg aria-hidden="true"><use href="#dl"/></svg>Download for Mac</a>
+            <small>macOS 13 or newer, Apple Silicon and Intel.</small>
+          </div>
+          <ol class="dl-steps">
+            <li>Open <b>Felinquent.dmg</b> and drag Felinquent into <b>Applications</b>.</li>
+            <li>Open it. The first time, macOS says it can't check the app, because it isn't signed with an Apple Developer ID yet. Click <b>Done</b>.</li>
+            <li>Go to <b>System Settings &rsaquo; Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>. You only do this once.</li>
+          </ol>
+          <p class="note">Then it lives in the menu bar. Pick a character, set the chaos level, turn the local model on or off, start it at login. A tick shows what's on. To remove it, drag it to the Trash.</p>
+          <h4>Rather build it yourself?</h4>
+          <p>You need <a href="https://brew.sh">Homebrew</a>. The script installs Node and Rust if they're missing, builds the app and puts it in Applications. Run it again any time to update.</p>
+          <div class="code"><div class="code-bar">Terminal<button class="copy" type="button" aria-label="Copy the build commands"><svg><use href="#copy"/></svg><span>Copy</span></button></div><pre><code><span class="p">$ </span>git clone https://github.com/abozaralizadeh/Felinquent
 <span class="p">$ </span>cd Felinquent
 <span class="p">$ </span>bash scripts/install-mac.sh</code></pre></div>
-          <ul class="opts">
-            <li><code>--with-model</code> also sets up the small local model, under 1 GB.</li>
-            <li><code>--login</code> starts it when you log in.</li>
-            <li>Run the script again any time to update.</li>
-          </ul>
-          <div class="code"><div class="code-bar">To remove it<button class="copy" type="button" aria-label="Copy the uninstall command"><svg><use href="#copy"/></svg><span>Copy</span></button></div><pre><code><span class="p">$ </span>bash scripts/uninstall-mac.sh</code></pre></div>
+          <p class="note"><code>--with-model</code> also sets up the small local model, under 1 GB. <code>--login</code> starts it when you log in.</p>
         </div>
         <div class="panel peek reveal">
           <img class="panel-pet" src="assets/mochi-peek.webp" alt="" width="110" height="91" loading="lazy">
@@ -771,7 +786,7 @@
         </details>
         <details>
           <summary>How finished is it?</summary>
-          <p>It's an early working prototype. The brain, the rules and the animation are built and tested, and the Mac app runs on real windows. There's no signed installer yet, so you build it yourself, and you'll find rough edges.</p>
+          <p>It's an early working prototype. The brain, the rules and the animation are built and tested, and the Mac app runs on real windows. You can download it now, but it isn't signed with an Apple Developer ID yet, so macOS asks you to confirm it the first time. You'll find rough edges.</p>
         </details>
         <details>
           <summary>Windows? Linux?</summary>

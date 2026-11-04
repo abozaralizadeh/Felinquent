@@ -113,6 +113,25 @@ Open logs folder
 Quit
 ```
 
+**As built (0.1.0).** The Mac app has the plain version of this menu, with no status line, diary or settings window yet. A tick shows what's on right now: the current character and chaos level, Panic while the cat is hidden, Shoo while it's away, the local model, Start at login. The page owns that state and sends it to the menu after every change, so the ticks follow the hotkey and the treat too.
+
+```text
+Felinquent 0.1.0                     (greyed out)
+────────────────────────
+Give a treat
+Character            ▸  ✓ Tabby · Inky · Pearl · Mochi · Bandit · Biscuit
+Chaos level          ▸  Chill · ✓ Normal · Gremlin
+Panic: hide the cat (Cmd+Opt+Shift+P)
+Shoo for 1 hour                      (click again to call it back)
+────────────────────────
+✓ Use the local model (needs Ollama)
+  Start at login
+────────────────────────
+Forget everything it learned
+Open logs folder
+Quit Felinquent
+```
+
 ### 6.2 Settings window
 
 These tabs match the product spec §7: General · Cat · Behavior · Brain · Privacy · About. It's a small native-looking window: no big dashboards, no stats charts.

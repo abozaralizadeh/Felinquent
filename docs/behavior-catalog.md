@@ -87,8 +87,8 @@
 | RM-01 | Meeting | Camera or mic in use, or a meeting app in front | No blocking, no sound; naps in a far corner | MVP |
 | RM-02 | Fullscreen / presentation | Frontmost window covers the whole display | Leaves the screen ("goes outside") | MVP |
 | RM-03 | Screen sharing | Best-effort detection | Same as meeting | v1 |
-| RM-04 | Shoo for 1 hour | Menu | Walks off the screen for an hour | MVP |
-| RM-05 | Panic | Hotkey | Vanishes instantly; comes back from the menu only | MVP |
+| RM-04 | Shoo for 1 hour | Menu | Walks off the screen for an hour. Click it again to call the cat back early, and a treat ends it too. The menu ticks it while it lasts | MVP |
+| RM-05 | Panic | Hotkey or menu | Vanishes instantly. The same hotkey or menu item brings it back. The menu ticks it while the cat is hidden | MVP |
 | RM-06 | Quiet hours | Schedule in settings | Sleep only | v1 |
 | RM-07 | Low battery | < 20% and unplugged | Mostly sleeps; the LLM brain is paused | v1 |
 
