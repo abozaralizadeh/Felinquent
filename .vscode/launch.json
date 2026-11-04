@@ -69,7 +69,7 @@
       "name": "Sensor probe (Rust, CodeLLDB)",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/src-tauri/target/debug/probe",
+      "program": "${workspaceFolder}/src-tauri/target/debug/examples/probe",
       "args": [
         "3"
       ],

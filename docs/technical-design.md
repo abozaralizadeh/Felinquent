@@ -347,7 +347,7 @@ It's debuggable with VS Code's browser debugger.
 ## 14. Build, packaging and updates
 
 - Tauri bundler → `.app` / `.dmg`, arm64 first (universal if cheap). macOS 13+.
-- **As built (0.1.0):** one universal DMG (Apple Silicon and Intel), built by `.github/workflows/release.yml` on a macOS runner when a `v*` tag is pushed, and attached to a GitHub Release as `Felinquent.dmg` with its SHA-256. Signed ad hoc (`signingIdentity: "-"`), hardened runtime, not notarized. App id `app.felinquent` (builds before 0.1.0 used `app.felinquent.spike`; the app copies their settings and memory over once).
+- **As built (0.1.1):** one universal DMG (Apple Silicon and Intel), built by `.github/workflows/release.yml` on a macOS runner when a `v*` tag is pushed, and attached to a GitHub Release as `Felinquent.dmg` with its SHA-256. Signed ad hoc (`signingIdentity: "-"`), hardened runtime, not notarized. App id `app.felinquent` (builds before 0.1.0 used `app.felinquent.spike`; the app copies their settings and memory over once). The sensor `probe` is a cargo example, not a second binary: a universal build only merges the main binary, and the bundler fails on any other one (that's what broke the first try, tagged `v0.1.0`).
 - Hardened runtime, **Developer ID signing**, notarization via `notarytool` (in CI, with secrets). Not sandboxed, not in the Mac App Store.
 - **Auto-update:** the Tauri updater plugin with signed manifests on GitHub Releases. It can be turned off.
 - **Homebrew cask** at launch. **Steam** build with `steamworks` bindings for DLC ownership checks.

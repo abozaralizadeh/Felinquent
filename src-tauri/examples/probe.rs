@@ -1,6 +1,7 @@
 //! Prints what the sensors see, a few times, with timings. Used for spikes S-2, S-3 and S-6.
-//! Run: cargo run --bin probe -- [seconds]
-#[path = "../sensors/mod.rs"]
+//! Run: cargo run --example probe -- [seconds]
+//! An example, not a binary, so it stays out of the app bundle.
+#[path = "../src/sensors/mod.rs"]
 mod sensors;
 
 use std::time::{Duration, Instant};

@@ -55,7 +55,7 @@
     {
       "label": "build probe (debug)",
       "type": "shell",
-      "command": "cd src-tauri && cargo build --bin probe",
+      "command": "cd src-tauri && cargo build --example probe",
       "problemMatcher": [
         "$rustc"
       ],

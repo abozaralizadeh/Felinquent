@@ -79,14 +79,14 @@ Window titles come from apps and web pages, so a page could be titled *"ignore y
 
 - Chaos level: Chill / Normal / Gremlin.
 - **Panic hotkey** (instant hide), **Shoo for 1 hour**, quiet hours.
-- Brain: off / built-in / Ollama / custom. In 0.1.0 the menu has **Use the local model** on or off.
-- **Start at login** on/off (0.1.0: in the menu).
+- Brain: off / built-in / Ollama / custom. In 0.1.1 the menu has **Use the local model** on or off.
+- **Start at login** on/off (0.1.1: in the menu).
 - Smart targeting (titles) on/off. Accessibility features on/off.
 - **Export memory** · **Forget everything** · **Open logs folder** · **Copy diagnostics**.
 
 ## 8. Security basics
 
-- Signed and notarized app. Signed auto-updates. Today (0.1.0) the DMG is signed ad hoc, not with a Developer ID, and not notarized, so macOS asks you to confirm it once. Its SHA-256 is published next to it on the release. No auto-updates yet.
+- Signed and notarized app. Signed auto-updates. Today (0.1.1) the DMG is signed ad hoc, not with a Developer ID, and not notarized, so macOS asks you to confirm it once. Its SHA-256 is published next to it on the release. No auto-updates yet.
 - Model downloads are checksum-verified.
 - Dependencies are audited in CI (`cargo audit`/`cargo deny`, `pnpm audit`).
 - No secrets in the repo. Signing keys live only in CI secrets.
