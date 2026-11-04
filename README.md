@@ -2,6 +2,10 @@
 
 A cat that lives on your desktop and does whatever it wants.
 
+![Tabby walks along the top of a code window and lies down, gets petted, gets poked, then gets carried over to a video window](docs/assets/demo.gif)
+
+**Website: [abozaralizadeh.github.io/Felinquent](https://abozaralizadeh.github.io/Felinquent/)**. The clip above is the browser playground, which runs the same brain and animals as the Mac app on pretend windows.
+
 It walks along the tops of your windows, naps on the Dock, sits on the thing you're reading and ignores you when you call it. Pet it and it purrs, for a while. Poke it and it reacts like the animal it is. It's not useful, and that's the point.
 
 ![Tabby, Inky, Pearl, Mochi, Bandit and Biscuit, each in eleven poses](docs/assets/characters-sprites.jpg)
@@ -66,10 +70,14 @@ A slow brain (rules, or a small local model) decides what the cat wants every 20
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep the hard lines: no synthetic input, no screen capture, nothing destructive to other apps, and the governor approves every action. Run the checks above before you open a pull request. A new behavior needs a row in the behavior catalog and a test.
+Issues and pull requests are welcome. Keep the hard lines: no synthetic input, no screen capture, nothing destructive to other apps, and the governor approves every action. Run the checks above before you open a pull request. A new behavior needs a row in the behavior catalog and a test. The details, and what you agree to when you send code, are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Credits and license
+## License
+
+Felinquent is source available, free for non-commercial use. Personal use, hobby projects, research, schools and charities are all fine. Selling it or using it in a commercial product isn't, unless you ask first.
+
+- Code: [PolyForm Noncommercial 1.0.0](LICENSE)
+- Art (sprites, icons, images): [CC BY-NC 4.0](LICENSE-ART.md)
+- Other people's work it uses, including the optional Gemma model: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
 The character art is AI-assisted and animated in code.
-
-The license isn't set yet. Until it is, all rights are reserved.

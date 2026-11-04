@@ -2,6 +2,7 @@
 name = "felinquent"
 version = "0.0.1"
 edition = "2021"
+license = "PolyForm-Noncommercial-1.0.0"
 description = "Felinquent: a cat that does whatever it wants. Mac overlay spike."
 default-run = "felinquent"
 

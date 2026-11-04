@@ -285,6 +285,25 @@
     @media (hover: none) { .stage-note .mouse { display: none; } .stage-note .touch { display: inline; } }
     html:not(.js) .stage-note { display: none; }
 
+    /* The recording, in a browser window of its own */
+    .film { padding: 8px 0 clamp(72px, 10vw, 120px); }
+    .clip { max-width: 1040px; margin: 0 auto; }
+    .browser { border-radius: 14px; overflow: hidden; background: var(--mac-bar); border: 1px solid var(--mac-edge); box-shadow: var(--shadow-big); }
+    .browser-bar { display: flex; align-items: center; height: 38px; padding: 0 14px; gap: 8px; }
+    .browser-bar i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
+    .browser-bar span { margin: 0 auto; transform: translateX(-30px); padding: 3px 18px; border-radius: 7px; background: var(--bg); font: 500 .74rem/1.4 "JetBrains Mono", ui-monospace, monospace; color: var(--ink-soft); }
+    .clip-video { position: relative; aspect-ratio: 16 / 9; background: #A9B8D8; }
+    .clip-video video { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
+    .clip-toggle {
+      position: absolute; right: 14px; bottom: 14px; width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0;
+      display: grid; place-items: center; background: rgba(43, 29, 20, .62); color: #FFF8EF; cursor: pointer; backdrop-filter: blur(6px);
+    }
+    .clip-toggle[hidden] { display: none; }
+    .clip-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+    .clip-toggle .i-play, .clip-toggle.paused .i-pause { display: none; }
+    .clip-toggle.paused .i-play { display: block; }
+    .clip figcaption { margin: 16px auto 0; max-width: 46em; text-align: center; font-size: .92rem; color: var(--ink-soft); text-wrap: balance; }
+
     /* Sections */
     section.band { padding: clamp(80px, 11vw, 136px) 0; }
     section.band.tint { background: var(--bg-2); }
@@ -429,6 +448,11 @@
       .mac-bar { height: 26px; padding: 0 10px; gap: 6px; }
       .mac-bar i { width: 9px; height: 9px; }
       .mac-bar span { display: none; }
+      .browser { border-radius: 10px; }
+      .browser-bar { height: 26px; padding: 0 10px; gap: 6px; }
+      .browser-bar i { width: 9px; height: 9px; }
+      .browser-bar span { display: none; }
+      .clip-toggle { width: 34px; height: 34px; right: 10px; bottom: 10px; }
       .cast { grid-template-columns: 1fr; gap: 14px; }
       .who { flex-direction: row; align-items: center; gap: 18px; padding: 18px 18px; }
       .who .portrait { margin: 0; flex: none; width: calc(var(--fw) * .44px); height: calc(var(--fh) * .44px); }
@@ -519,6 +543,26 @@
         </button>
       </div>
       <p class="stage-note"><span class="mouse">Hover to pet it. Click if you must.</span><span class="touch">Tap to poke it. Tap the mug to put it back.</span></p>
+    </div>
+  </section>
+
+  <section class="film" id="demo" aria-label="Demo recording">
+    <div class="wrap">
+      <figure class="clip reveal">
+        <div class="browser">
+          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>Felinquent playground</span></div>
+          <div class="clip-video">
+            <video id="demo-video" width="1600" height="900" muted loop playsinline controls preload="none" poster="assets/demo-poster.jpg" aria-label="Tabby walks along the top of a code window and lies down. A pointer pets it until it swats, pokes it, then picks it up and carries it over to a video window, where it lands and grooms.">
+              <source src="assets/demo.mp4" type="video/mp4">
+            </video>
+            <button class="clip-toggle" id="demo-toggle" type="button" aria-label="Pause the video" hidden>
+              <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></svg>
+              <svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.4-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>
+            </button>
+          </div>
+        </div>
+        <figcaption>Recorded in the browser playground: the same brain and the same six animals as the Mac app, on pretend windows. Real time, nothing sped up.</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -808,6 +852,27 @@
     }), { rootMargin: "0px 0px -8% 0px" });
     reveals.forEach((el) => io.observe(el));
   }
+
+  // The recording plays while it's on screen. With reduced motion it waits for a click.
+  const vid = document.getElementById("demo-video"), tog = document.getElementById("demo-toggle");
+  let userPaused = reduce;
+  const setBtn = () => {
+    tog.classList.toggle("paused", vid.paused);
+    tog.setAttribute("aria-label", vid.paused ? "Play the video" : "Pause the video");
+  };
+  vid.controls = false;
+  tog.hidden = false;
+  tog.addEventListener("click", () => {
+    userPaused = !vid.paused;
+    if (userPaused) vid.pause(); else vid.play().catch(() => {});
+  });
+  vid.addEventListener("play", setBtn);
+  vid.addEventListener("pause", setBtn);
+  setBtn();
+  if ("IntersectionObserver" in window) new IntersectionObserver((es) => es.forEach((e) => {
+    if (!e.isIntersecting) vid.pause();
+    else if (!userPaused) { vid.preload = "auto"; vid.play().catch(() => {}); }
+  }), { threshold: 0.35 }).observe(vid);
 
   // The cat on the window. Frames come from the app's own sprites (tools/build-site-assets.py).
   const stage = document.getElementById("stage");
