@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: playground server",
+      "type": "shell",
+      "command": "npx vite --port 5173 --strictPort",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "Local:"
+        }
+      }
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "npm run build",
+      "problemMatcher": [
+        "$tsc"
+      ]
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "npm test",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "check forbidden APIs",
+      "type": "shell",
+      "command": "npm run check:forbidden",
+      "problemMatcher": []
+    },
+    {
+      "label": "build overlay (debug)",
+      "type": "shell",
+      "command": "npm run build && cd src-tauri && cargo build --bin felinquent",
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "options": {
+        "env": {
+          "PATH": "/opt/homebrew/opt/rustup/bin:${env:HOME}/.cargo/bin:${env:PATH}"
+        }
+      }
+    },
+    {
+      "label": "build probe (debug)",
+      "type": "shell",
+      "command": "cd src-tauri && cargo build --bin probe",
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "options": {
+        "env": {
+          "PATH": "/opt/homebrew/opt/rustup/bin:${env:HOME}/.cargo/bin:${env:PATH}"
+        }
+      }
+    }
+  ]
+}

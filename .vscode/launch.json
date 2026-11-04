@@ -1,0 +1,97 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Playground in Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/src/playground",
+      "preLaunchTask": "dev: playground server"
+    },
+    {
+      "name": "Run current test file",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vitest",
+        "run",
+        "${relativeFile}"
+      ],
+      "console": "integratedTerminal",
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      "name": "Brain eval (rules)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "tools/brain-eval/run.ts",
+        "--brain",
+        "rules"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Playground service (built files)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "src/node/serve.ts"
+      ],
+      "env": {
+        "FELINQUENT_PORT": "4173",
+        "FELINQUENT_ROOT": "dist",
+        "FELINQUENT_LOG_DIR": "${workspaceFolder}/logs"
+      },
+      "preLaunchTask": "build",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Mac overlay (Rust, CodeLLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/src-tauri/target/debug/felinquent",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "FELINQUENT_DEMO": "1"
+      },
+      "preLaunchTask": "build overlay (debug)"
+    },
+    {
+      "name": "Sensor probe (Rust, CodeLLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/src-tauri/target/debug/probe",
+      "args": [
+        "3"
+      ],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build probe (debug)"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug all (playground + tests watcher)",
+      "configurations": [
+        "Playground in Chrome"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "Debug all (playground + Mac overlay)",
+      "configurations": [
+        "Playground in Chrome",
+        "Mac overlay (Rust, CodeLLDB)"
+      ],
+      "stopAll": true
+    }
+  ]
+}

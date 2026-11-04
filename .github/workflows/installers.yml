@@ -1,0 +1,41 @@
+# Builds the Mac and Windows installers and keeps them as downloadable build files.
+# It only runs when you start it by hand. It does not publish a release, tag anything or use any secrets.
+# The installers are not signed with a Developer ID or a Windows certificate (not set up yet).
+# Written on a Mac, never run.
+name: installers
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            bundles: app,dmg
+            command: bundle:mac-dmg
+          - os: windows-latest
+            bundles: nsis
+            command: bundle:win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm test
+      - run: npm run check:forbidden
+      - run: npm run ${{ matrix.command }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: felinquent-${{ matrix.os }}
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

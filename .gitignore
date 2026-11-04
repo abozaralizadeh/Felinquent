@@ -1,0 +1,10 @@
+node_modules/
+dist/
+logs/*.log
+logs/*.log.*
+.env
+.DS_Store
+*.local
+target/
+.vitest/
+src-tauri/gen/

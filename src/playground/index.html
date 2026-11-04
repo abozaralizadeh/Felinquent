@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Felinquent Playground</title>
+<style>
+  :root {
+    --bg: #f4efe8; --panel: #fffaf3; --ink: #2b2420; --muted: #75685e; --line: #e6d9ca;
+    --accent: #c2603a; --chip: #f1e5d6; --on: #2f7d4f; --bad: #b3402a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1714; --panel: #24201c; --ink: #f1e9e1; --muted: #b3a597; --line: #3a332d;
+      --accent: #ef8a5f; --chip: #332b25; --on: #6fcf97; --bad: #ff8a73;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; }
+  #stageWrap { flex: 1; min-width: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  #stage { position: relative; flex: 1; min-height: 360px; border-radius: 14px; overflow: hidden; touch-action: none; user-select: none;
+    background: linear-gradient(160deg, #6d8fb3 0%, #a9b8d8 45%, #e8c9b0 100%); border: 1px solid var(--line); }
+  #menubar { position: absolute; left: 0; right: 0; top: 0; height: 28px; background: rgba(30,30,40,.55); color: #fff; font-size: 12px; display: flex; align-items: center; padding: 0 12px; gap: 14px; z-index: 5; }
+  #dock { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; background: rgba(255,255,255,.35); backdrop-filter: blur(6px); border-top: 1px solid rgba(255,255,255,.5); z-index: 2; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  #dock i { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,.7); display: block; }
+  .win { position: absolute; border-radius: 10px; background: #fff; color: #222; box-shadow: 0 8px 28px rgba(0,0,0,.28); overflow: hidden; display: flex; flex-direction: column; border: 1px solid rgba(0,0,0,.15); }
+  .win.focused { box-shadow: 0 14px 40px rgba(0,0,0,.4); }
+  .win .bar { height: 26px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 600; cursor: grab; color: #fff; }
+  .win .bar b { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.55); display: inline-block; }
+  .win .body { padding: 10px; flex: 1; overflow: hidden; }
+  .win .body p { height: 8px; border-radius: 4px; background: #e7e7ec; margin: 0 0 9px; }
+  #cat { position: absolute; inset: 0; z-index: 3; pointer-events: none; width: 100%; height: 100%; }
+  #hit { position: absolute; z-index: 4; cursor: grab; border-radius: 12px; }
+  #hit.hidden, #blockbox.hidden, #bubble.hidden, #cover.hidden, #banner.hidden { display: none; }
+  #blockbox { position: absolute; z-index: 4; border: 2px dashed rgba(220,60,40,.8); background: rgba(220,60,40,.12); border-radius: 12px; font-size: 10px; color: #a02a18; font-weight: 700; }
+  #blockbox span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 3px; white-space: nowrap; background: rgba(255,255,255,.92); padding: 1px 6px; border-radius: 6px; }
+  #bubble { position: absolute; z-index: 6; background: #fff; color: #222; padding: 6px 10px; border-radius: 12px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 220px; transform: translate(-50%, -100%); pointer-events: none; transition: opacity .4s; }
+  .gib { position: absolute; z-index: 6; font: 700 15px ui-monospace, Menlo, monospace; color: #222; background: rgba(255,255,255,.9); padding: 2px 6px; border-radius: 4px; pointer-events: none; transition: opacity 1s; }
+  .gift { position: absolute; z-index: 4; font-size: 26px; cursor: pointer; transform: translate(-50%, -100%); }
+  #cover { position: absolute; inset: 0; z-index: 7; background: #111; color: #aaa; display: flex; align-items: center; justify-content: center; font-size: 18px; pointer-events: none; }
+  #banner { position: absolute; z-index: 7; top: 36px; left: 50%; transform: translateX(-50%); background: #2f4f8f; color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 13px; pointer-events: none; }
+  #status { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  #status b { color: var(--ink); font-weight: 600; }
+  aside { width: 320px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 14px; overflow-y: auto; }
+  aside h1 { font-size: 17px; margin: 0 0 2px; }
+  aside p.sub { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; }
+  aside h2 { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+  .row label { flex: 0 0 92px; color: var(--muted); font-size: 12.5px; }
+  .row select, .row input[type=text] { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+  .row input[type=range] { flex: 1; min-width: 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { font: inherit; padding: 5px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--chip); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #log { font: 11.5px/1.5 ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; height: 190px; overflow-y: auto; white-space: pre-wrap; }
+  #diary { margin-top: 6px; font-size: 13px; white-space: pre-wrap; color: var(--muted); }
+  .hint { font-size: 12px; color: var(--muted); margin: 6px 0; }
+  @media (max-width: 860px) { body { flex-direction: column; } aside { width: auto; border-left: 0; border-top: 1px solid var(--line); } #stage { min-height: 300px; } }
+</style>
+</head>
+<body>
+<div id="stageWrap">
+  <div id="stage">
+    <div id="menubar"><b>Finder</b><span>File</span><span>Edit</span><span>View</span><span style="margin-left:auto" id="clock"></span></div>
+    <div id="dock"><i></i><i></i><i></i><i></i><i></i></div>
+    <canvas id="cat"></canvas>
+    <div id="hit" class="hidden" title="Pet me (move the cursor over me), drag me, shake me to shoo, click to poke"></div>
+    <div id="blockbox" class="hidden"><span>cat is sitting here: clicks blocked</span></div>
+    <div id="bubble" class="hidden"></div>
+    <div id="banner" class="hidden"></div>
+    <div id="cover" class="hidden"></div>
+  </div>
+  <div id="status"></div>
+</div>
+<aside>
+  <h1>Felinquent playground</h1>
+  <p class="sub">The same cat code that will run on a Mac, on pretend windows. Drag windows, pet the cat, shake it, poke it.</p>
+
+  <h2>Cat</h2>
+  <div class="row"><label for="character">Character</label>
+    <select id="character"></select></div>
+  <div class="row"><label></label><span class="hint" id="characterHint"></span></div>
+  <div class="row"><label for="name">Name</label><input id="name" type="text" value="Mrrlo" maxlength="20"></div>
+  <div class="row"><label for="persona">Personality</label>
+    <select id="persona"><option value="mix">Mix</option><option value="loaf">Loaf (lazy)</option><option value="shadow">Shadow (needy)</option><option value="gremlin">Gremlin (chaos)</option><option value="royal">Royal (aloof)</option></select></div>
+  <div class="row"><label for="chaos">Chaos level</label>
+    <select id="chaos"><option value="chill">Chill</option><option value="normal" selected>Normal</option><option value="gremlin">Gremlin</option></select></div>
+  <div class="row"><label for="brain">Brain</label>
+    <select id="brain"><option value="rules" selected>Rules (no setup)</option><option value="fake">Fake LLM (good)</option><option value="fake-garbage">Fake LLM (garbage)</option><option value="fake-error">Fake LLM (down)</option><option value="ollama">Ollama on localhost</option></select></div>
+  <div class="row"><label></label><span class="hint" id="brainHint"></span></div>
+  <div class="row"><label for="smart">Smart targeting</label><input id="smart" type="checkbox"><span class="hint">window titles (needs Screen Recording on a Mac)</span></div>
+  <div class="row"><label for="thoughts">Thoughts</label><input id="thoughts" type="checkbox" checked></div>
+  <div class="row"><label for="warm">Time speed</label><input id="warp" type="range" min="1" max="120" value="1"><span id="warpv">1x</span></div>
+
+  <h2>Set its needs</h2>
+  <div class="row"><label for="energy">Energy</label><input id="energy" type="range" min="0" max="100" value="80"></div>
+  <div class="row"><label for="attention">Attention need</label><input id="attention" type="range" min="0" max="100" value="20"></div>
+  <div class="row"><label for="trust">Trust</label><input id="trust" type="range" min="0" max="100" value="30"></div>
+  <div class="btns"><button id="demand">Make it demanding</button><button id="tired">Make it sleepy</button></div>
+
+  <h2>You</h2>
+  <div class="row"><label for="activity">Activity</label>
+    <select id="activity"><option>typing_fast</option><option selected>typing</option><option>reading</option><option>idle</option><option>away</option></select></div>
+  <div class="btns">
+    <button id="treat">Give treat</button><button id="addwin">Open window</button><button id="closewin">Close window</button>
+  </div>
+  <p class="hint">Pet: slide the cursor over the cat. Pick up: drag it. Shoo: shake it while held. Throw: fling it. Poke: click it (once it is curious or playful, again and again and it gets cross). Laser: wiggle the cursor fast nearby.</p>
+
+  <h2>Respect modes</h2>
+  <div class="btns">
+    <button id="meeting">Meeting</button><button id="share">Screen share</button><button id="fullscreen">Fullscreen app</button>
+    <button id="quiet">Quiet hours</button><button id="battery">Low battery</button><button id="shoo">Shoo 1 hour</button><button id="panic">Panic</button>
+  </div>
+
+  <h2>Cat diary and memory</h2>
+  <div class="btns"><button id="diaryBtn">Today's diary</button><button id="forget">Forget everything</button><button id="copy">Copy diagnostics</button></div>
+  <div id="diary"></div>
+
+  <h2>What it decided</h2>
+  <div id="log"></div>
+</aside>
+<script type="module" src="./main.ts"></script>
+</body>
+</html>

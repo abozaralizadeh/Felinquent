@@ -1,0 +1,75 @@
+# Felinquent
+
+A cat that lives on your desktop and does whatever it wants.
+
+It walks along the tops of your windows, naps on the Dock, sits on the thing you're reading and ignores you when you call it. Pet it and it purrs, for a while. Poke it and it reacts like the animal it is. It's not useful, and that's the point.
+
+![Tabby, Inky, Pearl, Mochi, Bandit and Biscuit, each in eleven poses](docs/assets/characters-sprites.jpg)
+
+There are six characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a raccoon (Bandit) and a dog (Biscuit). Each has its own instincts. The cats nap and ignore you, the dog comes running, the fox stalks, the raccoon steals.
+
+![Eight moments of the walk cycle over the same patch of floor](docs/assets/rigged-walk-film.jpg)
+
+**Status: early.** The brain, rules, movement and animation are built and tested, and a browser playground runs all of it on pretend windows. The Mac app is a working prototype: a transparent overlay where the cat stands on your real windows. There's no signed installer yet. Windows support is written but has never been run.
+
+## What it will and won't do
+
+- It can get in your way, on purpose. It never types, clicks, scrolls, moves your cursor, closes anything or sends anything. A check in CI fails the build if code that fakes input shows up.
+- No screenshots or screen capture, ever. It reads window positions, idle time and whether the camera or mic is on, nothing else.
+- It backs off in meetings, fullscreen and screen sharing, and there's a panic hotkey.
+- Everything runs locally. No accounts, no analytics, no cloud. An optional small local model (through [Ollama](https://ollama.com)) can pick what the cat wants to do. Without it a rules brain does the same job.
+
+The full list is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).
+
+## Quick start
+
+You need [Node.js](https://nodejs.org) 22 or newer.
+
+```bash
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. Drag the pretend windows, hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Try the Meeting and Panic switches, and the chaos level.
+
+To run the real thing on a Mac (needs Rust), see [docs/INSTALL.md](docs/INSTALL.md). In short:
+
+```bash
+bash scripts/install-mac.sh
+```
+
+## Tests
+
+```bash
+npm run typecheck
+npm test                   # unit and simulation tests (hours of simulated cat life)
+npm run check:forbidden    # fails if any code fakes input or captures the screen
+npm run build
+npm run eval -- --brain rules    # scores a brain on repeatable scenarios (also: fake, ollama)
+npm run pace -- 60 biscuit       # how busy an animal looks over a simulated hour
+```
+
+## How it works
+
+A slow brain (rules, or a small local model) decides what the cat wants every 20 to 60 seconds. It can only pick from a menu that the rules and a governor prepare, and the governor approves every action. A fast layer moves the cat, plays the animation and handles your pointer. The Mac shell is [Tauri](https://tauri.app): one transparent, click-through window per display.
+
+| Doc | What's in it |
+|---|---|
+| [docs/LOGICAL-FLOW.md](docs/LOGICAL-FLOW.md) | How the cat thinks and moves, step by step |
+| [docs/DESIGN.md](docs/DESIGN.md) | Module map, the seams, how to extend it |
+| [docs/technical-design.md](docs/technical-design.md) | Architecture, the intent schema, the governor |
+| [docs/behavior-catalog.md](docs/behavior-catalog.md) | Every behavior, reflex and respect mode |
+| [docs/art-and-ux.md](docs/art-and-ux.md) | The look, the animation list, the art tools |
+| [docs/safety-and-privacy.md](docs/safety-and-privacy.md) | The hard lines and the data it touches |
+| [docs/spikes/](docs/spikes/README.md) | Notes from the prototype runs on a real Mac |
+| [docs/INSTALL.md](docs/INSTALL.md) | Install on a Mac, Windows (untested) or a Linux server for the demo |
+
+## Contributing
+
+Issues and pull requests are welcome. Keep the hard lines: no synthetic input, no screen capture, nothing destructive to other apps, and the governor approves every action. Run the checks above before you open a pull request. A new behavior needs a row in the behavior catalog and a test.
+
+## Credits and license
+
+The character art is AI-assisted and animated in code.
+
+The license isn't set yet. Until it is, all rights are reserved.
