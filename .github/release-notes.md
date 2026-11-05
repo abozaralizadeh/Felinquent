@@ -1,5 +1,13 @@
 A desktop cat for your Mac. It naps on your windows, sits on what you care about and ignores you when called.
 
+## What's new
+
+The cat turns round properly now instead of flipping like a sheet of paper. It washes from the head down, a few licks on each spot, scratches its ear with a hind leg, and moves more smoothly overall. And the app now checks for updates and offers to install them for you.
+
+## Updating
+
+Coming from 0.1.1? Download the DMG below and drag it into Applications once more. From this version on, the app checks GitHub for a new version every 12 hours and asks before it installs anything. Turn that off in the menu with Check for updates automatically.
+
 ## Install
 
 1. Download **Felinquent.dmg** below and open it.

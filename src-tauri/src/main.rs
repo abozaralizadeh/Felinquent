@@ -4,6 +4,8 @@ mod logfile;
 #[cfg(target_os = "macos")]
 mod login;
 mod sensors;
+#[cfg(target_os = "macos")]
+mod update;
 
 use serde::{Deserialize, Serialize};
 #[cfg(not(windows))]
@@ -222,15 +224,20 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let model = check("model", "Use the local model (needs Ollama)")?;
     #[cfg(target_os = "macos")]
     let login = CheckMenuItem::with_id(app, "login", "Start at login", true, login::is_on(), None::<&str>)?;
+    #[cfg(target_os = "macos")]
+    let (update, autoupdate) = update::menu_items(app)?;
     let forget = MenuItem::with_id(app, "forget", "Forget everything it learned", true, None::<&str>)?;
     let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Felinquent", true, None::<&str>)?;
     let line = || PredefinedMenuItem::separator(app);
     let (line1, line2, line3) = (line()?, line()?, line()?);
 
-    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version, &line1, &treat, &character, &chaos, &panic, &shoo, &line2, &model];
+    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version];
     #[cfg(target_os = "macos")]
-    items.push(&login);
+    items.push(&update);
+    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &character, &chaos, &panic, &shoo, &line2, &model]);
+    #[cfg(target_os = "macos")]
+    items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
 
@@ -249,6 +256,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             let _ = login.set_checked(on);
             logfile::write(&format!("menu: start at login {}", if on { "on" } else { "off" }));
         }
+        #[cfg(target_os = "macos")]
+        id @ ("update" | "autoupdate") => update::on_menu(app, id),
         // The rest is the page's business. It answers with show_choices, which moves the ticks.
         other => control(app, other),
     })
@@ -309,7 +318,11 @@ fn fit_to(w: &WebviewWindow, d: &sensors::Display) {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Signed updates from GitHub Releases (macOS only for now). See update.rs.
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -327,6 +340,8 @@ fn main() {
 
             move_old_state(app.handle());
             build_tray(app)?;
+            #[cfg(target_os = "macos")]
+            update::start(app.handle());
             // The panic hotkey. A listener only: it never sends keys to anything.
             if let Err(e) = app.global_shortcut().register("CmdOrCtrl+Alt+Shift+P") {
                 println!("[overlay] could not register the panic hotkey: {e}");

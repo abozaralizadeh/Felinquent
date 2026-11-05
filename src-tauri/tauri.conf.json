@@ -49,5 +49,11 @@
       }
     },
     "windows": { "nsis": { "installMode": "currentUser" } }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDNkRFNEYwNDFFMDY1NUMKUldSY1plQkI4T1J0Zk9zYThnSXVXNGJrUmhrVHR1a3diSW12azFxNm5WeHhqckRxRmtSUzg1MEEK",
+      "endpoints": ["https://github.com/abozaralizadeh/Felinquent/releases/latest/download/latest.json"]
+    }
   }
 }

@@ -49,10 +49,12 @@ These are rules in the code and in CI, not settings.
 
 The app only talks to:
 1. **The brain:** Ollama on `localhost`, the built-in engine (no network), or a custom endpoint *you* set.
-2. **Update checks:** GitHub Releases. They can be turned off.
+2. **Update checks (since 0.1.2):** every 12 hours the Mac app downloads `latest.json` from the latest GitHub Release (`github.com`, which redirects to GitHub's download host). The request carries nothing about you; GitHub sees an IP address, as with any download. If a newer version is out, the app asks before downloading it, and installs it only if its signature checks out. Turn the checks off with **Check for updates automatically** in the menu.
 3. **Model download:** once, from a fixed URL, with the size shown first and a checksum check.
 
 No analytics, no ads, no accounts, no crash reporting unless you send diagnostics yourself.
+
+The website is separate from the app: [the Felinquent page](https://abozaralizadeh.github.io/Felinquent/) counts visits with Google Analytics. The app has no analytics of any kind.
 
 ⚠️ **Custom endpoint warning:** if you point the brain at a cloud API, the world summary goes there, including window titles if smart targeting is on. Settings shows this warning before saving.
 
@@ -81,12 +83,13 @@ Window titles come from apps and web pages, so a page could be titled *"ignore y
 - **Panic hotkey** (instant hide), **Shoo for 1 hour**, quiet hours.
 - Brain: off / built-in / Ollama / custom. In 0.1.1 the menu has **Use the local model** on or off.
 - **Start at login** on/off (0.1.1: in the menu).
+- **Check for updates automatically** on/off, and **Check for updates…** by hand (0.1.2: in the menu).
 - Smart targeting (titles) on/off. Accessibility features on/off.
 - **Export memory** · **Forget everything** · **Open logs folder** · **Copy diagnostics**.
 
 ## 8. Security basics
 
-- Signed and notarized app. Signed auto-updates. Today (0.1.1) the DMG is signed ad hoc, not with a Developer ID, and not notarized, so macOS asks you to confirm it once. Its SHA-256 is published next to it on the release. No auto-updates yet.
+- Signed and notarized app. Signed auto-updates. Today (0.1.1) the DMG is signed ad hoc, not with a Developer ID, and not notarized, so macOS asks you to confirm it once. Its SHA-256 is published next to it on the release. Since 0.1.2 updates are signed with a minisign key: the app checks every download against the public key built into it and refuses one that doesn't match. The private key is a CI secret and has a backup with the maintainer, never in the repo.
 - Model downloads are checksum-verified.
 - Dependencies are audited in CI (`cargo audit`/`cargo deny`, `pnpm audit`).
 - No secrets in the repo. Signing keys live only in CI secrets.

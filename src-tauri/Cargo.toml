@@ -19,8 +19,9 @@ tauri-plugin-global-shortcut = "2"
 core-foundation = "0.10"
 core-graphics = "0.25"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder", "NSApplication", "NSEvent"] }
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder", "NSApplication", "NSEvent", "NSAlert", "NSButton", "NSControl", "NSView"] }
 objc2-foundation = "0.3"
+tauri-plugin-updater = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [

@@ -16,7 +16,7 @@ The first time, macOS says it can't check the app. That's because it isn't signe
 xattr -dr com.apple.quarantine /Applications/Felinquent.app
 ```
 
-To update, download the new DMG and drag it into Applications again. Your cat keeps what it learned.
+From 0.1.2 on, the app updates itself. Every 12 hours it asks GitHub if there's a newer version. If there is, it asks you first: **Update now**, **Later** or **Skip this version**. Update now downloads it, checks its signature, puts it in place of the old one and restarts the cat. Your cat keeps what it learned. On 0.1.1, download the new DMG and drag it into Applications once more.
 
 ### The menu
 
@@ -24,6 +24,7 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 
 | Item | What it does |
 |---|---|
+| Check for updates… | Looks for a new version right now. Shows "Update to 0.x.y…" when one is waiting |
 | Give a treat | Calls the cat over (and ends a shoo) |
 | Character | Tabby, Inky, Pearl, Mochi, Bandit or Biscuit. The current one has a tick |
 | Chaos level | Chill, Normal or Gremlin |
@@ -31,10 +32,11 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 | Shoo for 1 hour | Keeps it away for an hour. Click again to call it back early |
 | Use the local model | Lets a small local model pick what the cat wants to do. Needs [Ollama](https://ollama.com) with `gemma3:1b`. Without it, or with this off, a rules brain does the same job |
 | Start at login | Opens Felinquent when you log in |
+| Check for updates automatically | Looks for a new version every 12 hours and asks before installing it. On by default |
 | Forget everything it learned | Wipes its memory of you |
 | Open logs folder | The logs are size-limited and kept in `~/Library/Logs/Felinquent/` |
 
-No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
+No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. The only thing it fetches from the internet is the update check, one small file from GitHub, and you can turn that off. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
 
 To remove it, quit it from the menu and drag it from Applications to the Trash. Turn off **Start at login** first if you turned it on.
 

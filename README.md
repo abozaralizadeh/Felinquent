@@ -22,14 +22,14 @@ There are six characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a racc
 
 The first time you open it, macOS says it can't check the app, because it isn't signed with an Apple Developer ID yet. Click Done, open System Settings > Privacy & Security, scroll down and click Open Anyway. You only do this once.
 
-After that it lives in the menu bar. Pick a character, set the chaos level, hide it, shoo it for an hour, turn the local model on or off, make it start at login. A tick shows what's on. More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
+After that it lives in the menu bar. Pick a character, set the chaos level, hide it, shoo it for an hour, turn the local model on or off, make it start at login. A tick shows what's on. From 0.1.2 it checks GitHub for a new version twice a day and asks before it updates itself. More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
 
 ## What it will and won't do
 
 - It can get in your way, on purpose. It never types, clicks, scrolls, moves your cursor, closes anything or sends anything. A check in CI fails the build if code that fakes input shows up.
 - No screenshots or screen capture, ever. It reads window positions, idle time and whether the camera or mic is on, nothing else.
 - It backs off in meetings, fullscreen and screen sharing, and there's a panic hotkey.
-- Everything runs locally. No accounts, no analytics, no cloud. An optional small local model (through [Ollama](https://ollama.com)) can pick what the cat wants to do. Without it a rules brain does the same job.
+- Everything runs locally. No accounts, no analytics, no cloud. The one thing it fetches is the update check, a small file from GitHub with nothing about you in it, and you can turn it off. An optional small local model (through [Ollama](https://ollama.com)) can pick what the cat wants to do. Without it a rules brain does the same job.
 
 The full list is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).
 

@@ -3,6 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Google Analytics (gtag.js). It loads on the live site only, so local previews and recordings don't count as visits. -->
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-2LT7TN9DDK");
+    if (location.hostname === "abozaralizadeh.github.io") {
+      const ga = document.createElement("script");
+      ga.async = true;
+      ga.src = "https://www.googletagmanager.com/gtag/js?id=G-2LT7TN9DDK";
+      document.head.appendChild(ga);
+    }
+  </script>
   <title>Felinquent, a cat that lives on your Mac</title>
   <meta name="description" content="A desktop cat for macOS that naps on your windows, sits on what you're reading and ignores you when you call. Runs offline, never touches your mouse or keyboard.">
   <meta name="theme-color" content="#FFF8EF" media="(prefers-color-scheme: light)">
@@ -703,7 +716,7 @@
         <article class="card reveal">
           <div class="ico" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 36h21a8 8 0 0 0 .6-16A11 11 0 0 0 14.4 22 7 7 0 0 0 14 36Z"/><path d="M7 43L41 7" stroke="var(--ginger)" stroke-width="2.8"/></svg></div>
           <h3>Nothing leaves your Mac</h3>
-          <p>No account, no analytics, no cloud and no screenshots. Out of the box it asks for no macOS permissions at all.</p>
+          <p>No account, no analytics, no cloud and no screenshots. Out of the box it asks for no macOS permissions at all. The one thing it fetches is a twice-a-day update check from GitHub, and it asks before installing anything.</p>
         </article>
         <article class="card full reveal">
           <div>
