@@ -22,6 +22,12 @@ There are six characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a racc
 
 The first time you open it, macOS says it can't check the app, because it isn't signed with an Apple Developer ID yet. Click Done, open System Settings > Privacy & Security, scroll down and click Open Anyway. You only do this once.
 
+Or skip that step and paste this in Terminal. It downloads the same app, checks it against the checksum on the release, puts it in Applications and starts it, with no warning:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash
+```
+
 After that it lives in the menu bar. Pick a character, set the chaos level, hide it, shoo it for an hour, turn the local model on or off, make it start at login. A tick shows what's on. From 0.1.2 it checks GitHub for a new version twice a day and asks before it updates itself. More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
 
 ## What it will and won't do

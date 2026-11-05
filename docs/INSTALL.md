@@ -16,6 +16,16 @@ The first time, macOS says it can't check the app. That's because it isn't signe
 xattr -dr com.apple.quarantine /Applications/Felinquent.app
 ```
 
+### Or in one line, with no warning
+
+Paste this in Terminal instead of downloading the DMG in a browser:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash
+```
+
+It downloads the same `Felinquent.dmg` from the latest release, checks it against the SHA-256 published next to it (and stops if it doesn't match), copies the app into Applications and starts it. macOS only asks "is this safe?" about files a browser tagged as downloaded from the internet, and a download made by `curl` doesn't get that tag, so there's no Open Anyway step. Run it again any time to update. The script is [scripts/get-mac.sh](../scripts/get-mac.sh) if you want to read it first. Add `-s -- --no-open` after `bash` to install without starting it.
+
 From 0.1.2 on, the app updates itself. Every 12 hours it asks GitHub if there's a newer version. If there is, it asks you first: **Update now**, **Later** or **Skip this version**. Update now downloads it, checks its signature, puts it in place of the old one and restarts the cat. Your cat keeps what it learned. On 0.1.1, download the new DMG and drag it into Applications once more.
 
 ### The menu
