@@ -6,7 +6,7 @@ The cat turns round properly now instead of flipping like a sheet of paper. It w
 
 ## Updating
 
-Coming from 0.1.1? Download the DMG below and drag it into Applications once more. From this version on, the app checks GitHub for a new version every 12 hours and asks before it installs anything. Turn that off in the menu with Check for updates automatically.
+Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned). From this version on, the app checks GitHub for a new version every 12 hours and asks before it installs anything. Turn that off in the menu with Check for updates automatically.
 
 ## Install
 
@@ -17,6 +17,12 @@ Coming from 0.1.1? Download the DMG below and drag it into Applications once mor
 The cat shows up on your screen and a cat icon appears in the menu bar. That menu has everything: pick a character, change the chaos level, hide the cat, start at login, quit.
 
 Works on macOS 13 or newer, Apple Silicon and Intel. The app isn't signed with an Apple Developer ID yet, which is why step 3 is needed.
+
+Or skip step 3 and paste this in Terminal. It downloads the same DMG, checks it against the checksum below, puts the app in Applications and starts it, with no warning:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash
+```
 
 ## Optional: the local model
 
