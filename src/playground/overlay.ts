@@ -10,6 +10,9 @@ import { makeWorld } from "../core/world";
 import { characterById, DEFAULT_CHARACTER_ID } from "../core/characters";
 import { InMemoryMemory } from "../core/memory";
 import { drawCat } from "./draw";
+import type { MessSnapshot } from "../core/mess";
+import { drawMessBehind, drawMessFront, preloadProps } from "./mess-draw";
+import { drawThought, THOUGHT_SEC, type ShownThought } from "./thought";
 
 interface NativeWin { id: string; app: string; x: number; y: number; w: number; h: number; z: number }
 interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean }
@@ -27,7 +30,14 @@ interface CatState {
   held: boolean;
   t: number;
   character: string;
+  /** The mess (mess.ts) and the window shapes it needs to hide marks behind front windows. No titles, no app names. */
+  mess: MessSnapshot | null;
+  windows: WindowInfo[];
+  /** The thought bubble, if one is up. */
+  thought: ShownThought | null;
 }
+
+const dark = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
 
 interface TauriGlobal {
   core: { invoke: <T>(cmd: string, args?: object) => Promise<T> };
@@ -65,6 +75,7 @@ async function main(): Promise<void> {
   const config = await invoke<Config>("read_config");
   const layout = await invoke<Layout>("read_layout");
   const me = layout.displays[layout.index] ?? (layout.displays[0] as Rect);
+  preloadProps();
   const master = layout.index === 0;
   const main = layout.displays[0] as Rect;
   const others = layout.displays.slice(1);
@@ -78,10 +89,22 @@ async function main(): Promise<void> {
 
   function render(st: CatState | null): void {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-    if (!st || st.body.hidden) return;
+    if (!st) return;
+    if (st.body.hidden) {
+      // The cat may be away, but what it broke is still lying about.
+      ctx.save();
+      ctx.translate(-me.x, -me.y);
+      drawMessBehind(ctx, st.mess, st.windows, st.scale);
+      drawMessFront(ctx, st.mess, st.scale);
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.translate(-me.x, -me.y);
+    drawMessBehind(ctx, st.mess, st.windows, st.scale);
     drawCat(ctx, st.body, { scale: st.scale, t: st.t, character: st.character });
+    drawMessFront(ctx, st.mess, st.scale);
+    drawThought(ctx, st.thought, st.body.x, st.body.y - st.hit.h * 0.95, me, dark());
     // The red box is a debug aid. It only shows with FELINQUENT_DEBUG=1.
     if (config.debug && st.block) {
       ctx.strokeStyle = "rgba(220,50,50,0.8)";
@@ -145,7 +168,7 @@ async function main(): Promise<void> {
   }
 
   // What the user chose and what the cat remembers survive a restart (local files only).
-  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean } = {};
+  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number } = {};
   try {
     const text = await invoke<string | null>("load_state", { name: "settings.json" });
     if (text) saved = JSON.parse(text) as typeof saved;
@@ -168,8 +191,10 @@ async function main(): Promise<void> {
   });
   // Whether to ask the local model at all. The menu turns it off and on.
   let useModel = saved.model ?? true;
+  // When the app last offered to set up the local model, so "Not now" isn't asked again at every launch.
+  let modelAskedMs = saved.modelAskedMs ?? 0;
   const saveSettings = (): void =>
-    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel }) }).catch(() => {});
+    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel, modelAskedMs }) }).catch(() => {});
   // The menu bar ticks what is current. This page owns that state, so it tells the menu after every change.
   const showChoices = (): void =>
     void invoke("show_choices", {
@@ -185,7 +210,23 @@ async function main(): Promise<void> {
 
   // The local model, with the rules brain as the fallback. The Mind already falls back to rules
   // on a timeout, an error or an answer that is not on the menu, and pauses the model after 3 failures.
-  async function chooseBrain(): Promise<string> {
+  /**
+   * The model is wanted but missing: the app offers to set it up (src-tauri/src/ollama.rs asks, and
+   * installs Ollama or pulls the model on a yes). At launch it asks at most once every 3 days; turning
+   * the model on in the menu asks right away.
+   */
+  function offerSetup(reason: "no-ollama" | "not-running" | "no-model", asked: boolean): void {
+    if (config.brain === "rules") return;
+    const now = Date.now();
+    if (!asked && now - modelAskedMs < 3 * 86_400_000) return;
+    modelAskedMs = now;
+    saveSettings();
+    void invoke<boolean>("model_setup", { reason, model: config.ollama_model, url: config.ollama_url })
+      .then((started) => say(`model setup ${started ? "offered" : "not started"} (${reason})`))
+      .catch((e) => say(`model setup: ${String(e)}`));
+  }
+
+  async function chooseBrain(asked = false): Promise<string> {
     if (config.brain === "rules") return "rules (asked for)";
     if (!useModel) return "rules (the local model is off in the menu)";
     if (!isLocalUrl(config.ollama_url)) return "rules (the model address is not local)";
@@ -193,6 +234,7 @@ async function main(): Promise<void> {
       const r = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(2000) });
       const tags = (await r.json()) as { models?: { name: string }[] };
       if (!tags.models?.some((m) => m.name === config.ollama_model || m.name.startsWith(`${config.ollama_model}:`))) {
+        offerSetup("no-model", asked);
         return `rules (model ${config.ollama_model} is not installed)`;
       }
       // The menu may have turned the model off while we waited for Ollama.
@@ -201,6 +243,8 @@ async function main(): Promise<void> {
       cat.updateSettings({ brain: "llm", llmUrl: config.ollama_url, llmModel: config.ollama_model });
       return `llm ${config.ollama_model} with rules as the fallback`;
     } catch {
+      // Not running, or not installed: the setup looks and asks the right question.
+      offerSetup("not-running", asked);
       return "rules (Ollama did not answer)";
     }
   }
@@ -210,8 +254,14 @@ async function main(): Promise<void> {
   // Menu bar and hotkey controls. Panic, shoo and the model toggle; shoo keeps the cat away for an hour.
   void tauri?.event.listen<string>("ctl", (e) => {
     const msg = e.payload;
-    if (msg === "panic") {
+    if (msg === "model-ready") {
+      void chooseBrain().then((b) => say(`brain: ${b}`));
+    } else if (msg === "model-failed") {
+      say("brain: rules (the model setup did not finish)");
+    } else if (msg === "panic") {
       world = { ...world, panic: !world.panic };
+      // Panic hides everything, the mess too.
+      if (world.panic) cat.mess.clear();
       say(`panic ${world.panic ? "on" : "off"}`);
     } else if (msg === "shoo") {
       if (world.shooedUntilMs > Date.now()) {
@@ -227,7 +277,7 @@ async function main(): Promise<void> {
       useModel = !useModel;
       saveSettings();
       if (useModel) {
-        void chooseBrain().then((b) => say(`brain: ${b}`));
+        void chooseBrain(true).then((b) => say(`brain: ${b}`));
       } else {
         cat.setBrain(new RulesBrain());
         cat.updateSettings({ brain: "rules" });
@@ -271,6 +321,7 @@ async function main(): Promise<void> {
   let down = false;
   let lastDemo = 0;
 
+  let thought: { text: string; since: number } | null = null;
   let demoRound = 0;
   function demoStep(now: number): void {
     if (!config.demo || now - lastDemo < 25000) return;
@@ -307,7 +358,11 @@ async function main(): Promise<void> {
       demoStep(now);
       cat.pointer({ t: now, x: cursor.x, y: cursor.y, down }, world);
       const res = await cat.step(world, dt);
-      for (const ev of res.mind) if (ev.type === "llm_problem") say(`llm problem: ${ev.message}`);
+      for (const ev of res.mind) {
+        if (ev.type === "llm_problem") say(`llm problem: ${ev.message}`);
+        // Shown, never logged (hard rule 6).
+        if (ev.type === "intent" && ev.intent.thought && cat.settings.thoughtBubbles) thought = { text: ev.intent.thought, since: now };
+      }
     } catch (e) {
       if (now - lastErr > 3000) {
         lastErr = now;
@@ -325,6 +380,9 @@ async function main(): Promise<void> {
         held: cat.executor.held,
         t: now / 1000,
         character: character.id,
+        mess: cat.mess.snapshot(),
+        windows: world.windows.map((w) => ({ id: w.id, app: "", bounds: w.bounds, focused: false, cpu: "low", z: w.z })),
+        thought: thought && (now - thought.since) / 1000 < THOUGHT_SEC && !cat.executor.body.hidden ? { text: thought.text, age: (now - thought.since) / 1000 } : null,
       };
       render(st);
       applyHit(st);

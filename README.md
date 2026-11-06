@@ -8,6 +8,8 @@ A cat that lives on your desktop and does whatever it wants.
 
 It walks along the tops of your windows, naps on the Dock, sits on the thing you're reading and ignores you when you call it. Pet it and it purrs, for a while. Poke it and it reacts like the animal it is. It's not useful, and that's the point.
 
+Turn the chaos level up and it gets worse. Mugs, plants and glasses show up on your windows and it pushes them off, slowly, while looking at you. They break into pieces on the floor. It claws title bars, chases flies, and at gremlin it runs laps across your windows and lands hard enough to crack one. None of it is real: the mess is drawn on the cat's own see-through layer, your windows are never touched, and Panic clears it all.
+
 ![Tabby, Inky, Pearl, Mochi, Bandit and Biscuit, each in eleven poses](docs/assets/characters-sprites.jpg)
 
 There are six characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a raccoon (Bandit) and a dog (Biscuit). Each has its own instincts. The cats nap and ignore you, the dog comes running, the fox stalks, the raccoon steals.
@@ -35,7 +37,7 @@ After that it lives in the menu bar. Pick a character, set the chaos level, hide
 - It can get in your way, on purpose. It never types, clicks, scrolls, moves your cursor, closes anything or sends anything. A check in CI fails the build if code that fakes input shows up.
 - No screenshots or screen capture, ever. It reads window positions, idle time and whether the camera or mic is on, nothing else.
 - It backs off in meetings, fullscreen and screen sharing, and there's a panic hotkey.
-- Everything runs locally. No accounts, no analytics, no cloud. The one thing it fetches is the update check, a small file from GitHub with nothing about you in it, and you can turn it off. An optional small local model (through [Ollama](https://ollama.com)) can pick what the cat wants to do. Without it a rules brain does the same job.
+- Everything runs locally. No accounts, no analytics, no cloud. The one thing it fetches on its own is the update check, a small file from GitHub with nothing about you in it, and you can turn it off. An optional small local model (through [Ollama](https://ollama.com)) plans what the cat does next and gives it thoughts in a little bubble. Turn it on in the menu and, if Ollama or the model is missing, the app offers to set them up (it asks first and shows the sizes). Without it a rules brain does the same job.
 
 The full list is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).
 
@@ -69,7 +71,7 @@ npm run pace -- 60 biscuit       # how busy an animal looks over a simulated hou
 
 ## How it works
 
-A slow brain (rules, or a small local model) decides what the cat wants every 20 to 60 seconds. It can only pick from a menu that the rules and a governor prepare, and the governor approves every action. A fast layer moves the cat, plays the animation and handles your pointer. The Mac shell is [Tauri](https://tauri.app): one transparent, click-through window per display.
+The cat's day comes in bouts: a long rest, a stroll, some play, a visit to you, some mischief. Its body picks the next bout from what it just did, how it feels and the chaos level. A slow brain (rules, or a small local model) then plans a few steps inside it, with pauses in between, and can only pick from a menu that the rules and a governor prepare. The governor approves every action. A fast layer moves the cat, plays the animation and handles your pointer. The Mac shell is [Tauri](https://tauri.app): one transparent, click-through window per display.
 
 | Doc | What's in it |
 |---|---|

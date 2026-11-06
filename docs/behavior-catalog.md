@@ -63,10 +63,17 @@
 | B-20 | Swat the cursor | Paw swats at your cursor. Animation only: **your real cursor never moves** | Playful, cursor nearby | 1 | Rule | none | v1 |
 | B-21 | Box | Climbs into a new or empty window as if it's a box | A new window opens | 1 | Rule | none | v1 |
 | B-22 | Gift / hairball | Leaves a "gift" (toy mouse, hairball) on a window. Click it to clean up | Good mood (gift) or a long time ignored (hairball) | 2 | LLM | none | v1 |
-| B-23 | Zoomies | Sprints around the screen for ~20 s | Around 3am, or high energy after a long nap | 1 | Rule | none | v1 |
+| B-23 | Zoomies | Sprints around the screen for ~20 s. At gremlin it runs a chain of up to six legs across window tops, and whatever stands in its way goes flying | Around 3am, or high energy after a long nap | 1 | Rule | none | v1 |
 | B-24 | Block the Dock | Lies across the Dock | High attention need | 2 | LLM | none | v1 |
 | B-25 | Nudge a window | Pushes a window a little to the side (never off-screen) | Gremlin level only | 3 | LLM | AX | Later |
 | B-26 | Knock the toy off | Slowly pushes *its own* toy off a window edge while staring at you | Playful, mischievous | 1 | LLM | none | v1 |
+| B-43 | Knock things off | Sneaks up to a thing standing on a window (a mug, a glass, a plant, a vase, a duck...), looks at it, stares at you, taps it, stares again, then pushes it two to four times until it teeters and falls. Glass and pottery break into pieces of their own drawing, water and soil spill, then it peeks over the edge and looks proud. Things only appear at normal (one at a time, every 2 to 5 min) and gremlin (up to three, every 30 to 90 s); in chill they fade away | A thing on a window, energy, chaos | 1 | LLM | none | MVP |
+| B-44 | Claw a window | Sniffs, then scratches the title bar: claw marks stay on that window and strips of it flutter to the floor | Energy, chaos | 1 | Rule | none | MVP |
+| B-45 | Hunt a fly | A fly buzzes in. It watches, chatters, wiggles and pounces: caught (proud, washes) or missed (dazed, looks away, washes) | Curiosity and energy | 0 | Rule | none | MVP |
+| B-46 | Hard landing (gremlin) | A very hard landing can crack the window it lands on (a spiderweb of cracks with slivers falling). At most one every 25 s | A landing faster than 1000 px/s, gremlin only | 0 | Reflex | none | MVP |
+| B-47 | Miss a jump | A big jump up sometimes falls short: it hangs off the ledge by its front paws, scrabbles, and climbs up (70%) or slips and falls, then sits dazed and washes. More often at gremlin (22%) than normal (8%) or chill (3%) | A jump up to a high window | 0 | Reflex | none | MVP |
+
+All the breakage is drawn on the cat's own overlay, on top of your windows. Nothing in your apps is touched or captured: a "cracked" window is a drawing over it, and it goes away when the window moves, closes, or you use Panic.
 
 ## Reflexes (no LLM, instant)
 
@@ -103,6 +110,9 @@
 ## Pace (how long between things)
 
 One thing at a time, at the animal's speed. Cats are active only a small part of the day, so most of the time the animal should be sitting, loafing or asleep.
+
+- **Bouts.** The day is made of bouts: rest (4 to 10 min), explore (1.5 to 3.5 min), play (1 to 2 min), social (1 to 2.5 min) and mischief (1.5 to 3.5 min). The body picks the next bout from what came before (after play it rests, after rest it explores), its needs and the chaos level (chill makes rest longer and mischief shorter, gremlin the other way round). A bout opens with a move that makes the change read: it stretches after lying down and washes after playing. Inside a bout it does one to three things with a pause between them (rest 20 to 45 s, play 7 to 14 s, times 1.6 at chill and 0.55 at gremlin).
+- **The model plans inside the bout.** With the local model on, it picks the steps and where they happen, as a tiny story, and may add a thought. It doesn't pick the bout: a 1b model asked to pick mostly chose "explore" and never mischief.
 
 - **Rest after every action.** Before it picks the next behavior the animal sits for a while, counted from the end of the last one: 8 to 22 s at the normal chaos level (chill 25 to 60, gremlin 3 to 8), times its species gap (a dog rests about half as long as a cat), times its laziness. After a lively act (zoomies, chasing, a poke reaction) the rest is 1.4 times longer. Waking up skips it.
 - **Poses are held.** In every scene and reaction a pose lasts at least 1.1 s (a flinch at least 0.6 s), so you can read it before the next one starts.

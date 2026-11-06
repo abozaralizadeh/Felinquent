@@ -40,13 +40,13 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 | Chaos level | Chill, Normal or Gremlin |
 | Panic: hide the cat | Hides it until you click again. Also Cmd+Opt+Shift+P |
 | Shoo for 1 hour | Keeps it away for an hour. Click again to call it back early |
-| Use the local model | Lets a small local model pick what the cat wants to do. Needs [Ollama](https://ollama.com) with `gemma3:1b`. Without it, or with this off, a rules brain does the same job |
+| Use the local model | Lets a small local model pick what the cat wants to do. Needs [Ollama](https://ollama.com) with `gemma3:1b`. If they're missing when you turn it on, the app offers to set them up: it asks first, shows the sizes (Ollama about 230 MB, the model about 815 MB), checks the download and shows the progress right here in the menu. Without it, or with this off, a rules brain does the same job |
 | Start at login | Opens Felinquent when you log in |
 | Check for updates automatically | Looks for a new version every 12 hours and asks before installing it. On by default |
 | Forget everything it learned | Wipes its memory of you |
 | Open logs folder | The logs are size-limited and kept in `~/Library/Logs/Felinquent/` |
 
-No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. The only thing it fetches from the internet is the update check, one small file from GitHub, and you can turn that off. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
+No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. The only thing it fetches from the internet on its own is the update check, one small file from GitHub, and you can turn that off. Setting up the local model downloads Ollama and the model, but only after you say yes. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
 
 To remove it, quit it from the menu and drag it from Applications to the Trash. Turn off **Start at login** first if you turned it on.
 

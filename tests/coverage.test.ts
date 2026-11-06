@@ -17,6 +17,8 @@ interface Situation {
   catNearCursor?: boolean;
   settings?: Partial<Settings>;
   newWindow?: boolean;
+  /** A thing stands on the first window (mess.ts). */
+  props?: boolean;
 }
 
 /** The situation that makes each behavior a sensible choice. Intents not listed are reactions, not choices. */
@@ -64,6 +66,9 @@ const SITUATIONS: Partial<Record<IntentName, Situation>> = {
   shy: {},
   beg: { needs: { trust: 60 } },
   nudge_window: { needs: { attention: 0.9 }, settings: { chaos: "gremlin", accessibility: true } },
+  knock_off: { needs: { attention: 0.8, energy: 0.8 }, props: true },
+  claw: { needs: { attention: 0.8, energy: 0.9 } },
+  hunt: { needs: { energy: 0.9, curiosity: 0.9 } },
 };
 
 function build(s: Situation) {
@@ -82,6 +87,7 @@ function build(s: Situation) {
     justWoke: s.justWoke ?? false,
     recent: [],
     rng: seeded(1),
+    propWindows: s.props ? [(world.windows[0] as { id: string }).id] : [],
   };
   return { settings, world, needs, ctx };
 }
@@ -98,6 +104,10 @@ describe("every behavior can be chosen and runs to the end", () => {
 
       const ex = new Executor(seeded(2));
       ex.placeOnDock(world, 200);
+      if (situation.props) {
+        const w = world.windows[0]!;
+        ex.props = () => [{ id: "p1", windowId: w.id, x: w.bounds.x + w.bounds.w * 0.6 }];
+      }
       ex.start({ intent: name, target: option!.targets[0]!, approach: "run", stay_sec: 3, mood: "content" });
       let done = false;
       for (let i = 0; i < 90 * 60 && !done; i++) done = ex.update(1 / 60).some((e) => e.type === "done");

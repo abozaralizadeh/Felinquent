@@ -195,7 +195,7 @@ describe("Governor.validate", () => {
     expect(out.mood).toBe("grumpy");
   });
 
-  it("trims thoughts to 80 characters, strips links, and allows one per 10 minutes", () => {
+  it("trims thoughts to 80 characters, strips links, and allows one per 4 minutes at the normal level", () => {
     const g = new Governor(DEFAULT_SETTINGS);
     const long = `see https://evil.example/x ${"a".repeat(200)}`;
     const first = g.validate(intent("groom", { thought: long }), [opt("groom", ["here"])], world, needs)!;
@@ -204,7 +204,7 @@ describe("Governor.validate", () => {
     g.commit(first, world);
     const soon = g.validate(intent("headbutt", { target: "cursor", thought: "hi" }), [opt("headbutt", ["cursor"])], at(world, T0 + 60_000), needs)!;
     expect(soon.thought).toBeUndefined();
-    const later = g.validate(intent("headbutt", { target: "cursor", thought: "hi" }), [opt("headbutt", ["cursor"])], at(world, T0 + 11 * 60_000), needs)!;
+    const later = g.validate(intent("headbutt", { target: "cursor", thought: "hi" }), [opt("headbutt", ["cursor"])], at(world, T0 + 4 * 60_000 + 1000), needs)!;
     expect(later.thought).toBe("hi");
   });
 

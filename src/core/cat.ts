@@ -1,4 +1,5 @@
-import { Executor } from "./executor";
+import { Executor, type ExecEvent } from "./executor";
+import { Mess, type MessEvent } from "./mess";
 import { Governor } from "./governor";
 import { InMemoryMemory, type Memory } from "./memory";
 import { Mind, type MindEvent } from "./mind";
@@ -8,6 +9,14 @@ import { ReflexDetector, type PointerSample, type ReflexEvent, type ReflexKind }
 import { seeded, type Rng } from "./rng";
 import { instinctFor } from "./species";
 import { DEFAULT_SETTINGS, type Rect, type Settings, type WorldSnapshot } from "./types";
+
+/** Everything about the windows and displays that changes where the animal can stand. */
+function shapeOf(world: WorldSnapshot): string {
+  const ws = world.windows.map((w) => `${w.id}:${w.bounds.x},${w.bounds.y},${w.bounds.w},${w.bounds.h},${w.z}`).join(";");
+  const ds = (world.displays ?? []).map((d) => `${d.x},${d.y},${d.w},${d.h}`).join(";");
+  const s = world.screen;
+  return `${ws}|${world.dockTop}|${s.x},${s.y},${s.w},${s.h}|${ds}`;
+}
 
 export interface CatOptions {
   settings?: Partial<Settings>;
@@ -35,8 +44,13 @@ export class Cat {
   readonly memory: Memory;
   readonly reflexes: ReflexDetector;
   readonly rules = new RulesBrain();
+  /** Things on windows to knock off, and what is left when they break (gremlin and normal only). */
+  readonly mess: Mess;
+  private messRng: Rng;
+  private lastCrackMs = -1e12;
   private lastWindows: unknown = null;
   private lastDockTop = -1;
+  private lastShape = "";
   private heldFromWindow: string | undefined;
   private lastWorld: WorldSnapshot | null = null;
 
@@ -46,6 +60,14 @@ export class Cat {
     this.governor = new Governor(settings);
     this.executor = new Executor(rng, settings.size);
     this.executor.setInstinct(instinctFor((opts.personality ?? DEFAULT_PERSONALITY).species));
+    // The mess has its own dice, so adding it doesn't change what the animal does in a seeded run.
+    this.messRng = seeded(7919);
+    this.mess = new Mess(this.messRng);
+    this.mess.scale = this.executor.size.h / 90;
+    this.executor.props = () =>
+      this.mess.props
+        .filter((p) => p.state === "rest" && p.windowId !== null && p.alpha > 0.9)
+        .map((p) => ({ id: p.id, windowId: p.windowId as string, x: p.x }));
     this.memory = opts.memory ?? new InMemoryMemory();
     this.mind = new Mind({
       brain: opts.brain ?? this.rules,
@@ -57,6 +79,8 @@ export class Cat {
       catPos: () => ({ x: this.executor.body.x, y: this.executor.body.y - this.executor.size.h / 2 }),
       catWhere: () => (this.executor.body.platformId === "dock" ? "dock" : this.executor.windowId ? `on ${this.executor.windowId}` : "floating"),
       catDoing: () => this.executor.body.anim,
+      propWindows: () => this.mess.windowsWithProps(),
+      things: () => this.mess.thingsOnWindows(),
       log: opts.log,
       minDecisionGapMs: opts.minDecisionGapMs,
     });
@@ -90,12 +114,21 @@ export class Cat {
     this.syncWorld(world, true);
   }
 
+  /**
+   * Hands the executor a new world only when the windows really changed shape. The Mac reads the
+   * windows four times a second and makes a new list each time; comparing the lists themselves made
+   * the animal drop its plan four times a second (a reaction looped, a stroll never got going).
+   */
   private syncWorld(world: WorldSnapshot, force = false): void {
     this.executor.observe(world);
     if (force || world.windows !== this.lastWindows || world.dockTop !== this.lastDockTop) {
+      const shape = shapeOf(world);
       this.lastWindows = world.windows;
       this.lastDockTop = world.dockTop;
-      this.executor.setWorld(world);
+      if (force || shape !== this.lastShape) {
+        this.lastShape = shape;
+        this.executor.setWorld(world);
+      }
     }
     this.lastWorld = world;
   }
@@ -116,6 +149,8 @@ export class Cat {
     const mind = await this.mind.tick(world, dtSec, moving, this.executor.held);
     this.apply(mind);
     const out: MindEvent[] = [...mind];
+    const chaos = this.settings.chaos;
+    this.executor.wild = chaos === "gremlin" ? 2 : chaos === "normal" ? 1 : 0;
     for (const ev of this.executor.update(execDtSec)) {
       if (ev.type === "done") this.mind.notifyDone();
       if (ev.type === "landed") {
@@ -123,8 +158,57 @@ export class Cat {
         this.apply(more);
         out.push(...more);
       }
+      this.onExec(ev, world);
     }
+    this.bumpWhileRunning();
+    for (const ev of this.mess.step(execDtSec, world, chaos, this.executor.body.hidden ? null : this.executor.body.x)) this.onMess(ev, world);
     return { mind: out, reflexes: [] };
+  }
+
+  /** The paw, the claws and the leap reach the things around the animal. */
+  private onExec(ev: ExecEvent, world: WorldSnapshot): void {
+    const now = world.nowMs;
+    if (ev.type === "fx") {
+      const f = ev.fx;
+      if (f.fx === "tap") this.mess.tap(f.prop, ev.dir);
+      else if (f.fx === "nudge") this.mess.nudge(f.prop, ev.dir, f.px);
+      else if (f.fx === "claw" && ev.windowId) this.mess.claw(ev.windowId, ev.x + ev.dir * this.executor.size.w * 0.28, ev.dir, now);
+      else if (f.fx === "fly_in") this.mess.flyIn(ev.x + f.dx, ev.y + f.dy, ev.dir, f.caught, now);
+      else if (f.fx === "pounce_fly") this.mess.pounceFly();
+    } else if (ev.type === "impact") {
+      // Only a gremlin comes down hard enough to crack a window.
+      // Not every landing, or the screen would be all cracks: one now and then.
+      if (this.executor.wild >= 2 && ev.windowId && ev.speed > 1000 && now - this.lastCrackMs > 25_000 && this.messRng.next() < 0.6) {
+        this.lastCrackMs = now;
+        this.mess.crack(ev.windowId, ev.x, (ev.speed - 1000) / 800, now);
+      }
+    } else if (ev.type === "hang") {
+      this.mind.note(now, "i fell short of a jump and hung off the edge of a window");
+    } else if (ev.type === "slipped") {
+      this.mind.note(now, "i fell off a window. on purpose.");
+    }
+  }
+
+  /** Running flat out along a window, it sends anything in its way flying. */
+  private bumpWhileRunning(): void {
+    const b = this.executor.body;
+    const win = this.executor.windowId;
+    if (b.anim !== "run" || !win) return;
+    const front = b.x + b.facing * this.executor.size.w * 0.38;
+    for (const p of this.mess.props) {
+      if (p.state !== "rest" || p.windowId !== win || p.alpha < 0.9) continue;
+      if (Math.abs(p.x - front) < 14) this.mess.bump(p.id, b.facing);
+    }
+  }
+
+  private onMess(ev: MessEvent, world: WorldSnapshot): void {
+    const now = world.nowMs;
+    const doing = this.executor.intent?.intent;
+    const mine = doing === "knock_off" || doing === "zoomies" || this.executor.body.anim === "run";
+    if (ev.type === "broke") this.mind.note(now, mine ? `i knocked the ${ev.kind} off. it broke.` : `the ${ev.kind} fell and broke`);
+    else if (ev.type === "fell" && mine) this.mind.note(now, doing === "knock_off" ? `i pushed the ${ev.kind} off the edge` : `i ran into the ${ev.kind} and it went flying`);
+    else if (ev.type === "cracked") this.mind.note(now, "i landed so hard a window cracked");
+    else if (ev.type === "fly") this.mind.note(now, ev.caught ? "i caught a fly" : "a fly got away from me");
   }
 
   /** A reflex happened (from the pointer or from a menu button). Runs the Mind's reaction and starts any intent. */

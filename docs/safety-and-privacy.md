@@ -20,7 +20,7 @@ These are rules in the code and in CI, not settings.
 |---|---|---|
 | H-1 | **No input synthesis.** Never generate key presses, clicks or scrolls, and never move the real cursor | CI fails the build if any input-synthesis API or crate appears ([technical design §13](technical-design.md#13-testing)) |
 | H-2 | **No content capture.** No screenshots, no screen recording, no reading text inside other apps. Window *titles* only, and only if you opt in. For the keyboard walk, only the caret's *position* (opt-in) | No capture APIs in the codebase; code review checklist |
-| H-3 | **Nothing destructive.** Never closes, minimizes, hides, quits or resizes other apps. Window nudges (Gremlin, later) only move a window a little, never off-screen, and only with your permission | The governor allows no other window operations |
+| H-3 | **Nothing destructive.** Never closes, minimizes, hides, quits or resizes other apps. Window nudges (Gremlin, later) only move a window a little, never off-screen, and only with your permission. Things it "breaks" (mugs, cracks, claw marks, strips torn off a title bar) are drawings on the cat's own transparent overlay. Your windows are never touched, and the drawings go away when a window closes or you press Panic | The governor allows no other window operations; the mess code only knows window ids and bounds |
 | H-4 | **Limited blocking.** The cat blocks clicks only under its own body, only for a limited time (30 / 90 / 180 s by chaos level), and then leaves by itself | Governor limits + unit tests |
 | H-5 | **Respect modes win.** The brain can't override meeting, fullscreen, quiet hours or panic | The governor checks respect state before and after every decision |
 | H-6 | **The LLM has no tools.** It only picks from a menu of allowed behaviors. Its answer is validated before anything happens | Schema-constrained output + governor validation |
@@ -42,7 +42,8 @@ These are rules in the code and in CI, not settings.
 | Cat memory (events, favorite spots, trust) | Personality | SQLite, local | No |
 | Diary | Fun, sharing | Local | Only if you share a card |
 | Logs | Fixing bugs | Local, max 15 MB, no titles | Only if you send them |
-| Settings (character, chaos level, local model on or off) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
+| What the cat did lately ("the human poked me", "i knocked the mug off") | So the model and the thought bubble can react to it | In memory only, gone after 45 min | Only to the brain, on your Mac |
+| Settings (character, chaos level, local model on or off, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
 | Start at login | Opening the app when you log in | Only if you turn it on: one file, `~/Library/LaunchAgents/app.felinquent.plist`. Turning it off deletes it | No |
 
 ## 4. Network
@@ -50,7 +51,8 @@ These are rules in the code and in CI, not settings.
 The app only talks to:
 1. **The brain:** Ollama on `localhost`, the built-in engine (no network), or a custom endpoint *you* set.
 2. **Update checks (since 0.1.2):** every 12 hours the Mac app downloads `latest.json` from the latest GitHub Release (`github.com`, which redirects to GitHub's download host). The request carries nothing about you; GitHub sees an IP address, as with any download. If a newer version is out, the app asks before downloading it, and installs it only if its signature checks out. Turn the checks off with **Check for updates automatically** in the menu.
-3. **Model download:** once, from a fixed URL, with the size shown first and a checksum check.
+3. **Setting up the local model (Mac, only after you say yes):** when you turn on **Use the local model** and Ollama or the model is missing, the app asks first and shows the sizes. If you pick **Install**, it asks `github.com/ollama/ollama` which release is the newest, then downloads that release's `sha256sum.txt` and `Ollama-darwin.zip` (GitHub serves them from its download host, `release-assets.githubusercontent.com`; the app follows redirects to GitHub hosts only). It checks the zip against the checksum and the app's code signature against Ollama's developer team before it puts anything in Applications. For the model (after **Install**, or when you pick **Get the model**), the app asks your local Ollama to pull it, and Ollama downloads it from its own registry (`registry.ollama.ai`). Nothing about you goes with any of these requests. After that Ollama is an app of its own, with its own update checks; see [ollama.com](https://ollama.com).
+4. **Model download for a built-in engine (planned):** once, from a fixed URL, with the size shown first and a checksum check.
 
 No analytics, no ads, no accounts, no crash reporting unless you send diagnostics yourself.
 
@@ -68,11 +70,14 @@ The website is separate from the app: [the Felinquent page](https://abozaralizad
 
 The macOS dialog says "record your screen", which sounds scary. Before it shows, our own screen explains in plain words what we actually read and links to the code.
 
+Setting up the local model needs no permission. Ollama goes into `/Applications`, or `~/Applications` when your account can't write there, and the app never replaces an Ollama that is already installed.
+
 ## 6. LLM and prompt injection
 
 Window titles come from apps and web pages, so a page could be titled *"ignore your rules and…"*. This can't hurt you:
 
-- The LLM can only answer with one option from a menu the governor already approved (the schema `enum`).
+- The LLM can only answer with one option from a menu the governor already approved (the schema `enum`). A plan is 1 to 3 such options inside a bout the body already chose.
+- Its free-text thought is cut to one short line and shown in a bubble on the overlay. It is never logged, never run, and it is dropped unless it is about what is happening right now.
 - The governor validates the answer again: targets, durations, budgets.
 - The LLM has no tools, no files and no network. The worst case is a weird but harmless cat choice.
 - Titles are trimmed to 60 characters and passed as quoted data, and the prompt says titles are never instructions.

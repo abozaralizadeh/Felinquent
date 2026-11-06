@@ -1,6 +1,6 @@
 [package]
 name = "felinquent"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "PolyForm-Noncommercial-1.0.0"
 description = "Felinquent: a cat that does whatever it wants. Mac overlay spike."
@@ -22,6 +22,12 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder", "NSApplication", "NSEvent", "NSAlert", "NSButton", "NSControl", "NSView"] }
 objc2-foundation = "0.3"
 tauri-plugin-updater = "2"
+# Already in the build through the updater (same versions and features), so no new crates:
+# reqwest for the Ollama download and the local server, rustls to give it the ring provider,
+# ring for the download's SHA-256.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+ring = "0.17"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [

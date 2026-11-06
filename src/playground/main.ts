@@ -8,6 +8,8 @@ import { seeded } from "../core/rng";
 import type { Activity, ChaosLevel, Settings, WindowInfo, WorldSnapshot } from "../core/types";
 import { DEFAULT_SETTINGS } from "../core/types";
 import { drawCat } from "./draw";
+import { drawMarks, drawMessFront, drawPropsOnly, preloadProps } from "./mess-draw";
+import { PROP_KINDS } from "../core/mess";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -18,6 +20,9 @@ const $ = <T extends HTMLElement>(id: string): T => {
 const stage = $("stage");
 const canvas = $<HTMLCanvasElement>("cat");
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+// Cracks and claw marks go on a layer above the pretend windows (on a Mac the overlay is above everything anyway).
+const marks = $<HTMLCanvasElement>("marks");
+const mctx = marks.getContext("2d") as CanvasRenderingContext2D;
 const hit = $("hit");
 const blockbox = $("blockbox");
 const bubble = $("bubble");
@@ -302,6 +307,9 @@ function resize(): void {
   canvas.width = Math.round(state.w * dpr);
   canvas.height = Math.round(state.h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  marks.width = canvas.width;
+  marks.height = canvas.height;
+  mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (first) {
     state.windows = initialWindows();
     renderWindows();
@@ -315,7 +323,13 @@ new ResizeObserver(resize).observe(stage);
 function draw(tSec: number): void {
   ctx.clearRect(0, 0, state.w, state.h);
   const body = cat.executor.body;
-  drawCat(ctx, body, { scale: cat.executor.size.h / 90, t: tSec, character: characterId });
+  const scale = cat.executor.size.h / 90;
+  const snap = cat.mess.snapshot();
+  mctx.clearRect(0, 0, state.w, state.h);
+  drawMarks(mctx, snap, buildWorld().windows, scale);
+  drawPropsOnly(ctx, snap, scale);
+  drawCat(ctx, body, { scale, t: tSec, character: characterId });
+  drawMessFront(ctx, snap, scale);
   const r = cat.executor.hitRect();
   hit.classList.toggle("hidden", body.hidden);
   hit.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;`;
@@ -337,8 +351,12 @@ function draw(tSec: number): void {
 let last = performance.now();
 let busy = false;
 let statusTimer = 0;
+let frameCount = 0;
+let lastDt = 0;
 async function tick(now: number): Promise<void> {
   const dt = Math.min(0.1, (now - last) / 1000);
+  frameCount++;
+  lastDt = dt;
   last = now;
   const warp = Number(($("warp") as HTMLInputElement).value);
   state.simNow += dt * warp * 1000;
@@ -362,8 +380,33 @@ async function tick(now: number): Promise<void> {
     updateStatus();
   }
 }
+// ?timer drives the loop with timers instead of animation frames: a headless browser with virtual
+// time runs timers but hardly any animation frames.
+const byTimer = new URLSearchParams(location.search).has("timer");
+// ?stop=<ms> freezes the page at that moment, so a headless screenshot catches it.
+const stopAt = Number(new URLSearchParams(location.search).get("stop") ?? "0");
+let frozen = false;
 function frame(now: number): void {
-  requestAnimationFrame(frame);
+  if (stopAt > 0 && now > stopAt) {
+    // A canvas drawn from timers may never reach the screen in a headless browser: show a still of it.
+    if (!frozen) {
+      frozen = true;
+      const still = document.createElement("img");
+      // The cat layer and the marks layer, as one picture.
+      const both = document.createElement("canvas");
+      both.width = canvas.width;
+      both.height = canvas.height;
+      const bc = both.getContext("2d") as CanvasRenderingContext2D;
+      bc.drawImage(canvas, 0, 0);
+      bc.drawImage(marks, 0, 0);
+      still.src = both.toDataURL();
+      still.style.cssText = `position:absolute;left:0;top:0;width:${state.w}px;height:${state.h}px;pointer-events:none;z-index:200`;
+      stage.appendChild(still);
+    }
+    return;
+  }
+  if (byTimer) setTimeout(() => frame(performance.now()), 1000 / 60);
+  else requestAnimationFrame(frame);
   if (busy) return;
   busy = true;
   tick(now).catch((e) => console.error(e)).finally(() => (busy = false));
@@ -446,6 +489,31 @@ $("treat").addEventListener("click", () => {
   log("you gave a treat");
 });
 $("addwin").addEventListener("click", addWindow);
+preloadProps();
+// Mischief on demand, to see it without waiting for the cat to feel like it.
+const doNow = (intent: "knock_off" | "claw" | "hunt" | "zoomies", target: string): void => {
+  cat.executor.start({ intent, target, approach: intent === "zoomies" ? "run" : "walk", stay_sec: 20, mood: "smug" });
+  log(`you asked for ${intent}`);
+};
+$("putmug").addEventListener("click", () => {
+  const w = buildWorld();
+  const win = w.windows[Math.floor(Math.random() * w.windows.length)];
+  if (!win) return;
+  const kind = PROP_KINDS[Math.floor(Math.random() * PROP_KINDS.length)] ?? "mug";
+  cat.mess.place(kind, win.id, win.bounds.x + win.bounds.w * (0.3 + Math.random() * 0.4), w.nowMs);
+  log(`a ${kind} on ${win.id}`);
+});
+$("knock").addEventListener("click", () => {
+  const ids = cat.mess.windowsWithProps();
+  if (ids[0]) doNow("knock_off", ids[0]);
+  else log("nothing to knock off: put a mug on a window first");
+});
+$("claw").addEventListener("click", () => {
+  const w = buildWorld().windows[0];
+  if (w) doNow("claw", w.id);
+});
+$("hunt").addEventListener("click", () => doNow("hunt", "here"));
+$("zoom").addEventListener("click", () => doNow("zoomies", "here"));
 $("closewin").addEventListener("click", closeWindow);
 
 function setBrain(kind: string): void {
@@ -496,3 +564,52 @@ $("copy").addEventListener("click", async () => {
 resize();
 log("a cat has moved in");
 requestAnimationFrame(frame);
+
+/**
+ * ?scene=knock|shatter|claw|hunt|zoom sets up a bit of gremlin mischief a second after loading, to
+ * look at it (or record it) without waiting for the cat to feel like it.
+ */
+const scene = new URLSearchParams(location.search).get("scene");
+if (scene) {
+  const chaosSel = $<HTMLSelectElement>("chaos");
+  chaosSel.value = "gremlin";
+  cat.updateSettings({ chaos: "gremlin" });
+  setTimeout(() => {
+    const w = buildWorld();
+    const win = w.windows.find((x) => x.id === "w2") ?? w.windows[0];
+    if (!win) return;
+    if (scene === "knock") {
+      cat.mess.place("mug", win.id, win.bounds.x + win.bounds.w - 90, w.nowMs);
+      setTimeout(() => doNow("knock_off", win.id), 1500);
+    } else if (scene === "shatter") {
+      const mug = cat.mess.place("mug", win.id, win.bounds.x + win.bounds.w - 30, w.nowMs);
+      const glass = cat.mess.place("glass", win.id, win.bounds.x + win.bounds.w - 100, w.nowMs);
+      const plant = cat.mess.place("plant", win.id, win.bounds.x + 40, w.nowMs);
+      setTimeout(() => {
+        if (mug) cat.mess.nudge(mug.id, 1, 40);
+        if (glass) cat.mess.nudge(glass.id, 1, 110);
+        if (plant) cat.mess.nudge(plant.id, -1, 60);
+      }, 1500);
+    } else if (scene === "claw") doNow("claw", win.id);
+    else if (scene === "hunt") doNow("hunt", "here");
+    else if (scene === "zoom") doNow("zoomies", "here");
+  }, 1000);
+  // For a headless browser: what the mess is doing, readable from the page.
+  setInterval(() => {
+    document.body.dataset.mess = JSON.stringify({
+      t: Math.round(performance.now()),
+      anim: cat.executor.body.anim,
+      props: cat.mess.props.map((p) => [p.kind, p.state, Math.round(p.alpha * 100) / 100, Math.round(p.x), Math.round(p.y)]),
+      shards: cat.mess.shards.length,
+      decals: cat.mess.decals.length,
+      strips: cat.mess.strips.length,
+      fly: cat.mess.fly ? cat.mess.fly.state : null,
+      frames: frameCount,
+      plats: (cat.mess as unknown as { platforms: { id: string; x1: number; x2: number; y: number }[] }).platforms.map((q) => [q.id, Math.round(q.x1), Math.round(q.x2), Math.round(q.y)]),
+      shardY: cat.mess.shards.map((q) => [q.kind, Math.round(q.x), Math.round(q.y)]),
+      dockTop: buildWorld().dockTop,
+      screen: buildWorld().screen,
+      lastDt: Math.round(lastDt * 1000),
+    });
+  }, 250);
+}

@@ -503,7 +503,7 @@ export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): void {
   if (!spr && spritesPending(ch.id)) return;
 
   // A soft shadow on the ground, so it sits on the window instead of floating over it.
-  if (body.anim !== "fall" && body.anim !== "jump" && body.anim !== "dangle") {
+  if (body.anim !== "fall" && body.anim !== "jump" && body.anim !== "dangle" && body.anim !== "hang") {
     ctx.save();
     ctx.translate(body.x, body.y);
     ctx.fillStyle = "rgba(0,0,0,0.13)";

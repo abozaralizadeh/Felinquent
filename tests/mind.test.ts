@@ -198,7 +198,9 @@ describe("sleep", () => {
         if (e.type === "wake") woke = true;
       }
     }
-    expect(["nap", "nap_warm"]).toContain(kinds[0]);
+    // Straight to sleep, or a cozy circle first and then sleep, the way cats do.
+    const firstSleep = kinds[0] === "cozy" ? kinds[1] : kinds[0];
+    expect(["nap", "nap_warm"]).toContain(firstSleep);
     expect(woke).toBe(true);
     expect(cat.mind.needs.energy).toBeGreaterThanOrEqual(0.85);
   }, 60_000);

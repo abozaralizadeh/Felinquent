@@ -5,7 +5,7 @@ import { Executor, type Beat } from "../src/core/executor";
 import { characterById } from "../src/core/characters";
 import { pokeReaction } from "../src/core/reactions";
 import { seeded } from "../src/core/rng";
-import { sceneFor } from "../src/core/scenes";
+import { MIN_FLINCH, MIN_HOLD, sceneFor } from "../src/core/scenes";
 import type { Kind } from "../src/core/species";
 import type { IntentName } from "../src/core/types";
 import { makeWorld } from "../src/core/world";
@@ -19,7 +19,7 @@ const SCENES: IntentName[] = ["roll", "bounce", "sniff", "dig", "howl", "scratch
 function checkPace(script: Beat[], label: string): void {
   for (const b of script) {
     if (!("do" in b)) continue;
-    expect(b.sec, `${label}: ${b.do} is held long enough to read`).toBeGreaterThanOrEqual(FLINCH.includes(b.do) ? 0.6 : 1.1);
+    expect(b.sec, `${label}: ${b.do} is held long enough to read`).toBeGreaterThanOrEqual(FLINCH.includes(b.do) ? MIN_FLINCH : MIN_HOLD);
   }
   const last = script[script.length - 1];
   expect(last && "do" in last && CALM_END.includes(last.do), `${label} ends calm`).toBe(true);

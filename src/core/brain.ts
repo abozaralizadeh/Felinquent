@@ -1,5 +1,6 @@
+import { pickBout, type BoutKind } from "./bouts";
 import { intentFromOption, type RulesContext } from "./rules";
-import { buildSchema, buildSummary, buildSystemPrompt, type IntentSchema } from "./summary";
+import { buildPlanPrompt, buildPlanSchema, buildPlanSummary, buildSchema, buildSummary, buildSystemPrompt, type BoutChoice, type IntentSchema } from "./summary";
 import type { Approach, Intent, IntentName, Mood, Needs, Option, Settings, WorldSnapshot } from "./types";
 import type { Personality } from "./personality";
 
@@ -13,10 +14,45 @@ export interface BrainContext {
   catDoing: string;
 }
 
+/** What a brain needs to plan the next bout. */
+export interface PlanContext extends BrainContext {
+  /** The bouts that make sense now, with how well each fits and what the animal could do in each. */
+  bouts: BoutChoice[];
+  /** Things standing on windows that could be knocked off: "mug on w3". */
+  things?: string[];
+  /** Keep this bout and only plan more steps (the plan ran out before the bout did). */
+  fixedBout?: BoutKind;
+  /** What happened lately, newest first ("2 min ago: the human poked me, i hissed"). */
+  happened: string[];
+  lastBout: BoutKind | null;
+  /** Minutes the human has been busy at the computer without a break. */
+  busyForMin: number;
+}
+
+/** A bout and the first few things to do in it, in order. */
+export interface Plan {
+  bout: BoutKind;
+  steps: Intent[];
+  thought?: string;
+}
+
 export interface Brain {
   readonly name: string;
   /** Returns null when it has no answer. The caller then falls back to the rules. */
   decide(ctx: BrainContext): Promise<Intent | null>;
+  /** Plans the next bout. Returns null when it has no answer. */
+  plan?(ctx: PlanContext): Promise<Plan | null>;
+}
+
+/** A weighted pick among options. */
+function weighted(options: Option[], rng: RulesContext["rng"]): Option | undefined {
+  const total = options.reduce((s, o) => s + o.score, 0);
+  let roll = rng.next() * total;
+  for (const o of options) {
+    roll -= o.score;
+    if (roll <= 0) return o;
+  }
+  return options[options.length - 1];
 }
 
 /** Weighted random pick from the top 3 options. Needs no setup. */
@@ -37,6 +73,25 @@ export class RulesBrain implements Brain {
     }
     return intentFromOption(chosen, ctx.rules, ctx.settings.chaos, ctx.settings.thoughtBubbles);
   }
+
+  /** The bout by its weights, then two or three different things from it, the likelier first. */
+  async plan(ctx: PlanContext): Promise<Plan | null> {
+    const weights: Record<BoutKind, number> = { rest: 0, explore: 0, play: 0, social: 0, mischief: 0 };
+    for (const b of ctx.bouts) weights[b.kind] = b.weight;
+    const kind = ctx.fixedBout ?? pickBout(weights, ctx.rules.rng);
+    const choice = ctx.bouts.find((b) => b.kind === kind);
+    if (!choice || choice.options.length === 0) return null;
+    const pool = choice.options.slice(0, 6);
+    const n = Math.min(pool.length, ctx.rules.rng.next() < 0.5 ? 2 : 3);
+    const steps: Intent[] = [];
+    for (let i = 0; i < n; i++) {
+      const o = weighted(pool, ctx.rules.rng);
+      if (!o) break;
+      pool.splice(pool.indexOf(o), 1);
+      steps.push(intentFromOption(o, ctx.rules, ctx.settings.chaos, ctx.settings.thoughtBubbles));
+    }
+    return steps.length ? { bout: kind, steps } : null;
+  }
 }
 
 export interface LlmRequest {
@@ -44,6 +99,8 @@ export interface LlmRequest {
   user: string;
   schema: IntentSchema;
   timeoutMs: number;
+  /** Longest answer in tokens. */
+  maxTokens?: number;
 }
 
 /** Anything that can turn a prompt into text. Ollama, a built-in engine later, or a fake. */
@@ -82,11 +139,97 @@ export function parseIntent(text: string, options: Option[]): Intent | null {
   return out;
 }
 
+/**
+ * One short line: a small model sometimes rambles on for a paragraph. Keeps whole sentences up to
+ * about 90 characters, or cuts at a word.
+ */
+export function shortThought(text: string, max = 90): string {
+  const t = text.replace(/\s+/g, " ").replace(/^["'\s]+|["'\s]+$/g, "").trim();
+  if (t.length <= max) return t;
+  const sentences = t.match(/[^.!?…]+[.!?…]+/g) ?? [];
+  let out = "";
+  for (const s of sentences) {
+    if ((out + s).trim().length > max) break;
+    out += s;
+  }
+  if (out.trim()) return out.trim();
+  const cut = t.slice(0, max);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40)).trim()}…`;
+}
+
+const STOP = new Set(
+  "your human have been with that this from there them they just into what when where while about after times time away ago row and the for was are you not but all its has had now one out can get got too very will some more much than then like".split(" "),
+);
+const stem = (w: string) => (w.length > 4 ? w.replace(/(es|s|ed|ing)$/, "") : w);
+const words = (t: string) => new Set((t.toLowerCase().match(/[a-z]{3,}/g) ?? []).filter((w) => !STOP.has(w)).map(stem));
+
+/**
+ * True when the thought says something about the topic it was given (shares a real word with it).
+ * A 1b model otherwise writes about dust motes and sunbeams.
+ */
+export function thoughtFits(thought: string, about: string): boolean {
+  if (/dust|sunbeam|sunlight|rain|scent/.test(thought.toLowerCase())) return false;
+  const want = words(about);
+  for (const w of words(thought)) if (want.has(w)) return true;
+  return false;
+}
+
+const BOUT_SET = new Set<string>(["rest", "explore", "play", "social", "mischief"]);
+
+/** Reads a plan from the model's text. Steps that are not on the menu are dropped. Null if nothing usable. */
+export function parsePlan(text: string, bouts: BoutChoice[]): Plan | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    try {
+      raw = JSON.parse(m[0]);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const offered = bouts.map((b) => b.kind as string);
+  const bout = (typeof r.bout === "string" && BOUT_SET.has(r.bout) && offered.includes(r.bout) ? r.bout : offered[0]) as BoutKind | undefined;
+  if (!bout) return null;
+  // Steps come from the chosen bout's menu. A small model sometimes picks steps from another
+  // bout; then the bout follows its first step, so the label and the steps agree.
+  let chosen = bouts.find((b) => b.kind === bout) as BoutChoice;
+  const first = Array.isArray(r.steps) ? (r.steps[0] as Record<string, unknown> | undefined)?.intent : undefined;
+  if (typeof first === "string" && !chosen.options.some((o) => o.intent === first)) {
+    const other = bouts.find((b) => b.options.some((o) => o.intent === first));
+    if (other) chosen = other;
+  }
+  const all = chosen.options;
+  const mood = typeof r.mood === "string" && MOOD_SET.has(r.mood) ? (r.mood as Mood) : "content";
+  const steps: Intent[] = [];
+  for (const st of Array.isArray(r.steps) ? r.steps.slice(0, 3) : []) {
+    if (typeof st !== "object" || st === null) continue;
+    const one = parseIntent(JSON.stringify({ mood, ...st }), all);
+    // "nap, nap, nap" is one nap, and "hunt, chase_tail, hunt" is a hunt and a tail chase.
+    if (one && !steps.some((x) => x.intent === one.intent)) steps.push(one);
+  }
+  if (steps.length === 0) return null;
+  const out: Plan = { bout: chosen.kind, steps };
+  // The voice is lowercase; a small model writes in sentence case.
+  const thought = typeof r.thought === "string" ? shortThought(r.thought).toLowerCase() : "";
+  if (thought) out.thought = thought;
+  return out;
+}
+
 export class LlmBrain implements Brain {
   readonly name: string;
   calls = 0;
   failures = 0;
   invalid = 0;
+  /** Thoughts dropped because they had nothing to do with the moment. */
+  offTopic = 0;
+  /** The last topic and thought, for the eval only (never logged: hard rule 6). */
+  lastAbout = "";
+  lastRawThought = "";
   lastLatencyMs = 0;
   latencies: number[] = [];
 
@@ -134,6 +277,55 @@ export class LlmBrain implements Brain {
       return null;
     }
     return intent;
+  }
+
+  async plan(ctx: PlanContext): Promise<Plan | null> {
+    const bouts = ctx.fixedBout ? ctx.bouts.filter((b) => b.kind === ctx.fixedBout) : ctx.bouts;
+    if (bouts.length === 0) return null;
+    const summary = buildPlanSummary({
+      world: ctx.rules.world,
+      needs: ctx.rules.needs,
+      settings: ctx.settings,
+      bouts,
+      memory: ctx.memory,
+      happened: ctx.happened,
+      catWhere: ctx.catWhere,
+      catDoing: ctx.catDoing,
+      lastBout: ctx.lastBout,
+      recent: ctx.rules.recent,
+      busyForMin: ctx.busyForMin,
+      things: ctx.things ?? [],
+    });
+    const req: LlmRequest = {
+      system: buildPlanPrompt(ctx.personality, ctx.rules.needs.trust),
+      user: JSON.stringify(summary),
+      schema: buildPlanSchema(bouts),
+      timeoutMs: this.timeoutMs,
+      maxTokens: 260,
+    };
+    this.calls += 1;
+    const t0 = Date.now();
+    let text: string;
+    try {
+      text = await withTimeout(this.client.generate(req), this.timeoutMs);
+    } catch (err) {
+      this.failures += 1;
+      throw err;
+    } finally {
+      this.lastLatencyMs = Date.now() - t0;
+      this.latencies.push(this.lastLatencyMs);
+      if (this.latencies.length > 200) this.latencies.shift();
+    }
+    const plan = parsePlan(text, bouts);
+    if (!plan) this.invalid += 1;
+    this.lastAbout = summary.thought_about;
+    this.lastRawThought = plan?.thought ?? "";
+    if (plan?.thought && !thoughtFits(plan.thought, summary.thought_about)) {
+      // Better no thought than a made-up one.
+      delete plan.thought;
+      this.offTopic += 1;
+    }
+    return plan;
   }
 }
 
@@ -183,7 +375,7 @@ export class OllamaClient implements LlmClient {
           stream: false,
           format: req.schema,
           keep_alive: "5m",
-          options: { temperature: 0.8, num_predict: 120, num_ctx: 2048 },
+          options: { temperature: 0.8, num_predict: req.maxTokens ?? 120, num_ctx: 2048 },
           messages: [
             { role: "system", content: req.system },
             { role: "user", content: req.user },
@@ -222,7 +414,15 @@ export class FakeLlmClient implements LlmClient {
     else if (this.latencyMs > 0) await new Promise((r) => setTimeout(r, this.latencyMs));
     if (this.mode === "error") throw new Error("fake LLM is down");
     if (this.mode === "garbage") return "meow meow I am a cat {not json";
-    const summary = JSON.parse(req.user) as { options: string[]; cat: { mood: Mood }; windows: { id: string; focused?: boolean }[] };
+    const summary = JSON.parse(req.user) as { options: string[]; cat: { mood: Mood }; windows: { id: string; focused?: boolean }[]; bouts?: Record<string, { options: string[] }>; suggested?: string };
+    if (summary.bouts) {
+      // A plan: the suggested bout and its first two options.
+      if (this.mode === "off_menu") return JSON.stringify({ bout: "rest", steps: [{ intent: "format_disk", target: "here" }], mood: "smug", thought: "x" });
+      const bout = summary.suggested ?? Object.keys(summary.bouts)[0] ?? "rest";
+      const opts = summary.bouts[bout]?.options ?? [];
+      const json = JSON.stringify({ bout, steps: opts.slice(0, 2).map((intent) => ({ intent, target: "here", approach: "walk", stay_sec: 30 })), mood: summary.cat.mood, thought: "you typed all morning. i noticed." });
+      return this.mode === "chatty" ? `Sure! Here is my plan:\n${json}\nHope that helps.` : json;
+    }
     const props = req.schema.properties as { target: { enum: string[] } };
     if (this.mode === "off_menu") return JSON.stringify({ intent: "format_disk", target: "here", approach: "walk", stay_sec: 20, mood: "smug" });
     const intent = summary.options[0] ?? "nap";

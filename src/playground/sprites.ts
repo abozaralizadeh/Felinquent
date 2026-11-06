@@ -418,6 +418,9 @@ export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false):
     case "flustered": return { key: "flustered", group: "sit", head: HEAD_SIT, motion: M({ wobble: 0.03, wobbleHz: 26, breath: 0.03, breathHz: 8 }) };
     case "play_bow": return { key: "play_bow", group: "bow", head: HEAD_LOW, motion: M({ wobble: 0.035, wobbleHz: 13, bounce: 1.2, stepHz: 6, breath: 0.03, breathHz: 6 }) };
     case "leap": return { key: "leap", group: "air", head: HEAD_SIDE, motion: M({ breath: 0 }) };
+    // Hanging off a ledge by the front paws after a jump that fell short: the leap drawing tilted nose
+    // up, back legs scrabbling (the quick rock).
+    case "hang": return { key: "leap", group: "hang", head: HEAD_SIDE, rot: -1.2, motion: M({ wobble: 0.05, wobbleHz: 8, breath: 0 }) };
     case "bounce": return { key: vy > 120 ? "land" : "hop", group: "air", head: HEAD_SIT, motion: M({ breath: 0 }) };
     case "belly": return { key: "belly", group: "belly", head: HEAD_LOW, motion: M({ wobble: 0.03, wobbleHz: 6, breath: 0.03, breathHz: 4 }) };
     case "bark": return { key: cycle(["bark", "bark", "sit"] as const, t, 3), group: "bark", head: HEAD_SIT, motion: M({ bounce: 1.5, stepHz: 3, breath: 0.03, breathHz: 8 }), fade: 0.1 };
@@ -863,11 +866,16 @@ export function drawSprite(
   const w = img.naturalWidth * K;
   const h = img.naturalHeight * K;
 
-  // Breathing, steps, rocking and the occasional fidget.
-  const breath = Math.sin(t * m.breathHz) * m.breath;
+  // Breathing, steps, rocking and the occasional fidget. A fast tremble or a quick hop of more than a
+  // few pixels reads as flicker on the real screen (frames come from a timer and are not perfectly
+  // even), so the faster a motion is, the smaller it is kept.
+  const breathAmp = m.breathHz > 6 ? Math.min(m.breath, 0.02) : m.breath;
+  const wobbleAmp = m.wobbleHz > 20 ? Math.min(m.wobble, 0.007) : m.wobbleHz > 10 ? Math.min(m.wobble, 0.015) : m.wobble;
+  const bounceAmp = m.stepHz > 4 ? Math.min(m.bounce, 0.7) : m.bounce;
+  const breath = Math.sin(t * m.breathHz) * breathAmp;
   // A hop on the clock for bouncy poses. The gaits bob in their own frames.
-  let hop = !moving && m.stepHz ? Math.abs(Math.sin(Math.PI * t * m.stepHz)) * m.bounce : 0;
-  let rot = (plan.rot ?? 0) + m.lean + (m.wobbleHz ? Math.sin(t * m.wobbleHz) * m.wobble : 0) + (shot.shake ? Math.sin(t * 88) * shot.shake : 0);
+  let hop = !moving && m.stepHz ? Math.abs(Math.sin(Math.PI * t * m.stepHz)) * bounceAmp : 0;
+  let rot = (plan.rot ?? 0) + m.lean + (m.wobbleHz ? Math.sin(t * m.wobbleHz) * wobbleAmp : 0) + (shot.shake ? Math.sin(t * 44) * shot.shake : 0);
   // About every half minute, at uneven times, it shifts its weight a little.
   const shift = m.fidget ? eventAt(t, 18, 0.9, 9, 0.6) : null;
   if (shift) {

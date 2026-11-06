@@ -111,6 +111,9 @@ export type IntentName =
   | "tumble"
   | "shy"
   | "react"
+  | "knock_off"
+  | "claw"
+  | "hunt"
   | "leave";
 
 export interface Intent {

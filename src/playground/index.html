@@ -31,6 +31,7 @@
   .win .body { padding: 10px; flex: 1; overflow: hidden; }
   .win .body p { height: 8px; border-radius: 4px; background: #e7e7ec; margin: 0 0 9px; }
   #cat { position: absolute; inset: 0; z-index: 3; pointer-events: none; width: 100%; height: 100%; }
+  #marks { position: absolute; inset: 0; z-index: 150; pointer-events: none; width: 100%; height: 100%; }
   #hit { position: absolute; z-index: 4; cursor: grab; border-radius: 12px; }
   #hit.hidden, #blockbox.hidden, #bubble.hidden, #cover.hidden, #banner.hidden { display: none; }
   #blockbox { position: absolute; z-index: 4; border: 2px dashed rgba(220,60,40,.8); background: rgba(220,60,40,.12); border-radius: 12px; font-size: 10px; color: #a02a18; font-weight: 700; }
@@ -66,6 +67,7 @@
     <div id="menubar"><b>Finder</b><span>File</span><span>Edit</span><span>View</span><span style="margin-left:auto" id="clock"></span></div>
     <div id="dock"><i></i><i></i><i></i><i></i><i></i></div>
     <canvas id="cat"></canvas>
+    <canvas id="marks"></canvas>
     <div id="hit" class="hidden" title="Pet me (move the cursor over me), drag me, shake me to shoo, click to poke"></div>
     <div id="blockbox" class="hidden"><span>cat is sitting here: clicks blocked</span></div>
     <div id="bubble" class="hidden"></div>
@@ -105,6 +107,11 @@
     <select id="activity"><option>typing_fast</option><option selected>typing</option><option>reading</option><option>idle</option><option>away</option></select></div>
   <div class="btns">
     <button id="treat">Give treat</button><button id="addwin">Open window</button><button id="closewin">Close window</button>
+  </div>
+  <h2>Mischief (normal and gremlin)</h2>
+  <div class="btns">
+    <button id="putmug">Put a mug on a window</button><button id="knock">Knock it off</button><button id="claw">Claw a window</button>
+    <button id="hunt">A fly</button><button id="zoom">Zoomies</button>
   </div>
   <p class="hint">Pet: slide the cursor over the cat. Pick up: drag it. Shoo: shake it while held. Throw: fling it. Poke: click it (once it is curious or playful, again and again and it gets cross). Laser: wiggle the cursor fast nearby.</p>
 

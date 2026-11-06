@@ -1,5 +1,5 @@
 import { BY_INTENT, CHAOS_ORDER, CHAOS_PARAMS, behavior } from "./behaviors";
-import type { Approach, Intent, IntentName, Mood, Needs, Option, Settings, WorldSnapshot } from "./types";
+import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, Settings, WorldSnapshot } from "./types";
 
 export type RespectState =
   | { kind: "none" }
@@ -13,7 +13,11 @@ const MOODS: readonly Mood[] = ["content", "curious", "playful", "sleepy", "grum
 
 const HOUR_MS = 3_600_000;
 const SHOO_COOLDOWN_MS = 3 * 60_000;
-const THOUGHT_GAP_MS = 10 * 60_000;
+/**
+ * The least time between two thought bubbles. A thought is where the model's wit shows, so it can't
+ * be rare enough to never be seen (it was 10 minutes), but it mustn't chatter either.
+ */
+const THOUGHT_GAP_MS: Record<ChaosLevel, number> = { chill: 8 * 60_000, normal: 4 * 60_000, gremlin: 150_000 };
 const MAX_THOUGHT_CHARS = 80;
 /** What the cat may do in quiet hours and on low battery. */
 const QUIET_INTENTS: readonly IntentName[] = ["nap", "nap_warm"];
@@ -188,7 +192,7 @@ export class Governor {
       stay_sec: Math.max(minStay, Math.min(maxStay, stay)),
       mood: MOODS.includes(raw.mood) ? raw.mood : needs.mood,
     };
-    if (this.settings.thoughtBubbles && raw.thought && world.nowMs - this.lastThoughtMs >= THOUGHT_GAP_MS) {
+    if (this.settings.thoughtBubbles && raw.thought && world.nowMs - this.lastThoughtMs >= THOUGHT_GAP_MS[this.settings.chaos]) {
       const t = stripUrls(raw.thought).slice(0, MAX_THOUGHT_CHARS).trim();
       if (t) out.thought = t;
     }

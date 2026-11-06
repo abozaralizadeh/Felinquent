@@ -1,6 +1,6 @@
 import { FakeLlmClient, LlmBrain, OllamaClient, RulesBrain, type Brain } from "../../src/core/brain";
 import { RotatingLogger } from "../../src/node/logger";
-import { evaluate, G1_RELAXED, G1_STRICT, makeScenarios, passesGateG1 } from "./evaluate";
+import { evaluate, evaluatePlans, G1_RELAXED, G1_STRICT, makePlanScenarios, makeScenarios, passesGateG1 } from "./evaluate";
 
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -36,6 +36,18 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  if (arg("mode", "pick") === "plan") {
+    // The bout planner (ADR-031): a bout, 1 to 3 steps and a thought per request.
+    const p = await evaluatePlans(brain, makePlanScenarios(n, Number(arg("seed", "1"))));
+    const { sample, ...row } = p;
+    logger.info("plan eval", { ...row });
+    console.table([{ ...row, validRate: `${(p.validRate * 100).toFixed(1)}%`, withThought: `${(p.withThought * 100).toFixed(0)}%`, followedSuggested: `${(p.followedSuggested * 100).toFixed(0)}%`, avgSteps: p.avgSteps.toFixed(1) }]);
+    // Thoughts are printed here (a test run on made-up scenarios), never logged.
+    for (const line of sample) console.log(`  ${line}`);
+    const ok = p.validRate >= G1_RELAXED.minValidRate && p.p95Ms < 8000;
+    console.log(`Plan mark (>= 95% valid, p95 < 8000 ms): ${ok ? "PASS" : "FAIL"}`);
+    return ok ? 0 : 1;
+  }
   const scenarios = makeScenarios(n, Number(arg("seed", "1")));
   const r = await evaluate(brain, scenarios);
   logger.info("brain eval", { ...r });

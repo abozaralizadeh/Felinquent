@@ -51,22 +51,28 @@ flowchart TD
 
 ## 3. Making a decision
 
+Decisions come in bouts (rest, explore, play, social, mischief), each a few minutes long.
+
 ```text
 options  = rules.candidates(world, needs, personality)        # every sensible behavior, scored
 options  = governor.filter(options)                           # what is allowed right now
 if a shooed window revisit is due: boost that sit_on option
-if LLM allowed:                                               # see section 6
-    raw = llm.decide(summary(options))                        # may throw or return null
-    intent = governor.validate(raw, options)                  # re-check, clamp, trim thought
-if no intent yet and options exist:
-    raw = rules.decide(options); intent = governor.validate(raw, options)
+if there is no bout, or it has run its course, or the animal is worn out:
+    bout    = pick by weight(what came before, needs, chaos, kind)   # the body decides
+    menu    = that bout's options, minus whatever it did last
+    plan    = llm.plan(summary, menu) if LLM allowed (section 6), else rules.plan(menu)
+    thought = the model's line if it is about something real, else a written line for that moment
+    an opening move goes first when it helps (a stretch after lying down, a wash after play)
+intent = the plan's next step, checked by the governor again
+if the plan ran out but the bout goes on: plan more of the same bout (minus the last action)
+if nothing fits the bout any more: the bout ends and the next decision starts a new one
 if still no intent:
     intent = groom (or nap if energy < 0.4)                   # "safe" fallback, not charged
 governor.commit(intent)                                       # spend points, remember block, one gift
 executor.start(intent)
 ```
 
-The LLM only ever chooses from `options`. Its answer is checked against that list twice: once when parsed, once by the governor.
+The LLM only ever chooses from `options`. Its answer is checked against that list twice: once when parsed, once by the governor. Between steps the animal pauses, longer in a rest bout and at chill, shorter in play and at gremlin.
 
 ## 4. What the governor checks
 

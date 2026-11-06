@@ -73,6 +73,10 @@
 | A-28 | zoomies (fast run, puffed tail) | 6 | ✓ | B-23 | v1 |
 | A-29 | ear scratch with a hind leg (head tilts, the leg comes up, a dozen strokes at about 5.6 a second, a head shake) | 9 + 16 in-betweens | no | B-37 | MVP |
 | A-30 | turn round on the spot, standing and sitting (side, head round, three quarters, front, the far three quarters, the far side) | 5 + 5, the far side mirrored | no | B-02, all walks | MVP |
+| A-31 | hang off a ledge (the leap drawing turned up about 70 degrees, paws on the title bar edge, a scrabbling wobble), then climb up or slip | reuses the leap | ✓ | B-47 | MVP |
+| A-32 | knock-off scene: sneak, curious look, stare at you, tap, push in short shoves with a stare before the last one, peek over the edge, proud | reuses stare, swat, push_toy, peek, proud | no | B-43 | MVP |
+
+**Things and marks (drawn on the overlay, not the animal).** Nine props from one illustrated sheet (cut with `tools/cut-props.py` into `public/props/*.webp` at 3x their height on screen: mug 30 px, glass 34, plant 40, vase 42, yarn 26, pencils 46, teacup 24, duck 28, toy mouse 18). Broken pieces are cut from the same drawing, so a broken mug looks like that mug. Cracks are a spiderweb with a dark under-stroke and a light line; claw marks are three or four short parallel scratches with a chip; strips use the window chrome colour (light #ececec, dark #3a3a3c). The fly is a small dark body with a wing blur and red eyes, 1.7 times the old size so it reads on a big screen.
 
 **MVP: 19 animations, ~100 frames per coat.** The placeholder cat in P0-P1 can be a simple shape with just walk, sit and sleep.
 
@@ -151,8 +155,9 @@ These tabs match the product spec §7: General · Cat · Behavior · Brain · Pr
 
 ### 6.4 Thought bubble
 
-- Small and rounded, in a lowercase cat voice, ≤ 80 characters, fading after 4 s.
-- **Max 1 per 10 minutes.** Emoji allowed.
+- Small and rounded, in a lowercase cat voice, up to three short lines, with two little dots down to the head (a thought, not speech). Up for 6 s, fades in and out, and stays on the display the animal is on.
+- **At most one per 8 min at chill, 4 min at normal, 150 s at gremlin.** Emoji allowed.
+- What it says: the model's line when it is about something real right now, else a written line for that moment (`src/core/lines.ts`: a poke, a pet, a broken mug, a fly that got away, a new window, how long you've been in one app).
 - Examples: *"this window is warm. it's mine now."* · *"you said my name. i heard. no."* · *"3am. time to run."*
 
 ### 6.5 Diary card (v1)

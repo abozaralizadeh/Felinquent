@@ -13,7 +13,25 @@ export type Anim =
   | "peek" | "chase_tail" | "knead" | "chatter" | "sneeze" | "happy"
   | "angry" | "hiss" | "puffed" | "annoyed" | "flustered" | "play_bow" | "leap" | "belly" | "bark"
   | "shy" | "beg" | "dig" | "sniff" | "tumble" | "sprawl" | "howl" | "giggle" | "startled"
-  | "proud" | "curious" | "love" | "yawn" | "surprise" | "dazed" | "scratch" | "bounce";
+  | "proud" | "curious" | "love" | "yawn" | "surprise" | "dazed" | "scratch" | "bounce" | "hang";
+
+/**
+ * Something the animal does to the things around it (mess.ts): a paw on a mug, a nudge toward the
+ * edge, claws in a title bar, a fly to chase. The executor only says when; the Cat makes it happen.
+ */
+export type Fx =
+  | { fx: "tap"; prop: string }
+  | { fx: "nudge"; prop: string; px: number }
+  | { fx: "claw" }
+  | { fx: "fly_in"; caught: boolean; dx: number; dy: number }
+  | { fx: "pounce_fly" };
+
+/** A thing standing on a window, as the executor sees it. */
+export interface PropSpot {
+  id: string;
+  windowId: string;
+  x: number;
+}
 
 /**
  * One beat of a scripted scene. A reaction to a click is a little scene (look, react, leave) and
@@ -43,13 +61,18 @@ export type ExecEvent =
   | { type: "block_start"; windowId: string }
   | { type: "block_end" }
   | { type: "hidden" }
-  | { type: "unreachable"; intent: IntentName };
+  | { type: "unreachable"; intent: IntentName }
+  | { type: "fx"; fx: Fx; x: number; y: number; dir: 1 | -1; windowId: string | null }
+  /** Touched down: how fast it came down (px/s) and on which window, for a crack in a hard landing. */
+  | { type: "impact"; x: number; y: number; speed: number; windowId: string | null }
+  | { type: "hang"; windowId: string | null }
+  | { type: "slipped" };
 
 type Step =
   | { k: "walk"; x: number; speed: number; anim?: Anim }
   | { k: "jump"; toId: string; takeoffX: number; landX: number }
-  | { k: "do"; anim: Anim; sec: number; block?: boolean; face?: "cursor" | "away" }
-  | { k: "leap"; dx: number; h: number; anim: Anim; face?: 1 | -1 }
+  | { k: "do"; anim: Anim; sec: number; block?: boolean; face?: "cursor" | "away" | 1 | -1; fx?: Fx }
+  | { k: "leap"; dx: number; h: number; anim: Anim; face?: 1 | -1; fx?: Fx }
   | { k: "beat"; beat: Beat }
   | { k: "hide" };
 
@@ -85,6 +108,8 @@ const MIN_WALK = 40;
 const MIN_RUN = 160;
 const GRAVITY = 2000;
 const SIZE_SCALE = { S: 0.75, M: 1, L: 1.3 };
+/** How often a big jump up falls short (chill, normal, gremlin). Cats misjudge one now and then. */
+const MISS = [0.03, 0.08, 0.22] as const;
 
 const DO_ANIM: Partial<Record<IntentName, Anim>> = {
   nap: "sleep", nap_warm: "sleep", wander: "idle_sit", perch: "perch", groom: "groom", watch: "look",
@@ -96,6 +121,7 @@ const DO_ANIM: Partial<Record<IntentName, Anim>> = {
   stalk: "pounce", tour: "loaf", cozy: "sleep",
   roll: "belly", bounce: "bounce", sniff: "sniff", dig: "dig", howl: "howl", scratch: "scratch", beg: "beg",
   spook: "puffed", sprawl: "sprawl", tumble: "tumble", shy: "shy", react: "idle_sit",
+  knock_off: "push_toy", claw: "scratch", hunt: "pounce",
 };
 
 interface JumpState {
@@ -107,9 +133,24 @@ interface JumpState {
   y1: number;
   peak: number;
   toId: string;
+  /** The window it is jumping onto, so it still lands if the windows moved and the ledge got a new id. */
+  toWin?: string;
   /** The pose in the air (a leap has its own) and which way the cat looks while it flies. */
   anim?: Anim;
   face?: 1 | -1;
+  /** The highest point so far, for how hard it comes down. */
+  minY: number;
+  /** A real jump to another ledge (not a hop on the spot), which can fall short. */
+  far?: boolean;
+}
+
+/** Hanging off a ledge after a jump that fell short: it scrabbles, then pulls itself up or drops. */
+interface HangState {
+  t: number;
+  T: number;
+  windowId: string | null;
+  offset: number;
+  climbs: boolean;
 }
 
 /** The fast brain: turns an intent into steps and moves the cat at 60 fps. Contains no decisions. */
@@ -129,7 +170,7 @@ export class Executor {
   readonly size: { w: number; h: number };
 
   private world: WorldSnapshot | null = null;
-  private mode: "ground" | "jump" | "fall" | "held" = "ground";
+  private mode: "ground" | "jump" | "fall" | "held" | "hang" = "ground";
   private queue: Step[] = [];
   private current: Step | null = null;
   private doTimer = 0;
@@ -140,6 +181,30 @@ export class Executor {
   private ridingOffset = 0;
   private outbox: ExecEvent[] = [];
   private unreachable = false;
+  /**
+   * Where the animal is going, fixed when the intent starts: on a window it is kept as an offset from
+   * the window's left edge, so it follows the window when it moves instead of being picked again.
+   */
+  private goal: { id: string; windowId?: string; offset: number } | null = null;
+  /** The route there is done and the action itself (the tail) has been planned and is under way. */
+  private inTail = false;
+  /**
+   * Seconds left crouched after a landing. A cat absorbs a landing in a crouch for about a quarter
+   * of a second; showing the crouch drawing for one frame and swapping back read as a flicker.
+   */
+  private landHold = 0;
+  /** Things standing on windows, from the Cat (mess.ts). Without it there is nothing to knock off. */
+  props: (() => PropSpot[]) | null = null;
+  /**
+   * How wild it is: 0 chill, 1 normal, 2 gremlin. A gremlin runs across several windows, lands hard
+   * enough to crack one, and now and then falls short of a jump and hangs off the edge.
+   */
+  wild: 0 | 1 | 2 = 1;
+  /** The thing it is going to push off, and which way. */
+  private knock: { prop: string; dir: 1 | -1 } | null = null;
+  private hanging: HangState | null = null;
+  /** It let go of a ledge: on landing it shakes it off before anything else. */
+  private slipped = false;
 
   constructor(
     private rng: Rng,
@@ -154,7 +219,7 @@ export class Executor {
   }
 
   get airborne(): boolean {
-    return this.mode === "jump" || this.mode === "fall";
+    return this.mode === "jump" || this.mode === "fall" || this.mode === "hang";
   }
   get held(): boolean {
     return this.mode === "held";
@@ -207,7 +272,12 @@ export class Executor {
       this.beginFall();
       return;
     }
-    if (win) b.x = win.bounds.x + this.ridingOffset;
+    if (win) {
+      // The window it stands on moved: it rides along, and so do the spots it was about to walk to.
+      const shift = win.bounds.x + this.ridingOffset - b.x;
+      b.x += shift;
+      if (shift !== 0 && this.inTail) this.shiftWalks(shift);
+    }
     const here = this.platforms.find((p) => p.id === b.platformId);
     let seg: Platform | undefined = here && b.x >= here.x1 && b.x <= here.x2 ? here : undefined;
     if (!seg && win) {
@@ -222,7 +292,16 @@ export class Executor {
     b.x = Math.max(seg.x1, Math.min(seg.x2, b.x));
     b.y = seg.y;
     b.platformId = seg.id;
-    if (this.phase === "moving" && this.intent) this.replan();
+    // Still on the way: find a new way to the same spot. Already doing the thing: carry on.
+    if (this.intent && !this.inTail) this.replan();
+  }
+
+  private shiftWalks(dx: number): void {
+    const move = (s: Step | null): void => {
+      if (s && s.k === "walk") s.x += dx;
+    };
+    move(this.current);
+    this.queue.forEach(move);
   }
 
   private beginFall(): void {
@@ -272,6 +351,10 @@ export class Executor {
     if (!seg) return { id: cur.id, x: this.body.x };
     const mid = (seg.x1 + seg.x2) / 2;
     const jitter = (seg.x2 - seg.x1) * 0.15;
+    if (intent.intent === "knock_off") {
+      const spot = this.knockSpot(t);
+      if (spot) return spot;
+    }
     switch (intent.intent) {
       case "perch":
       case "peek": return { id: seg.id, x: this.rng.next() < 0.5 ? seg.x1 + 30 : seg.x2 - 30 };
@@ -280,11 +363,37 @@ export class Executor {
     }
   }
 
+  /** How far from the thing the animal stands to reach it with a paw. */
+  private get reach(): number {
+    return this.size.w * 0.42;
+  }
+
+  /**
+   * Where to stand to push a thing off this window: beside it, on the side away from the nearer
+   * edge, so the push goes the short way.
+   */
+  private knockSpot(windowId: string): { id: string; x: number } | null {
+    this.knock = null;
+    const pool = (this.props?.() ?? []).filter((q) => q.windowId === windowId);
+    if (pool.length === 0) return null;
+    const pr = pool.sort((a, b) => Math.abs(a.x - this.body.x) - Math.abs(b.x - this.body.x))[0] as PropSpot;
+    const seg = segmentsOf(this.platforms, windowId).find((s) => pr.x >= s.x1 && pr.x <= s.x2);
+    if (!seg) return null;
+    const dir: 1 | -1 = seg.x2 - pr.x <= pr.x - seg.x1 ? 1 : -1;
+    // Not enough room to stand on the inner side: push it the long way.
+    const room = dir === 1 ? pr.x - seg.x1 : seg.x2 - pr.x;
+    const d: 1 | -1 = room < this.reach + 10 ? (-dir as 1 | -1) : dir;
+    this.knock = { prop: pr.id, dir: d };
+    const x = Math.max(seg.x1 + 2, Math.min(seg.x2 - 2, pr.x - d * this.reach));
+    return { id: seg.id, x };
+  }
+
   setInstinct(i: Instinct): void {
     this.instinct = i;
   }
 
-  private makeSteps(intent: Intent, path: PathStep[], reached: boolean): Step[] {
+  /** The walks and jumps that get the animal to where the intent happens. */
+  private routeSteps(intent: Intent, path: PathStep[]): Step[] {
     const speed = SPEED[intent.approach];
     const steps: Step[] = [];
     let x = this.body.x;
@@ -301,6 +410,15 @@ export class Executor {
         x = p.x;
       }
     });
+    return steps;
+  }
+
+  /**
+   * The action itself, planned once the animal has arrived (so it is planned once, from where it
+   * really is, and a window moving under it doesn't make it pick a new one).
+   */
+  private tailSteps(intent: Intent, reached: boolean): Step[] {
+    const steps: Step[] = [];
     if (!reached) {
       steps.push({ k: "do", anim: "stare", sec: Math.min(6, intent.stay_sec) });
       return steps;
@@ -310,13 +428,15 @@ export class Executor {
       steps.push({ k: "hide" });
       return steps;
     }
-    const cur = this.platforms.find((p) => p.id === (path.length ? this.lastPlatformOf(path) : this.body.platformId));
+    const cur = this.currentPlatform();
     if (intent.intent === "cross" && cur) {
       steps.push({ k: "walk", x: cur.x2 - 20, speed: SPEED.saunter });
     } else if (intent.intent === "keyboard_walk" && cur) {
       const mid = (cur.x1 + cur.x2) / 2;
       const span = (cur.x2 - cur.x1) * 0.25;
       for (let i = 0; i < 4; i++) steps.push({ k: "walk", x: mid + (i % 2 === 0 ? span : -span), speed: SPEED.walk, anim: "keyboard" });
+    } else if (intent.intent === "zoomies" && cur && this.wild >= 2) {
+      steps.push(...this.zoomChain(cur, intent.stay_sec));
     } else if (intent.intent === "zoomies" && cur) {
       let t = 0;
       let x = this.body.x;
@@ -327,6 +447,9 @@ export class Executor {
         x = nx;
       }
     }
+    if (intent.intent === "knock_off" && cur && !intent.script) return [...steps, ...this.knockSteps(cur)];
+    if (intent.intent === "claw" && cur && !intent.script) return [...steps, ...this.clawSteps()];
+    if (intent.intent === "hunt" && cur && !intent.script) return [...steps, ...this.huntSteps(cur)];
     // Scripted scenes: a reaction to a click, and the little routines of the playful intents.
     const script = intent.script ?? sceneFor(intent.intent, intent.stay_sec, this.rng);
     if (script) {
@@ -358,6 +481,115 @@ export class Executor {
     if (once && sec > once[0] + 1) {
       steps.push({ k: "do", anim, sec: once[0], block: def.blocks }, { k: "do", anim: once[1], sec: sec - once[0], block: def.blocks });
     } else steps.push({ k: "do", anim, sec, block: def.blocks });
+    return steps;
+  }
+
+  /**
+   * Pushing a thing off a window, the way cats do it: look at it, look at you, a tap, another look
+   * at you, then a slow push, a creep after it, another push, until it goes over. Then it watches it
+   * fall and looks very pleased with itself.
+   */
+  private knockSteps(cur: Platform): Step[] {
+    // Picked on the way here; if there was nothing to see then (it was still fading in), look again now.
+    if (!this.knock && this.ridingWindow) this.knockSpot(this.ridingWindow);
+    const k = this.knock;
+    this.knock = null;
+    const pr = k ? (this.props?.() ?? []).find((q) => q.id === k.prop) : undefined;
+    if (!k || !pr || pr.windowId !== this.ridingWindow) {
+      // Gone by the time it got there (it fell, or that bit of the window is covered): a look, and on with life.
+      return [{ k: "do", anim: "look", sec: 2 }, { k: "do", anim: "idle_sit", sec: 2.5 }];
+    }
+    const dir = k.dir;
+    const seg = segmentsOf(this.platforms, pr.windowId).find((q) => pr.x >= q.x1 - 4 && pr.x <= q.x2 + 4) ?? cur;
+    const edge = dir === 1 ? seg.x2 : seg.x1;
+    const total = Math.abs(edge - pr.x) + 10;
+    const n = Math.max(2, Math.min(4, Math.ceil(total / 55)));
+    const each = total / n;
+    const steps: Step[] = [];
+    // Close enough for a paw.
+    let x = Math.max(seg.x1 + 2, Math.min(seg.x2 - 2, pr.x - dir * this.reach));
+    if (Math.abs(x - this.body.x) > 4) steps.push({ k: "walk", x, speed: SPEED.sneak });
+    steps.push(
+      { k: "do", anim: "curious", sec: 1.8, face: dir },
+      { k: "do", anim: "stare", sec: 2.4, face: "cursor" },
+      { k: "do", anim: "swat", sec: 1.5, face: dir, fx: { fx: "tap", prop: pr.id } },
+      { k: "do", anim: "stare", sec: 2, face: "cursor" },
+    );
+    for (let i = 0; i < n; i++) {
+      steps.push({ k: "do", anim: "push_toy", sec: 1.3, face: dir, fx: { fx: "nudge", prop: pr.id, px: each } });
+      // One last look before the end: are you watching?
+      if (i === n - 2) steps.push({ k: "do", anim: "stare", sec: 1.8, face: "cursor" });
+      if (i < n - 1) {
+        x += dir * each;
+        steps.push({ k: "walk", x, speed: SPEED.saunter });
+      }
+    }
+    steps.push({ k: "do", anim: "peek", sec: 2.6, face: dir }, { k: "do", anim: "proud", sec: 2.4, face: "cursor" }, { k: "do", anim: "idle_sit", sec: 2 });
+    return steps;
+  }
+
+  /** Claws into the title bar: marks, a look at you, more marks a step on. */
+  private clawSteps(): Step[] {
+    const dir = this.body.facing;
+    return [
+      { k: "do", anim: "sniff", sec: 1.6 },
+      { k: "do", anim: "dig", sec: 2.8, fx: { fx: "claw" } },
+      { k: "do", anim: "stare", sec: 2, face: "cursor" },
+      { k: "walk", x: this.body.x + dir * 30, speed: SPEED.sneak },
+      { k: "do", anim: "dig", sec: 2.4, face: dir, fx: { fx: "claw" } },
+      { k: "do", anim: "proud", sec: 2.4, face: "cursor" },
+      { k: "do", anim: "idle_sit", sec: 1.5 },
+    ];
+  }
+
+  /**
+   * A fly turns up. The cat watches it, chatters at it, wiggles and leaps. Whether it gets it is
+   * settled now, so the fly can be caught or get away at the right moment.
+   */
+  private huntSteps(cur: Platform): Step[] {
+    const room = (d: 1 | -1): number => (d === 1 ? cur.x2 - this.body.x : this.body.x - cur.x1);
+    const dir: 1 | -1 = room(1) >= room(-1) ? 1 : -1;
+    const by = Math.max(0, Math.min(90, room(dir) - 10));
+    const caught = this.rng.next() < 0.45;
+    const steps: Step[] = [
+      { k: "do", anim: "look", sec: 1.2, face: dir, fx: { fx: "fly_in", caught, dx: dir * Math.max(30, by * 0.55), dy: -(this.size.h + 30) } },
+      { k: "do", anim: "look", sec: 2.4, face: dir },
+      { k: "do", anim: "chatter", sec: 2.6, face: dir },
+      { k: "do", anim: "pounce", sec: 1.6, face: dir },
+      { k: "leap", dx: dir * by, h: 90, anim: "leap", face: dir, fx: { fx: "pounce_fly" } },
+    ];
+    if (caught) steps.push({ k: "do", anim: "proud", sec: 2.4 }, { k: "do", anim: "groom", sec: 3 });
+    else steps.push({ k: "do", anim: "dazed", sec: 1.5 }, { k: "do", anim: "look", sec: 2, face: (-dir) as 1 | -1 }, { k: "do", anim: "groom", sec: 3 });
+    return steps;
+  }
+
+  /** Zoomies for real: flat out from window to window, three or four of them. */
+  private zoomChain(cur: Platform, sec: number): Step[] {
+    const steps: Step[] = [];
+    let at = { id: cur.id, x: this.body.x };
+    let t = 0;
+    const ledges = this.platforms.filter((p) => p.x2 - p.x1 > 100);
+    for (let leg = 0; leg < 6 && t < Math.max(8, sec); leg++) {
+      const others = ledges.filter((p) => p.id !== at.id);
+      if (others.length === 0) break;
+      const to = this.rng.pick(others);
+      const x = this.rng.range(to.x1 + 30, to.x2 - 30);
+      const plan = planRoute(this.platforms, at.id, at.x, to.id, x, this.limits);
+      if (!plan || !plan.reached) continue;
+      let px = at.x;
+      for (const p of plan.steps) {
+        if (p.kind === "jump") {
+          steps.push({ k: "jump", toId: p.toId, takeoffX: p.takeoffX, landX: p.landX });
+          px = p.landX;
+          t += 0.8;
+        } else if (Math.abs(p.x - px) >= 20) {
+          steps.push({ k: "walk", x: p.x, speed: SPEED.run });
+          t += Math.abs(p.x - px) / SPEED.run;
+          px = p.x;
+        }
+      }
+      at = { id: to.id, x: px };
+    }
     return steps;
   }
 
@@ -407,14 +639,6 @@ export class Executor {
     return out;
   }
 
-  private lastPlatformOf(path: PathStep[]): string | null {
-    for (let i = path.length - 1; i >= 0; i--) {
-      const s = path[i] as PathStep;
-      if (s.kind === "jump") return s.toId;
-    }
-    return this.body.platformId;
-  }
-
   start(intent: Intent): void {
     if (this.mode !== "ground") {
       this.pending = intent;
@@ -435,23 +659,44 @@ export class Executor {
     this.queue = [];
     this.current = null;
     this.unreachable = false;
+    this.inTail = false;
     this.phase = "moving";
     this.idleSec = 0;
+    const g = this.resolveGoal(intent);
+    const p = this.platforms.find((q) => q.id === g.id);
+    const win = p?.windowId ? this.world?.windows.find((w) => w.id === p.windowId) : undefined;
+    this.goal = win ? { id: g.id, windowId: win.id, offset: g.x - win.bounds.x } : { id: g.id, offset: g.x };
     this.replan();
   }
 
+  /** Where the goal is now: a spot on a window moves with the window. */
+  private goalNow(): { id: string; x: number } | null {
+    const g = this.goal;
+    if (!g) return null;
+    if (!g.windowId) return this.platforms.some((p) => p.id === g.id) ? { id: g.id, x: g.offset } : null;
+    const win = this.world?.windows.find((w) => w.id === g.windowId);
+    if (!win) return null;
+    const x = win.bounds.x + g.offset;
+    const segs = segmentsOf(this.platforms, win.id);
+    const seg = segs.find((s) => x >= s.x1 && x <= s.x2) ?? [...segs].sort((a, b) => Math.abs((a.x1 + a.x2) / 2 - x) - Math.abs((b.x1 + b.x2) / 2 - x))[0];
+    if (!seg) return null;
+    return { id: seg.id, x: Math.max(seg.x1 + 2, Math.min(seg.x2 - 2, x)) };
+  }
+
+  /** Finds the way to the goal (again, when the windows moved). The action is planned on arrival. */
   private replan(): void {
     const intent = this.intent;
     const cur = this.currentPlatform();
     if (!intent || !cur) return;
-    const goal = this.resolveGoal(intent);
-    const plan = planRoute(this.platforms, cur.id, this.body.x, goal.id, goal.x, this.limits);
-    if (!plan) {
-      this.queue = this.makeSteps(intent, [], true);
-    } else {
-      this.queue = this.makeSteps(intent, plan.steps, plan.reached);
-      this.unreachable = !plan.reached;
+    let goal = this.goalNow();
+    if (!goal) {
+      // The window it was going to is gone, or covered: it settles for where it is.
+      goal = { id: cur.id, x: this.body.x };
+      this.goal = { id: cur.id, offset: this.body.x };
     }
+    const plan = planRoute(this.platforms, cur.id, this.body.x, goal.id, goal.x, this.limits);
+    this.queue = plan ? this.routeSteps(intent, plan.steps) : [];
+    this.unreachable = plan ? !plan.reached : false;
     this.current = null;
   }
 
@@ -461,12 +706,17 @@ export class Executor {
     this.queue = [];
     this.current = null;
     this.intent = null;
+    this.goal = null;
+    this.inTail = false;
     this.phase = "idle";
     this.closeBlock();
   }
 
   pickUp(x: number, y: number): void {
     this.interrupt();
+    this.landHold = 0;
+    this.hanging = null;
+    this.slipped = false;
     this.mode = "held";
     this.body.platformId = null;
     this.ridingWindow = null;
@@ -492,22 +742,40 @@ export class Executor {
       if (this.mode === "jump") this.stepJump(dtSec);
       else if (this.mode === "fall") this.stepFall(dtSec, world);
       else if (this.mode === "ground") this.stepGround(dtSec);
+      else if (this.mode === "hang") this.stepHang(dtSec);
     }
     const out = this.outbox;
     this.outbox = [];
     return out;
   }
 
-  private land(p: Platform): void {
+  private emitFx(fx: Fx): void {
+    const b = this.body;
+    this.outbox.push({ type: "fx", fx, x: b.x, y: b.y, dir: b.facing, windowId: this.ridingWindow });
+  }
+
+  private land(p: Platform, speed = 0): void {
     const b = this.body;
     this.mode = "ground";
+    if (speed > 0) this.outbox.push({ type: "impact", x: b.x, y: p.y, speed, windowId: p.windowId ?? null });
     b.platformId = p.id;
     b.y = p.y;
     b.vx = 0;
     b.vy = 0;
     b.anim = "land";
+    // A hop in a row (a bounce, a zoomie) only touches down; a real jump or a fall sinks in.
+    this.landHold = this.queue[0]?.k === "beat" || this.queue[0]?.k === "leap" ? 0.16 : 0.28;
     this.syncRiding(p);
     this.outbox.push({ type: "landed" });
+    if (this.slipped) {
+      this.slipped = false;
+      // Fell off a ledge: it shakes it off and has a wash, then (on the way somewhere) tries again.
+      if (this.intent && !this.inTail) {
+        this.replan();
+        this.queue.unshift({ k: "do", anim: "dazed", sec: 1.4 }, { k: "do", anim: "groom", sec: 2.4 });
+      } else this.queue = [{ k: "do", anim: "dazed", sec: 1.4 }, { k: "do", anim: "groom", sec: 2.4 }];
+      this.current = null;
+    }
     if (this.pending) {
       const next = this.pending;
       this.pending = null;
@@ -541,7 +809,7 @@ export class Executor {
       if (prevY <= p.y + 0.5 && b.y >= p.y) if (!hit || p.y < hit.y) hit = p;
     }
     if (!hit && b.y > world.dockTop) hit = this.platforms.find((p) => p.id === "dock");
-    if (hit) this.land(hit);
+    if (hit) this.land(hit, b.vy);
   }
 
   private stepJump(dt: number): void {
@@ -550,19 +818,90 @@ export class Executor {
     j.t = Math.min(1, j.t + dt / j.T);
     b.x = j.x0 + (j.x1 - j.x0) * j.t;
     b.y = j.y0 + (j.y1 - j.y0) * j.t - 4 * j.peak * j.t * (1 - j.t);
+    j.minY = Math.min(j.minY, b.y);
     b.facing = j.face ?? (j.x1 >= j.x0 ? 1 : -1);
     b.anim = j.anim ?? "jump";
     if (j.t >= 1) {
-      const to = this.platforms.find((p) => p.id === j.toId);
+      const to =
+        this.platforms.find((p) => p.id === j.toId) ??
+        (j.toWin ? this.platforms.find((p) => p.windowId === j.toWin && b.x >= p.x1 && b.x <= p.x2) : undefined);
+      if (to) b.x = Math.max(to.x1, Math.min(to.x2, b.x));
       this.jump = null;
-      if (to) this.land(to);
+      // A big jump up onto a window sometimes falls just short: it catches the edge with its front paws.
+      const up = j.y0 - j.y1;
+      if (to && j.far && to.windowId && up > this.size.h * 1.2 && this.rng.next() < MISS[this.wild]) {
+        this.startHang(to);
+        return;
+      }
+      if (to) this.land(to, Math.sqrt(2 * GRAVITY * Math.max(0, to.y - j.minY)));
       else this.beginFall();
     }
   }
 
+  /** How far below the edge the feet are while it hangs by its front paws (the hang pose is drawn tilted, sprites.ts). */
+  private get hangDrop(): number {
+    return this.size.h * 0.52;
+  }
+
+  private startHang(to: Platform): void {
+    const b = this.body;
+    const win = this.world?.windows.find((w) => w.id === to.windowId);
+    this.mode = "hang";
+    this.hanging = { t: 0, T: this.rng.range(1.6, 2.8), windowId: win?.id ?? null, offset: b.x - (win?.bounds.x ?? 0), climbs: this.rng.next() < 0.7 };
+    b.platformId = null;
+    this.ridingWindow = null;
+    b.anim = "hang";
+    b.y = to.y + this.hangDrop;
+    this.outbox.push({ type: "hang", windowId: win?.id ?? null });
+  }
+
+  /** Hanging on: it scrabbles, then hauls itself up, or lets go and drops. It hangs on if the window moves. */
+  private stepHang(dt: number): void {
+    const h = this.hanging as HangState;
+    const b = this.body;
+    h.t += dt;
+    const win = h.windowId ? this.world?.windows.find((w) => w.id === h.windowId) : undefined;
+    const seg = win ? segmentsOf(this.platforms, win.id).find((q) => win.bounds.x + h.offset >= q.x1 - 12 && win.bounds.x + h.offset <= q.x2 + 12) : undefined;
+    if (!win || !seg) {
+      this.slip();
+      return;
+    }
+    b.x = win.bounds.x + h.offset;
+    b.y = seg.y + this.hangDrop;
+    b.anim = "hang";
+    if (h.t < h.T) return;
+    this.hanging = null;
+    if (!h.climbs) {
+      this.slip();
+      return;
+    }
+    const x1 = Math.max(seg.x1 + 4, Math.min(seg.x2 - 4, b.x + b.facing * 18));
+    this.mode = "jump";
+    this.jump = { t: 0, T: 0.42, x0: b.x, y0: b.y, x1, y1: seg.y, peak: 26, toId: seg.id, toWin: win.id, anim: "jump", face: b.facing, minY: b.y };
+  }
+
+  /** Lets go of the edge. */
+  private slip(): void {
+    this.hanging = null;
+    this.beginFall();
+    this.body.vx = -this.body.facing * 40;
+    this.slipped = true;
+    this.outbox.push({ type: "slipped" });
+  }
+
   private stepGround(dt: number): void {
     const b = this.body;
+    if (this.landHold > 0) {
+      this.landHold -= dt;
+      b.anim = "land";
+      return;
+    }
     if (!this.current) {
+      // Arrived: now plan the action itself, from where it really is.
+      if (this.queue.length === 0 && this.intent && !this.inTail) {
+        this.inTail = true;
+        this.queue = this.tailSteps(this.intent, !this.unreachable);
+      }
       this.current = this.queue.shift() ?? null;
       if (!this.current) {
         if (this.phase !== "idle") this.finish();
@@ -579,10 +918,13 @@ export class Executor {
         this.phase = "doing";
         this.doTimer = this.current.sec;
         b.anim = this.current.anim;
-        if (this.current.face && this.world) {
+        const face = this.current.face;
+        if (face === 1 || face === -1) b.facing = face;
+        else if (face && this.world) {
           const toward = this.world.cursor.x >= b.x ? 1 : -1;
-          b.facing = this.current.face === "cursor" ? toward : (-toward as 1 | -1);
+          b.facing = face === "cursor" ? toward : (-toward as 1 | -1);
         }
+        if (this.current.fx) this.emitFx(this.current.fx);
         if (this.current.block) {
           const p = this.currentPlatform();
           const target = this.intent?.target ?? "here";
@@ -601,7 +943,7 @@ export class Executor {
         if (Math.abs(j.landX - b.x) > 4) b.facing = j.landX > b.x ? 1 : -1;
         const T = Math.max(0.4, Math.min(1.2, 0.4 + Math.abs(j.landX - b.x) / 600 + Math.max(0, b.y - to.y) / 1500));
         this.mode = "jump";
-        this.jump = { t: 0, T, x0: b.x, y0: b.y, x1: j.landX, y1: to.y, peak: Math.max(50, b.y - to.y + 50), toId: to.id };
+        this.jump = { t: 0, T, x0: b.x, y0: b.y, x1: j.landX, y1: to.y, peak: Math.max(50, b.y - to.y + 50), toId: to.id, toWin: to.windowId, minY: b.y, far: true };
         this.current = null;
         this.ridingWindow = null;
         return;
@@ -613,8 +955,10 @@ export class Executor {
           return;
         }
         const x1 = Math.max(p.x1 + 2, Math.min(p.x2 - 2, b.x + l.dx));
+        if (l.face) b.facing = l.face;
+        if (l.fx) this.emitFx(l.fx);
         this.mode = "jump";
-        this.jump = { t: 0, T: 0.5, x0: b.x, y0: b.y, x1, y1: p.y, peak: l.h, toId: p.id, anim: l.anim, face: l.face };
+        this.jump = { t: 0, T: 0.5, x0: b.x, y0: b.y, x1, y1: p.y, peak: l.h, toId: p.id, anim: l.anim, face: l.face, minY: b.y };
         this.current = null;
         this.ridingWindow = null;
         this.vel = 0;
@@ -713,6 +1057,8 @@ export class Executor {
     const intent = this.intent;
     this.phase = "idle";
     this.intent = null;
+    this.goal = null;
+    this.inTail = false;
     if (intent) {
       if (this.unreachable) this.outbox.push({ type: "unreachable", intent: intent.intent });
       this.outbox.push({ type: "done", intent: intent.intent });

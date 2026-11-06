@@ -21,14 +21,18 @@ export interface RulesContext {
   habits?: Habits;
   /** The chaos level. A chill cat naps more, a gremlin hardly stops. */
   chaos?: ChaosLevel;
+  /** Windows with a thing standing on top (mess.ts), which can be knocked off. */
+  propWindows?: string[];
 }
 
-const ACTIVE: IntentName[] = ["wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
+const ACTIVE: IntentName[] = ["knock_off", "claw", "hunt", "wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
 /** How much each chaos level changes napping and active behaviors. */
+// A gremlin used to cut every action to 40% of its length, which read as "very fast" on the real
+// screen (Abozar, 6 Nov 2026). It does more things, not each thing in a hurry.
 const PACE: Record<ChaosLevel, { nap: number; active: number; stay: number }> = {
-  chill: { nap: 1.2, active: 0.8, stay: 1.25 },
-  normal: { nap: 0.8, active: 1.1, stay: 1 },
-  gremlin: { nap: 0.3, active: 2, stay: 0.4 },
+  chill: { nap: 1.2, active: 0.8, stay: 1.35 },
+  normal: { nap: 0.8, active: 1.1, stay: 1.15 },
+  gremlin: { nap: 0.3, active: 2, stay: 0.8 },
 };
 
 const IMPORTANT_TITLE = /\.(docx?|xlsx?|pptx?|pdf|md|key|pages|numbers)\b|thesis|invoice|report|submit|deploy|contract|resume/i;
@@ -112,6 +116,10 @@ export function candidates(ctx: RulesContext): Option[] {
   const zoomHour = w.hour >= 2 && w.hour < 4 && e > 0.6;
   add("zoomies", zoomHour ? 1.2 : ctx.justWoke && e > 0.9 ? 0.8 : 0.02, ["here"]);
   if (focused) add("nudge_window", a * 0.8 * p.chaos, [focused.id]);
+  // A thing on a window is there to be pushed off it, slowly, while you watch.
+  const props = (ctx.propWindows ?? []).filter((id) => w.windows.some((x) => x.id === id));
+  if (props.length > 0 && e > 0.3) add("knock_off", (0.5 + 0.9 * a) * (0.4 + p.chaos), props);
+  if (e > 0.4) add("claw", (0.06 + 0.3 * a * e) * (0.3 + p.chaos), w.windows.slice(0, 4).map((x) => x.id));
 
   // Small, quiet things a cat does.
   const wins = w.windows.slice(0, 4).map((x) => x.id);
@@ -130,6 +138,7 @@ export function candidates(ctx: RulesContext): Option[] {
   if (e > 0.55) add("bounce", 0.06 + (n.mood === "playful" ? 0.35 : 0.05) * e, ["here"]);
   if (e > 0.55) add("tumble", 0.05 + (n.mood === "playful" ? 0.3 : 0.04) * e, ["here"]);
   if (e > 0.4) add("spook", 0.04 + 0.06 * e, ["here"]);
+  if (e > 0.4) add("hunt", 0.06 + 0.22 * c * e, ["here"]);
   add("howl", night ? 0.15 : 0.03, ["here"]);
   add("sprawl", 0.05 + 0.35 * sleepy * (0.4 + p.laziness), ["here"]);
   add("shy", n.trust < 40 ? 0.15 : 0.03, ["here"]);
@@ -179,7 +188,7 @@ export function defaultStay(intent: IntentName, chaos: ChaosLevel, rng: Rng): nu
 export function defaultApproach(intent: IntentName, mood: Mood, rng: Rng): Approach {
   if (intent === "zoomies") return "run";
   if (intent === "sit_on" || intent === "sit_on_video" || intent === "cross") return mood === "smug" || mood === "grumpy" ? "saunter" : "walk";
-  if (intent === "swat" || intent === "knock_toy" || intent === "stalk") return "sneak";
+  if (intent === "swat" || intent === "knock_toy" || intent === "stalk" || intent === "knock_off") return "sneak";
   return rng.pick(["walk", "walk", "saunter"] as const);
 }
 
@@ -203,6 +212,9 @@ const MOOD_THOUGHTS: Partial<Record<IntentName, string[]>> = {
   scratch: ["an itch. behind the ear. very serious."],
   dig: ["buried it. you will never know where."],
   sprawl: ["flat is a valid shape."],
+  knock_off: ["it was too close to the edge. now it isn't.", "gravity check."],
+  claw: ["this window needed texture."],
+  hunt: ["a fly. this is my moment."],
 };
 
 /** Turns one option into a ready intent (used by the rules brain and the fake LLM). */

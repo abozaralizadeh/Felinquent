@@ -1,8 +1,12 @@
 //! Felinquent overlay spike: a transparent, click-through window over every display
 //! that shows the cat, with real Mac sensors behind it (spikes S-1 and S-2).
+#[cfg(target_os = "macos")]
+mod alert;
 mod logfile;
 #[cfg(target_os = "macos")]
 mod login;
+#[cfg(target_os = "macos")]
+mod ollama;
 mod sensors;
 #[cfg(target_os = "macos")]
 mod update;
@@ -169,15 +173,38 @@ async fn set_click_through(window: WebviewWindow, on: bool) {
     let _ = window.set_ignore_cursor_events(on);
 }
 
+/// The local model's address and name. Local only: the page and the model setup refuse anything that is not localhost.
+fn ollama_target() -> (String, String) {
+    (
+        std::env::var("FELINQUENT_OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".into()),
+        std::env::var("FELINQUENT_OLLAMA_MODEL").unwrap_or_else(|_| "gemma3:1b".into()),
+    )
+}
+
 #[tauri::command]
 fn read_config() -> Config {
+    let (ollama_url, ollama_model) = ollama_target();
     Config {
         demo: std::env::var("FELINQUENT_DEMO").is_ok(),
         debug: std::env::var("FELINQUENT_DEBUG").is_ok(),
         brain: std::env::var("FELINQUENT_BRAIN").unwrap_or_else(|_| "auto".into()),
-        // Local only. The page refuses anything that is not localhost.
-        ollama_url: std::env::var("FELINQUENT_OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".into()),
-        ollama_model: std::env::var("FELINQUENT_OLLAMA_MODEL").unwrap_or_else(|_| "gemma3:1b".into()),
+        ollama_url,
+        ollama_model,
+    }
+}
+
+/// Helps the user get Ollama and the model when the local model is turned on and isn't there
+/// (macOS, see ollama.rs). `reason` is "no-ollama", "not-running" or "no-model". Returns at once:
+/// true when a setup started. The result comes later as the `ctl` message "model-ready" or
+/// "model-failed". Elsewhere it does nothing.
+#[tauri::command]
+async fn model_setup(app: AppHandle, reason: String, model: String, url: String) -> bool {
+    #[cfg(target_os = "macos")]
+    return ollama::setup(app, &reason, model, url);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, reason, model, url);
+        false
     }
 }
 
@@ -242,6 +269,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &items)?;
 
     app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone() });
+    // The model setup shows its progress in this item's text.
+    #[cfg(target_os = "macos")]
+    ollama::menu_item(app, &model);
 
     let mut tray = TrayIconBuilder::new().menu(&menu).tooltip("Felinquent");
     if let Some(icon) = app.default_window_icon() {
@@ -342,6 +372,8 @@ fn main() {
             build_tray(app)?;
             #[cfg(target_os = "macos")]
             update::start(app.handle());
+            #[cfg(target_os = "macos")]
+            ollama::start(app.handle());
             // The panic hotkey. A listener only: it never sends keys to anything.
             if let Err(e) = app.global_shortcut().register("CmdOrCtrl+Alt+Shift+P") {
                 println!("[overlay] could not register the panic hotkey: {e}");
@@ -410,7 +442,8 @@ fn main() {
             load_state,
             save_state,
             show_choices,
-            debug_log
+            debug_log,
+            model_setup
         ])
         .run(tauri::generate_context!())
         .expect("error while running Felinquent");

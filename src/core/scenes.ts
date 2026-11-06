@@ -12,18 +12,26 @@ export const leap = (to: "cursor" | "away" | "ahead" | "stroll", by: number, h: 
 
 /** Quick by nature: a flinch, a puff of fur, a paw. */
 const FLINCH: ReadonlySet<string> = new Set(["surprise", "startled", "puffed", "swat"]);
+/**
+ * How much longer than written each pose of a scene is held, and the shortest holds. Abozar found the
+ * actions "very fast" on the real screen (6 Nov 2026), so a pose now stays at least 1.4 s (a flinch
+ * 0.7 s): long enough to see what the animal is doing before it does the next thing.
+ */
+export const HOLD = 1.5;
+export const MIN_HOLD = 1.4;
+export const MIN_FLINCH = 0.7;
 /** Poses a scene can end on without a calm beat after it. */
 const CALM_END: ReadonlySet<string> = new Set(["turn_away", "sulk", "sprawl", "groom", "blink", "idle_sit", "yawn", "loaf", "sleep"]);
 
 /**
  * Every scene and reaction goes through this, so it plays at an animal's pace: each pose is held long
- * enough to read (a flinch can be quick, nothing else is under a second), and a scene that ends on
+ * enough to read (a flinch can be quick, nothing else is under 1.4 s), and a scene that ends on
  * something lively ends with the animal just sitting a moment, so it does not jump into the next thing.
  */
 export function paced(beats: Beat[]): Beat[] {
-  const out = beats.map((b): Beat => ("do" in b ? { ...b, sec: Math.max(b.sec * 1.3, FLINCH.has(b.do) ? 0.6 : 1.1) } : b));
+  const out = beats.map((b): Beat => ("do" in b ? { ...b, sec: Math.max(b.sec * HOLD, FLINCH.has(b.do) ? MIN_FLINCH : MIN_HOLD) } : b));
   const last = out[out.length - 1];
-  if (!last || !("do" in last) || !CALM_END.has(last.do)) out.push(doing("idle_sit", 1.8));
+  if (!last || !("do" in last) || !CALM_END.has(last.do)) out.push(doing("idle_sit", 2.6));
   return out;
 }
 

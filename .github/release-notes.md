@@ -2,11 +2,19 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-The cat turns round properly now instead of flipping like a sheet of paper. It washes from the head down, a few licks on each spot, scratches its ear with a hind leg, and moves more smoothly overall. And the app now checks for updates and offers to install them for you.
+The cat stopped repeating itself. It now does things in little stretches (rest, explore, play, mischief) and takes its time between moves. With the local model on, it plans a few steps ahead and thinks out loud in a small bubble. No model yet? The app offers to set it up. At normal and gremlin it knocks things off your windows and they break (only drawn, your real windows are fine).
+
+## The mess, in more detail
+
+At normal and gremlin, little things show up on top of your windows now and then: a mug, a plant, a vase, a rubber duck. The cat walks over, gives one a push and watches it fall. Some break into pieces. It also claws window edges and chases flies. At gremlin it lands hard enough to crack a window, does zoomies from window to window and misses more jumps, hanging off a ledge before it drops. All of it is drawn on the cat's own see-through layer and fades away after a while. Nothing touches your real windows, and chill keeps it all off.
+
+The thought bubble only talks about real stuff: you poked it, you've been in the same app for an hour, a mug just broke. When the model writes something off topic (the 1b model loves dust and sunbeams), the cat says a written line for that moment instead. Thoughts are never logged.
 
 ## Updating
 
-Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned). From this version on, the app checks GitHub for a new version every 12 hours and asks before it installs anything. Turn that off in the menu with Check for updates automatically.
+Already on 0.1.2? The app asks you within 12 hours, or pick **Check for updates…** in the menu now.
+
+Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned).
 
 ## Install
 
@@ -26,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scri
 
 ## Optional: the local model
 
-The cat thinks with simple rules out of the box. If you have [Ollama](https://ollama.com) running with `gemma3:1b` pulled, it uses that as its slow brain. Turn it on or off in the menu with **Use the local model**. Everything stays on your Mac.
+The cat thinks with simple rules out of the box. Turn on **Use the local model** in the menu and it uses [Ollama](https://ollama.com) with `gemma3:1b` as its slow brain. If Ollama or the model isn't there yet, the app asks first and then sets it up for you (about 1 GB in total). Everything stays on your Mac.
 
 ## Check the download
 

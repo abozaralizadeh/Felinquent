@@ -137,6 +137,31 @@ every 1 s:
 
 **The LLM never invents behaviors.** It chooses one option from a menu the rules already filtered, picks a target, and may add a short thought. That keeps small models reliable, and it makes prompt injection harmless (see [safety §6](safety-and-privacy.md#6-llm-and-prompt-injection)).
 
+**Bouts and plans (as built, `bouts.ts`, `mind.ts`).** Decisions are grouped into bouts (rest, explore, play, social, mischief), each a few minutes long. When a bout ends:
+
+1. The body picks the next bout by weight (`boutWeights`: what came before, needs, chaos level, the animal's kind). The model doesn't pick it: in the eval a 1b model followed the body's choice only 36% of the time and never chose mischief, even at gremlin with a vase on a window.
+2. The brain plans 1 to 3 steps from that bout's menu: `{bout, steps: [{intent, target, approach, stay_sec}], mood, thought}`. The model gets the plan summary below; the rules brain picks likely steps. Repeated steps are merged ("nap, nap, nap" is one nap), and if the steps belong to another bout the bout follows them.
+3. An opening move goes first when it helps the change read (a stretch after lying down, a wash after play).
+4. Between steps the animal pauses (`PAUSE` per bout, times the chaos factor). When the steps run out and the bout goes on, the brain plans more of the same bout.
+
+Every step is checked again by the governor just before it starts, because the world may have changed since it was planned.
+
+**Plan summary.** On top of the fields in §6.3 the model gets `thought_about` (one real thing to think about, first in the JSON), `busy_for_min`, `cat.wildness` (the chaos level in words), `cat.last_bout`, `cat.just_did`, `things_on_windows` (`"mug on w3"`, never titles), `happened` (what happened lately with how long ago: pokes, pets, things that broke, a fly that got away, a new window) and the chosen bout with what it means and its options.
+
+**Thoughts.** `thought_about` is picked by `thoughtTopic()` in `summary.ts`: something from the last 10 minutes of `happened`, else (rotating with the clock) a thing on a window during mischief, how long the human has been busy, how long they were away, how long since a pet, or the time of day. The model's line is kept only when it shares a real word with the topic and isn't about dust, sunbeams, rain or smells (`thoughtFits`), and it is cut to one line (`shortThought`). Otherwise the mind uses a written line for the same topic (`lines.ts`, with the app or the thing filled in, never the same line twice in a row). With gemma3:1b about 1 in 10 model lines survive; the rest of the plan (steps, targets) is the model's.
+
+| Plan eval, 30 to 40 scenarios, gemma3:1b on an M-series Mac | Before | After |
+|---|---|---|
+| Valid plans | 100% | 97 to 100% |
+| Latency p50 / p95 | 3.7 s / 5.8 s | 4.0 s / 6.7 s |
+| Bout matches the body's | 36% | 100% (the body picks) |
+| Different bouts / actions | 3 / 13 | 5 / 22 |
+| Thought on topic | rarely | always (model or written line) |
+
+Run it with `npm run eval -- --brain ollama --mode plan --n 30`. It prints the topic, the model's line and the line a human would see.
+
+**Replanning.** The window list arrives every 250 ms with fresh objects. The executor now compares a geometry signature (`shapeOf`: ids, bounds, z) instead of object identity, so a route is only re-planned when a window really moved, and the route to a target is planned apart from what happens on arrival. Before, the animal re-planned several times a second and repeated the start of an action very fast.
+
 ### 6.3 World summary (input, ≤ 500 tokens)
 
 ```jsonc
@@ -233,6 +258,9 @@ It runs twice: once to filter `options`, once to validate the chosen intent. It 
 | `gift`, `hairball` | B-22 | 2 | until clicked | At most 1 on screen |
 | `nudge_window` | B-25 | 3 | n/a | Gremlin + Accessibility granted; never off-screen |
 | `roll`, `bounce`, `sniff`, `dig`, `howl`, `scratch`, `spook`, `sprawl`, `tumble`, `shy` | B-32 to B-37, B-39 to B-42 | 0 | ≤ 20 s (sniff ≤ 40 s, sprawl ≤ 2 min) | none. Each runs as a scripted scene of beats (`scenes.ts`) |
+| `knock_off` | B-43 | 1 | 12 to 45 s | Normal or gremlin. Only offered when a thing stands on a window (`propWindows`); the target is that window. A scene in `executor.ts` (`knockSteps`): sneak up, look, stare at the cursor, tap, push two to four times, peek, look proud |
+| `claw` | B-44 | 1 | 6 to 20 s | Normal or gremlin. Marks and strips are drawn on the overlay only |
+| `hunt` | B-45 | 0 | 10 to 40 s | A drawn fly; nothing else |
 | `beg` | B-38 | 1 | ≤ 30 s | Cursor must be a little way off |
 | `react` | RF-05, RF-10 | 0 | the script's length | Reflex only. Never offered to the brain. Respect modes still win |
 | `leave` | respect modes | 0 | n/a | Always allowed |
@@ -241,9 +269,33 @@ It runs twice: once to filter `options`, once to validate the chosen intent. It 
 - Annoyance points come from an hourly token bucket (3 / 10 / 25 by chaos level).
 - No attention behavior twice in a row. The rules also make whatever the animal did last far less likely (x0.3), and anything it did in the last ten choices a bit less (x0.75 each), so it does not loop.
 - A respect mode forces `nap` in a far corner, or `leave`.
-- `thought` is trimmed to 80 characters with URLs stripped, and bubbles are limited to 1 per 10 min.
+- `thought` is trimmed to 80 characters with URLs stripped. Bubbles are at most one per 8 min at chill, 4 min at normal and 150 s at gremlin. On the Mac the bubble is drawn on the overlay above the animal for 6 s and fades; its text is never logged.
 - An unknown or missing target → the nearest valid one.
 - **Pace.** Every scripted scene and reaction goes through `paced()` in `scenes.ts`: each pose is held at least 1.1 s (a flinch 0.6 s), all beats are 1.3 times longer than written, and a scene that doesn't end calm gets a 1.8 s sit at the end. When an action is over the executor settles into a calm pose, turns back from a huff after 12 s and lies down after 30 s. Lively idle poses are split: a short busy part, then a plain sit. One-off moves (`ONCE` in `executor.ts`: stretch, swat, meow, headbutt, sneeze, bark...) play once for their own length and the rest of the stay is a calm pose. Walks under 40 px are skipped (a jump takes off from where the animal stands) and runs under 160 px are walked.
+
+### 6.8 Setting up the local model (as built, Mac)
+
+Turning on **Use the local model** when Ollama or the model is missing used to fall back to rules without a word. Now the page calls the command `model_setup(reason, model, url)` (`src-tauri/src/ollama.rs`), which returns at once and answers later with a `ctl` message.
+
+```text
+model_setup(reason, model, url)       # refused unless url is local (same rule as isLocalUrl)
+  look again: GET /api/tags, then Ollama.app or the ollama binary on disk
+  model there          → "model-ready"
+  no model             → ask "Get the model (815 MB)" → POST /api/pull, stream the percent
+  Ollama not running   → ask "Start Ollama" → open -a Ollama (or ollama serve) → wait ≤ 60 s for /api/version → model step
+  no Ollama            → ask "Install / Open ollama.com / Not now"
+                         → newest tag from github.com/ollama/ollama/releases/latest (the redirect)
+                         → sha256sum.txt + Ollama-darwin.zip from that tag, SHA-256 must match
+                         → ditto -x -k, codesign --verify --deep --strict, TeamIdentifier 3MU9H2V9Y9
+                         → /Applications (or ~/Applications), never over an existing Ollama.app
+                         → open it, wait ≤ 90 s, then pull the model without asking again
+  done                 → ctl "model-ready"; failure → ctl "model-failed" + a short message; Not now → nothing
+```
+
+- The questions use the shared native alert in `alert.rs` (the same one as updates, §14): a modal session polled every 50 ms so the cat keeps moving, lifted to level 22 above the overlays, Return presses nothing, Escape is the last button, one question at a time.
+- Progress goes in the model's menu item text ("Getting Ollama… 42%", "Starting Ollama…", "Getting the cat's brain… 42%") and the text comes back when the setup ends. One setup runs at a time.
+- GitHub requests are HTTPS only, follow redirects to GitHub hosts only and stop at 2 GB. Requests to Ollama never go through a proxy. Every step is logged with a `model setup:` prefix, with the home folder shown as `~`.
+- Test hooks: `FELINQUENT_MODEL_TEST=<n>[,<n>…][@s][:reason]` presses button n of each setup question after s seconds (a list goes question by question, the last number repeats), and with `:reason` starts that setup 5 s after launch. `FELINQUENT_OLLAMA_DIR=<dir>` installs into that folder and doesn't open Ollama.
 
 ## 7. Fast brain (overlay)
 
@@ -283,6 +335,19 @@ The platform builder turns window rectangles into walkable segments:
 - **Render on demand:** the 60 fps ticker runs only while moving or animating. The sleep-breathing loop runs at ~6 fps. Hidden means fully stopped.
 - Right-facing art only; it's mirrored for left at runtime.
 - The thought bubble and keyboard gibberish are HTML/Pixi text on the overlay. Nothing is ever sent to other apps.
+
+### 8.1 Mess and breakage (as built, `mess.ts`, `mess-draw.ts`)
+
+Breaking things is drawn, never done. Everything below lives in the overlay's own canvas, in core state that only knows window ids and bounds.
+
+- **Things on windows.** Small props (mug, glass, plant, vase, yarn, pencils, teacup, duck, toy mouse; `public/props/`, cut from one sheet with `tools/cut-props.py`) appear on window tops: none at chill, one at a time every 2 to 5 min at normal, up to three every 30 to 90 s at gremlin. Each rides its window, falls when the window closes or moves away under it, and fades out after 45 s on the floor or when the level goes to chill.
+- **Physics.** A push slides a thing along the top; at the edge it teeters, past the edge it falls with gravity, bounces off the display edges and lands on the next window down or the floor. Fragile things (glass, pottery) that land faster than 520 px/s break into pieces cut from their own drawing (a Voronoi split, pieces add up to the whole), and water or soil spills. Running into a thing during zoomies sends it flying.
+- **Marks.** Claws leave scratches and a chip on the title bar and tear strips that flutter down. A hard landing at gremlin can crack the window (a spiderweb, slivers falling). Marks are clipped to their window, hidden where a window in front covers them, and gone when the window closes. At most 160 pieces and 40 strips at once.
+- **The fly.** `hunt` brings a drawn fly that buzzes about, then is caught or flies off.
+- **Events back to the mind.** Breaking, falling, cracking and the fly become `happened` lines ("i knocked the mug off. it broke."), which the model and the written lines react to.
+- **Panic** clears it all at once.
+
+The executor sends effect events (`tap`, `nudge`, `claw`, `fly_in`, `pounce_fly`) at the right beat of a scene, and `impact` events with the landing speed. A jump up that falls short (`MISS` 3% / 8% / 22% by chaos) leaves the animal hanging off the ledge (`hang`, the leap drawing turned up); it climbs up or slips, lands, sits dazed and washes.
 
 ## 9. Memory and storage
 

@@ -14,7 +14,10 @@ import { planFor } from "../src/playground/sprites";
 
 const args = process.argv.slice(2);
 const detail = args.includes("--detail");
-const [minArg, only] = args.filter((a) => !a.startsWith("--"));
+// --seed N: another random run, to tell a real change from noise.
+const seedAt = args.indexOf("--seed");
+const SEED = seedAt >= 0 ? Number(args[seedAt + 1]) : 11;
+const [minArg, only] = args.filter((a, i) => !a.startsWith("--") && i !== seedAt + 1);
 const MIN = Number(minArg ?? "60");
 const T0 = Date.UTC(2026, 10, 2, 10, 0, 0);
 // Animations that are cycles of frames: their frame changes are the motion itself, not a change of pose.
@@ -28,7 +31,7 @@ async function main(): Promise<void> {
   for (const c of CHARACTERS.filter((c) => !only || c.id === only)) {
     for (const chaos of ["chill", "normal", "gremlin"] as const) {
       const world = makeWorld({ nowMs: T0 });
-      const cat = new Cat({ rng: seeded(11), personality: c.personality, settings: { chaos } });
+      const cat = new Cat({ rng: seeded(SEED), personality: c.personality, settings: { chaos } });
       cat.place(world, 600);
       const steps = MIN * 60 * 10;
       let asleep = 0, resting = 0, acting = 0, moving = 0, decisions = 0, poseChanges = 0, frameChanges = 0;
@@ -37,6 +40,9 @@ async function main(): Promise<void> {
       const changes = new Map<string, number>();
       const picked = new Map<string, number>();
       const timeIn = new Map<string, number>();
+      // Poses held for less than 0.6 s, with what came before and after: these read as flicker.
+      const short = new Map<string, number>();
+      let before = "";
       for (let i = 0; i < steps; i++) {
         const ms = T0 + (i + 1) * 100;
         const res = await cat.step({ ...world, nowMs: ms, hour: new Date(ms).getUTCHours() }, 0.1);
@@ -53,7 +59,9 @@ async function main(): Promise<void> {
             poseChanges++;
             holds.push(t - since);
             add(changes, `${anim}>${b.anim}`);
+            if (t - since < 0.6) add(short, `${before}>[${anim}]>${b.anim}`);
           }
+          before = anim;
           anim = b.anim;
           since = t;
         }
@@ -83,6 +91,7 @@ async function main(): Promise<void> {
         console.log(`${c.id} ${chaos}`);
         console.log(`  changes: ${top(changes, 12)}`);
         console.log(`  picked: ${top(picked, 12)}`);
+        console.log(`  short holds: ${top(short, 12)}`);
         console.log(`  time awake %: ${top(timeIn, 10, (v) => `${Math.round((100 * v) / Math.max(1, steps - asleep))}`)}`);
       }
     }
