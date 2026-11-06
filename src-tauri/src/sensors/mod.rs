@@ -18,6 +18,15 @@ pub struct Win {
     pub z: usize,
 }
 
+/// The desktop (a Space on the Mac) the main display shows, and its place in the row of desktops
+/// (0 is the leftmost). spans: one row of desktops covers every display.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Space {
+    pub id: String,
+    pub index: i32,
+    pub spans: bool,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct Display {
     pub x: f64,
@@ -39,7 +48,10 @@ pub use win::*;
 /// Other systems (Linux) get an empty desktop, so the code at least compiles.
 #[cfg(not(any(target_os = "macos", windows)))]
 mod other {
-    use super::{Display, Win};
+    use super::{Display, Space, Win};
+    pub fn space() -> Option<Space> {
+        None
+    }
     pub fn windows(_skip: &str) -> Vec<Win> {
         vec![]
     }

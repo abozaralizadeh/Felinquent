@@ -19,6 +19,8 @@ export interface Reaction {
 
 export interface PokeInput {
   kind: Kind;
+  /** The animal (Instinct.animal), when it has reactions of its own; else the kind's are used. */
+  animal?: string;
   /** 0 is the first poke in a while, 3 means it has had enough (or, for a dog, is worn out). */
   level: number;
   trust: number;
@@ -125,10 +127,82 @@ const RACCOON: Record<number, Variant[]> = {
   ],
 };
 
-const TABLES: Record<Kind, Record<number, Variant[]>> = { cat: CAT, dog: DOG, fox: FOX, raccoon: RACCOON };
+/** A rabbit spooks easily and freezes, does a binky when it's happy, thumps and turns its back when it's cross. */
+const RABBIT: Record<number, Variant[]> = {
+  0: [
+    { name: "freeze", fit: () => 2.5, make: () => r("freeze", "curious", "none", [d("startled", 0.4, "cursor"), d("stare", 1.6, "cursor"), d("sniff", 1.4, "cursor")]) },
+    { name: "binky", fit: (i) => (i.energy > 0.4 ? 2 : 0.5), make: () => r("binky", "playful", "play", [d("surprise", 0.3, "cursor"), leap("ahead", 40, 50, "bounce"), d("happy", 1.4)], { thought: "binky. you didn't see that." }) },
+    { name: "nose bump", fit: (i) => (i.trust >= 45 ? 3 : 0), make: () => r("nose bump", "content", "pet", [d("sniff", 1, "cursor"), d("headbutt", 2.2, "cursor"), d("loaf", 2)]) },
+    { name: "bolt", fit: () => 1.5, make: () => r("bolt", "curious", "none", [d("startled", 0.4, "cursor"), go("away", 160, "run"), d("shy", 1.6, "cursor")]) },
+  ],
+  1: [
+    { name: "thump", fit: () => 3, make: () => r("thump", "grumpy", "annoy", [d("annoyed", 1, "cursor"), d("angry", 0.8, "cursor"), d("turn_away", 4, "away")], { sulkSec: 40, thought: "thump. that means no." }) },
+    { name: "hop off", fit: () => 2, make: () => r("hop off", "grumpy", "annoy", [d("startled", 0.4, "cursor"), go("away", 180, "run"), d("loaf", 3)], { sulkSec: 30 }) },
+    { name: "dig it off", fit: () => 1.5, make: () => r("dig it off", "smug", "annoy", [d("annoyed", 0.8, "cursor"), d("dig", 2), d("groom", 2.4)], { sulkSec: 20 }) },
+  ],
+  2: [
+    { name: "grunt", fit: () => 3, make: () => r("grunt", "sulky", "annoy", [d("puffed", 0.5, "cursor"), d("hiss", 1, "cursor"), leap("cursor", 40, 30), go("away", 200, "run"), d("sulk", 5)], { sulkSec: 90 }) },
+    { name: "turn tail", fit: () => 2, make: () => r("turn tail", "sulky", "annoy", [d("annoyed", 1, "cursor"), d("turn_away", 6, "away")], { sulkSec: 80 }) },
+  ],
+  3: [
+    { name: "hide", fit: () => 3, make: () => r("hide", "sulky", "annoy", [d("startled", 0.4, "cursor"), go("away", 380, "run"), d("loaf", 6, "away")], { sulkSec: 150, thought: "i'm not here." }) },
+    { name: "stomp off", fit: () => 2, make: () => r("stomp off", "sulky", "annoy", [d("angry", 1.2, "cursor"), go("away", 300, "run"), d("turn_away", 8, "away")], { sulkSec: 150 }) },
+  ],
+};
+
+/** A squirrel chatters and scolds, zips off and back, begs, and buries its annoyance. */
+const SQUIRREL: Record<number, Variant[]> = {
+  0: [
+    { name: "chatter", fit: () => 2.5, make: () => r("chatter", "curious", "none", [d("curious", 0.8, "cursor"), d("chatter", 2, "cursor"), d("look", 1)]) },
+    { name: "zip", fit: (i) => (i.energy > 0.4 ? 2.5 : 0.6), make: () => r("zip", "playful", "play", [d("startled", 0.3, "cursor"), go("away", 200, "run"), go("cursor", 160, "run"), d("proud", 1.2)]) },
+    { name: "beg", fit: () => 1.8, make: () => r("beg", "curious", "play", [d("sniff", 0.8, "cursor"), d("beg", 2.4, "cursor"), d("gift", 1.6)]) },
+    { name: "pounce", fit: (i) => (i.energy > 0.5 ? 1.5 : 0), make: () => r("pounce", "playful", "play", [d("pounce", 1, "cursor"), leap("cursor", 70, 50), d("swat", 0.6, "cursor"), d("chatter", 1.2)]) },
+  ],
+  1: [
+    { name: "scold", fit: () => 3, make: () => r("scold", "grumpy", "annoy", [d("annoyed", 0.8, "cursor"), d("chatter", 1.6, "cursor"), d("puffed", 0.5, "cursor"), d("turn_away", 3, "away")], { sulkSec: 40, thought: "chk chk chk. i'm telling you off." }) },
+    { name: "tail flick", fit: () => 2, make: () => r("tail flick", "grumpy", "annoy", [d("chatter", 1.2, "cursor"), leap("away", 60, 50, "bounce"), d("chatter", 1.2, "cursor")], { sulkSec: 30 }) },
+    { name: "bury it", fit: () => 1.5, make: () => r("bury it", "smug", "annoy", [d("annoyed", 0.8, "cursor"), d("dig", 2.2), d("proud", 1.2)], { sulkSec: 20 }) },
+  ],
+  2: [
+    { name: "scold hard", fit: () => 3, make: () => r("scold hard", "sulky", "annoy", [d("puffed", 0.5, "cursor"), d("hiss", 1, "cursor"), d("chatter", 1.4, "cursor"), go("away", 220, "run")], { sulkSec: 80 }) },
+  ],
+  3: [
+    { name: "storm off", fit: () => 3, make: () => r("storm off", "sulky", "annoy", [d("angry", 1, "cursor"), d("chatter", 1.2, "cursor"), go("away", 420, "run"), d("turn_away", 6, "away")], { sulkSec: 150, thought: "chk. chk. CHK." }) },
+    { name: "zoomies", fit: () => 1.5, make: () => r("zoomies", "playful", "play", [d("startled", 0.4), go("away", 260, "run"), go("cursor", 300, "run"), go("away", 300, "run"), d("dazed", 1.2)]) },
+  ],
+};
+
+/** A chihuahua yaps at everything, is brave from a safe distance, and still loves you. */
+const CHIHUAHUA: Record<number, Variant[]> = {
+  0: [
+    { name: "yap", fit: () => 2.5, make: () => r("yap", "playful", "play", [d("surprise", 0.3, "cursor"), d("bark", 1.6, "cursor"), d("happy", 1.6)]) },
+    { name: "spooked yap", fit: () => 2, make: () => r("spooked yap", "curious", "none", [d("startled", 0.5, "cursor"), leap("away", 40, 30), d("bark", 1.4, "cursor"), d("shy", 1.2, "cursor")]) },
+    { name: "sit pretty", fit: () => 2, make: () => r("sit pretty", "content", "pet", [d("curious", 0.6, "cursor"), d("beg", 2.4, "cursor"), d("love", 1.4, "cursor")]) },
+    { name: "play bow", fit: () => 1.5, make: () => r("play bow", "playful", "play", [d("play_bow", 1.2, "cursor"), d("bark", 1, "cursor"), leap("ahead", 40, 40, "bounce"), d("happy", 1.2)]) },
+  ],
+  1: [
+    { name: "yap yap", fit: () => 3, make: () => r("yap yap", "playful", "play", [d("bark", 1, "cursor"), d("howl", 2), d("bark", 0.8, "cursor")]) },
+    { name: "zoomies", fit: () => 2, make: () => r("zoomies", "playful", "play", [d("bark", 0.6, "cursor"), go("away", 200, "run"), go("cursor", 260, "run"), d("giggle", 1.4)]) },
+    { name: "growl", fit: () => 1.5, make: () => r("growl", "grumpy", "annoy", [d("annoyed", 0.8, "cursor"), d("hiss", 0.9, "cursor"), d("bark", 1, "cursor")], { sulkSec: 20 }) },
+  ],
+  2: [
+    { name: "brave bark", fit: () => 3, make: () => r("brave bark", "grumpy", "annoy", [d("puffed", 0.5, "cursor"), d("hiss", 1, "cursor"), d("bark", 1.2, "cursor"), go("away", 120, "run"), d("shy", 1.6)], { sulkSec: 40, thought: "i was being brave." }) },
+    { name: "belly", fit: () => 2, make: () => r("belly", "content", "pet", [d("play_bow", 0.8, "cursor"), d("belly", 3), d("love", 1.4)]) },
+  ],
+  3: [
+    { name: "tantrum", fit: () => 3, make: () => r("tantrum", "sulky", "annoy", [d("angry", 1, "cursor"), d("bark", 1.2, "cursor"), d("howl", 2), d("sulk", 4)], { sulkSec: 90 }) },
+    { name: "worn out", fit: () => 2, make: () => r("worn out", "sleepy", "play", [d("sprawl", 4), d("yawn", 1.4)], { thought: "i yapped at everything. i'm done." }) },
+  ],
+};
+
+/** Reactions per kind, and per animal for the ones that have their own (Instinct.animal). */
+const TABLES: Record<string, Record<number, Variant[]>> = { cat: CAT, dog: DOG, fox: FOX, raccoon: RACCOON, rabbit: RABBIT, squirrel: SQUIRREL, chihuahua: CHIHUAHUA };
 
 /** Woken by a click: every animal is a bit put out, but a dog is soon happy about it. */
 function wokenUp(i: PokeInput): Reaction {
+  if (i.animal === "chihuahua") return r("woken yappy", "playful", "play", [d("startled", 0.4, "cursor"), d("bark", 1.2, "cursor"), d("happy", 1.2)]);
+  if (i.kind === "rabbit") return r("woken spooked", "curious", "none", [d("startled", 0.5, "cursor"), d("stare", 1.4, "cursor"), d("loaf", 2)]);
+  if (i.kind === "squirrel") return r("woken chatty", "grumpy", "annoy", [d("surprise", 0.4, "cursor"), d("chatter", 1.4, "cursor"), d("stretch", 1.4)], { sulkSec: 10 });
   if (i.kind === "dog") return r("woken happy", "playful", "play", [d("surprise", 0.5, "cursor"), d("stretch", 1.6), d("bark", 1), d("happy", 1.8)]);
   if (i.kind === "fox") return r("woken curious", "curious", "none", [d("surprise", 0.5, "cursor"), d("yawn", 1.6), d("curious", 1.2, "cursor")]);
   if (i.kind === "raccoon") return r("woken grumpy", "grumpy", "annoy", [d("annoyed", 1.2, "cursor"), d("chatter", 1.4, "cursor"), d("yawn", 1.4)], { sulkSec: 15 });
@@ -138,7 +212,7 @@ function wokenUp(i: PokeInput): Reaction {
 /** Picks what the animal does when it is poked (clicked), by how many pokes it has had and how it feels. */
 export function pokeReaction(i: PokeInput): Reaction {
   if (i.asleep && i.level < 2) return wokenUp(i);
-  const table = TABLES[i.kind];
+  const table = TABLES[i.animal ?? ""] ?? TABLES[i.kind] ?? CAT;
   const level = Math.max(0, Math.min(3, i.level));
   const options = (table[level] ?? table[0] ?? []).map((v) => ({ v, w: v.fit(i) * (v.name === i.last ? 0.15 : 1) })).filter((o) => o.w > 0);
   const pool = options.length ? options : (table[0] ?? []).map((v) => ({ v, w: 1 }));

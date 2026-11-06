@@ -3,6 +3,7 @@ import type { Habits } from "./habits";
 import type { Personality } from "./personality";
 import { instinctFor } from "./species";
 import type { Rng } from "./rng";
+import type { TrickBook } from "./tricks";
 import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, WindowInfo, WorldSnapshot } from "./types";
 
 export interface RulesContext {
@@ -19,13 +20,15 @@ export interface RulesContext {
   rng: Rng;
   /** What the cat has learned. Nudges scores a little. */
   habits?: Habits;
+  /** Its own tricks (tricks.ts). */
+  tricks?: TrickBook;
   /** The chaos level. A chill cat naps more, a gremlin hardly stops. */
   chaos?: ChaosLevel;
   /** Windows with a thing standing on top (mess.ts), which can be knocked off. */
   propWindows?: string[];
 }
 
-const ACTIVE: IntentName[] = ["knock_off", "claw", "hunt", "wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
+const ACTIVE: IntentName[] = ["play_cursor", "follow", "knock_off", "claw", "hunt", "wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
 /** How much each chaos level changes napping and active behaviors. */
 // A gremlin used to cut every action to 40% of its length, which read as "very fast" on the real
 // screen (Abozar, 6 Nov 2026). It does more things, not each thing in a hurry.
@@ -91,8 +94,10 @@ export function candidates(ctx: RulesContext): Option[] {
   if (w.appSwitchedSecAgo < 30 && focused) add("follow", a * 0.9 * (0.5 + p.neediness) * aloof * activeFit, [focused.id]);
   if (focused) add("cross", a * 0.8 * activeFit, [focused.id]);
   if (catDist < 300) add("headbutt", a * 0.8 * aloof, ["cursor"]);
-  // Trailing you around is what dogs do all day, and cats do when they feel like it.
+  // Trailing your cursor around (and telling you about it) is what dogs do all day, and cats do when
+  // they feel like it. Playing with it is for when it moves near them.
   if (catDist > 200) add("follow", 0.25 + 0.5 * a, ["cursor"]);
+  if (catDist < 450 && w.cursorSpeed > 60 && e > 0.4) add("play_cursor", (n.mood === "playful" ? 0.75 : 0.3) * e * (0.6 + 0.4 * p.curiosity), ["cursor"]);
   add("meow", a * 0.6 * (0.5 + p.neediness) * aloof, ["here"]);
   const sitTargets: string[] = [];
   const important = ctx.smartTargeting ? importantWindow(w) : undefined;
@@ -149,6 +154,15 @@ export function candidates(ctx: RulesContext): Option[] {
   add("tour", 0.1 + 0.4 * c * e, wins);
   add("cozy", 1.1 * sleepy * (0.4 + p.laziness), ["here"]);
 
+  // Its own tricks: every one is scored like an action (what you think of it, how fresh, how new),
+  // then only the best of each kind stays on the menu. No rude tricks at chill, nothing lively when tired.
+  for (const t of ctx.tricks?.all ?? []) {
+    if (t.kind === "mischief" && (ctx.chaos ?? "normal") === "chill") continue;
+    if ((t.kind === "play" || t.kind === "mischief") && e < 0.45) continue;
+    if (t.kind === "rest" && e > 0.85) continue;
+    out.push({ intent: "trick", targets: ["here"], score: 0.14, trick: t.id, kind: t.kind });
+  }
+
   // A sulking cat avoids you. A tired one doesn't bother.
   for (const o of out) {
     const cat = BY_INTENT.get(o.intent)?.category;
@@ -160,14 +174,18 @@ export function candidates(ctx: RulesContext): Option[] {
     const lately = ctx.recent.slice(-10);
     if (lately[lately.length - 1] === o.intent) o.score *= 0.3;
     for (const r of lately) if (r === o.intent) o.score *= 0.75;
-    if (ctx.habits) o.score *= ctx.habits.multiplier(o.intent);
+    // What it learned you like, what it is bored of, and what it hasn't tried much (habits.ts).
+    if (ctx.habits) o.score *= ctx.habits.multiplier(o.trick ? `trick:${o.trick}` : o.intent, ctx.world.nowMs, ctx.rng);
     o.score *= instinctFor(ctx.personality.species).weights[o.intent] ?? 1;
     const pace = PACE[ctx.chaos ?? "normal"];
     if (o.intent === "nap" || o.intent === "nap_warm" || o.intent === "cozy") o.score *= pace.nap;
     else if (ACTIVE.includes(o.intent)) o.score *= pace.active;
     o.score *= ctx.rng.range(0.8, 1.2);
   }
-  return out.sort((x, y) => y.score - x.score);
+  // Of its tricks, only the best of each kind right now is on the menu.
+  const best = new Map<string, Option>();
+  for (const o of out) if (o.trick && o.kind && (best.get(o.kind)?.score ?? -1) < o.score) best.set(o.kind, o);
+  return out.filter((o) => !o.trick || (o.kind !== undefined && best.get(o.kind) === o)).sort((x, y) => y.score - x.score);
 }
 
 export function defaultStay(intent: IntentName, chaos: ChaosLevel, rng: Rng): number {
@@ -215,6 +233,9 @@ const MOOD_THOUGHTS: Partial<Record<IntentName, string[]>> = {
   knock_off: ["it was too close to the edge. now it isn't.", "gravity check."],
   claw: ["this window needed texture."],
   hunt: ["a fly. this is my moment."],
+  play_cursor: ["the little arrow is mine.", "it moved. it has to be stopped."],
+  follow: ["where are we going. i'm coming too."],
+  knock_toy: ["the ball started it."],
 };
 
 /** Turns one option into a ready intent (used by the rules brain and the fake LLM). */
@@ -227,6 +248,7 @@ export function intentFromOption(o: Option, ctx: RulesContext, chaos: ChaosLevel
     stay_sec: defaultStay(o.intent, chaos, ctx.rng),
     mood,
   };
+  if (o.trick) intent.trick = o.trick;
   const lines = ctx.personality.voice?.[o.intent] ?? MOOD_THOUGHTS[o.intent];
   if (withThought && lines && ctx.rng.next() < 0.15) intent.thought = ctx.rng.pick(lines);
   return intent;

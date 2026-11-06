@@ -1,13 +1,19 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHARACTERS } from "../src/core/characters";
 import { GAIT_STRIDE } from "../src/playground/gaits";
-import { groomShot, LICK_HZ, lengthOf, planFor, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
+import { gazeTarget, groomShot, LICK_HZ, lengthOf, pawShot, planFor, poseShot, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
 import { TURN_SEC, type Anim } from "../src/core/executor";
 import { SCRATCH_SEC } from "../src/core/scenes";
 
 const DIR = join(__dirname, "..", "src", "playground", "public", "sprites");
+const ANIMS: Anim[] = [
+  "idle_sit", "loaf", "sleep", "walk", "run", "jump", "fall", "land", "perch", "groom", "stretch", "look", "meow", "purr", "swat", "pounce", "headbutt", "sulk", "dangle",
+  "turn_away", "stare", "blink", "keyboard", "hairball", "box", "push_toy", "gift", "peek", "chase_tail", "knead", "chatter", "sneeze", "happy", "angry", "hiss", "puffed",
+  "annoyed", "flustered", "play_bow", "leap", "belly", "bark", "shy", "beg", "dig", "sniff", "tumble", "sprawl", "howl", "giggle", "startled", "proud", "curious", "love",
+  "yawn", "surprise", "dazed", "scratch", "bounce", "hang", "watch", "watch_stand",
+];
 
 describe("sprite art", () => {
   it("has every frame for every character (a missing one would fall back to the old art)", () => {
@@ -17,13 +23,30 @@ describe("sprite art", () => {
   });
 
   it("every animation picks a frame that exists", () => {
-    const anims: Anim[] = ["idle_sit", "loaf", "sleep", "walk", "run", "jump", "fall", "land", "perch", "groom", "stretch", "look", "meow", "purr", "swat", "pounce", "headbutt", "sulk", "dangle", "turn_away", "stare", "blink", "keyboard", "hairball", "box", "push_toy", "gift", "peek", "chase_tail", "knead", "chatter", "sneeze", "happy", "angry", "hiss", "puffed", "annoyed", "flustered", "play_bow", "leap", "belly", "bark", "shy", "beg", "dig", "sniff", "tumble", "sprawl", "howl", "giggle", "startled", "proud", "curious", "love", "yawn", "surprise", "dazed", "scratch", "bounce"];
-    for (const a of anims)
-      for (let t = 0; t < 200; t += 0.37) {
-        const p = planFor(a, t, 0, (t / 3) % 1);
-        expect(SPRITE_KEYS, a).toContain(p.key);
-        if (p.next) expect(SPRITE_KEYS, a).toContain(p.next);
-      }
+    const keys = new Set<string>(SPRITE_KEYS);
+    const missing = new Set<string>();
+    for (const a of ANIMS)
+      for (const id of ["", "clover"])
+        for (let t = 0; t < 200; t += 0.37) {
+          const p = planFor(a, t, (t % 2) * 200 - 100, (t / 3) % 1, false, id);
+          if (!keys.has(p.key)) missing.add(`${a}: ${p.key}`);
+          if (p.next && !keys.has(p.next)) missing.add(`${a}: ${p.next}`);
+        }
+    expect([...missing]).toEqual([]);
+  }, 30_000);
+
+  it("the programs of the poses (a howl, a bark, a hop for joy...) only use frames that exist", () => {
+    const keys = new Set<string>(SPRITE_KEYS);
+    const bad = new Set<string>();
+    for (const a of ANIMS)
+      for (const c of CHARACTERS)
+        for (let e = 0; e < 12; e += 0.03) {
+          const s = poseShot(a, c.id, e);
+          if (!s) continue;
+          for (const k of [s.key, s.next]) if (k && !keys.has(k)) bad.add(`${a}: ${k}`);
+        }
+    for (let e = 0; e < 4; e += 0.02) for (const k of ["push", "swat"] as const) if (!keys.has(pawShot(k, e).key)) bad.add(`${k}: ${pawShot(k, e).key}`);
+    expect([...bad]).toEqual([]);
   });
 
   it("the programs (washing, the ear scratch, turning round) only use frames that exist", () => {
@@ -34,6 +57,31 @@ describe("sprite art", () => {
     for (const c of CHARACTERS) for (let e = 0; e < 120; e += 0.05) seen(groomShot(c.id, e, 0.37));
     for (let e = 0; e < SCRATCH_SEC + 1; e += 0.02) seen(scratchShot(e, 0.61));
     for (let u = 0; u <= 1; u += 0.01) (seen(turnShot("stand", u)), seen(turnShot("sit", u)));
+  });
+
+  it("every frame a character's programs play is on disk for that character (nothing ever draws as a gap)", () => {
+    const bad = new Set<string>();
+    for (const c of CHARACTERS) {
+      const files = new Set(readdirSync(join(DIR, c.id)).map((f) => f.replace(/\.webp$/, "")));
+      const need = (k: string | null | undefined, what: string): void => {
+        if (k && !files.has(k)) bad.add(`${c.id} ${what}: ${k}`);
+      };
+      for (const a of ANIMS) {
+        for (let t = 0; t < 120; t += 0.29) {
+          const p = planFor(a, t, (t % 2) * 200 - 100, (t / 3) % 1, false, c.id);
+          (need(p.key, a), need(p.next, a));
+        }
+        for (let e = 0; e < 12; e += 0.05) {
+          const s = poseShot(a, c.id, e);
+          if (s) (need(s.key, a), need(s.next, a));
+        }
+      }
+      for (let e = 0; e < 120; e += 0.1) (need(groomShot(c.id, e, 0.37).key, "groom"), need(groomShot(c.id, e, 0.37).next, "groom"));
+      for (let e = 0; e < SCRATCH_SEC + 1; e += 0.05) (need(scratchShot(e, 0.61).key, "scratch"), need(scratchShot(e, 0.61).next, "scratch"));
+      for (let u = 0; u <= 1; u += 0.02) for (const b of ["stand", "sit"] as const) need(turnShot(b, u).key, "turn");
+      for (const k of ["push", "swat"] as const) for (let e = 0; e < 4; e += 0.05) (need(pawShot(k, e).key, k), need(pawShot(k, e).next, k));
+    }
+    expect([...bad]).toEqual([]);
   });
 
   it("walking, trotting and running are rigged gaits with a full set of frames", () => {
@@ -58,6 +106,24 @@ describe("sprite art", () => {
       expect(s!.trot).toBeGreaterThan(s!.walk);
       expect(s!.run).toBeGreaterThan(s!.trot);
     }
+  });
+
+  it("the animations that used to be one held drawing now move through several", () => {
+    const seen = (a: Anim): number => new Set(Array.from({ length: 400 }, (_, i) => poseShot(a, "tabby", i * 0.03)?.key)).size;
+    for (const a of ["howl", "bark", "giggle", "chatter", "angry", "hiss", "puffed", "annoyed", "flustered", "shy", "beg", "headbutt", "proud", "curious", "look", "belly", "play_bow", "happy", "sniff", "dig", "pounce"] as Anim[])
+      expect(seen(a), a).toBeGreaterThanOrEqual(4);
+    // The resting poses play idle moves by the clock: a loaf blinks and looks round, a perch swings its tail.
+    const clock = (a: Anim): number => new Set(Array.from({ length: 3000 }, (_, i) => planFor(a, i * 0.1).key)).size;
+    for (const a of ["loaf", "perch", "peek", "sprawl", "idle_sit"] as Anim[]) expect(clock(a), a).toBeGreaterThanOrEqual(5);
+  });
+
+  it("watching follows the cursor with the head: down, ahead, up, overhead, and over the shoulder when it is behind", () => {
+    expect(gazeTarget(100, -60).u).toBeLessThan(0.6);
+    expect(Math.abs(gazeTarget(100, 0).u - 1)).toBeLessThan(0.01);
+    expect(gazeTarget(100, 60).u).toBeGreaterThan(1.8);
+    expect(gazeTarget(5, 200).u).toBeGreaterThan(3.5);
+    expect(gazeTarget(-200, 10).you).toBe(true);
+    expect(gazeTarget(100, 10).you).toBe(false);
   });
 
   it("walking and spinning are real cycles, not one frame", () => {
@@ -127,12 +193,13 @@ describe("washing", () => {
     }
   });
 
-  it("the puppy licks its paw but never wipes its face with it", () => {
-    for (const seed of seeds) {
-      const seen = new Set(regions("biscuit", seed, 60).map((x) => x.r));
-      for (const r of [3, 4, 5]) expect(seen.has(r)).toBe(false);
-      expect(seen.has(2) && seen.has(8)).toBe(true);
-    }
+  it("the puppies lick a paw but never wipe their face with it", () => {
+    for (const id of ["biscuit", "chili"])
+      for (const seed of seeds) {
+        const seen = new Set(regions(id, seed, 60).map((x) => x.r));
+        for (const r of [3, 4, 5]) expect(seen.has(r)).toBe(false);
+        expect(seen.has(2) && seen.has(8)).toBe(true);
+      }
   });
 });
 

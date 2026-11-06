@@ -15,7 +15,9 @@ import { drawMessBehind, drawMessFront, preloadProps } from "./mess-draw";
 import { drawThought, THOUGHT_SEC, type ShownThought } from "./thought";
 
 interface NativeWin { id: string; app: string; x: number; y: number; w: number; h: number; z: number }
-interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean }
+interface NativeSpace { id: string; index: number; spans: boolean }
+interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; space: NativeSpace | null }
+interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null }
 interface Layout { index: number; displays: Rect[]; dock_top: number }
 interface Pointer { x: number; y: number; down: boolean }
 interface Config { demo: boolean; debug: boolean; brain: string; ollama_url: string; ollama_model: string }
@@ -102,7 +104,7 @@ async function main(): Promise<void> {
     ctx.save();
     ctx.translate(-me.x, -me.y);
     drawMessBehind(ctx, st.mess, st.windows, st.scale);
-    drawCat(ctx, st.body, { scale: st.scale, t: st.t, character: st.character });
+    drawCat(ctx, st.body, { scale: st.scale, t: st.t, character: st.character, cursor: st.cursor });
     drawMessFront(ctx, st.mess, st.scale);
     drawThought(ctx, st.thought, st.body.x, st.body.y - st.hit.h * 0.95, me, dark());
     // The red box is a debug aid. It only shows with FELINQUENT_DEBUG=1.
@@ -115,7 +117,8 @@ async function main(): Promise<void> {
   }
 
   function applyHit(st: CatState): void {
-    void setThrough(!(inside(st.hit, st.cursor, 8) || st.held));
+    // A cat that isn't there (it left, or it's on another desktop) catches no clicks.
+    void setThrough(st.body.hidden || !(inside(st.hit, st.cursor, 8) || st.held));
   }
 
   // ---- A window on another display: draw what the master says. -------------------------
@@ -137,15 +140,15 @@ async function main(): Promise<void> {
   // ---- The main display runs the cat. ----------------------------------------------------
   let world: WorldSnapshot = makeWorld({ windows: [], screen: main, displays: others, dockTop: layout.dock_top });
   let lastSensorsAt = -1000;
+  let sensorsBusy = false;
   let windowCount = 0;
 
-  async function pollSensors(): Promise<void> {
-    const s = await invoke<NativeSensors>("read_sensors");
-    // Keep windows that are really on a display. Toolbar slivers are not places to sit.
+  // Keep windows that are really on a display. Toolbar slivers are not places to sit.
+  function toWindows(list: NativeWin[]): WindowInfo[] {
     const all = layout.displays;
     const onDisplay = (w: NativeWin): boolean =>
       w.h >= 100 && all.some((d) => w.x < d.x + d.w && w.x + w.w > d.x && w.y < d.y + d.h && w.y + w.h > d.y && w.y >= d.y - 1);
-    const windows: WindowInfo[] = s.windows.filter(onDisplay).map((w) => ({
+    return list.filter(onDisplay).map((w) => ({
       id: w.id,
       app: w.app,
       bounds: { x: w.x, y: w.y, w: w.w, h: w.h },
@@ -153,18 +156,39 @@ async function main(): Promise<void> {
       cpu: "low",
       z: w.z,
     }));
+  }
+  const spaceOf = (s: NativeSpace | null): WorldSnapshot["space"] => (s ? { id: s.id, index: s.index, spans: s.spans } : undefined);
+
+  /** Everything the cat senses, four times a second. Not awaited by the frame, so a slow read never stalls the drawing. */
+  async function pollSensors(): Promise<void> {
+    if (sensorsBusy) return;
+    sensorsBusy = true;
+    try {
+      const s = await invoke<NativeSensors>("read_sensors");
+      const windows = toWindows(s.windows);
+      windowCount = windows.length;
+      world = {
+        ...world,
+        hour: new Date().getHours(),
+        windows,
+        frontApp: windows[0]?.app ?? "",
+        activity: activityOf(s),
+        idleSec: s.idle_sec,
+        inMeeting: s.mic_in_use || s.camera_in_use,
+        space: spaceOf(s.space),
+      };
+    } finally {
+      lastSensorsAt = performance.now();
+      sensorsBusy = false;
+    }
+  }
+
+  /** Only the windows (and the desktop), every frame while one is being dragged, so what stands on it rides along in real time. */
+  async function pollWindows(): Promise<void> {
+    const s = await invoke<NativeWindows>("read_windows");
+    const windows = toWindows(s.windows);
     windowCount = windows.length;
-    world = {
-      ...world,
-      nowMs: Date.now(),
-      hour: new Date().getHours(),
-      windows,
-      frontApp: windows[0]?.app ?? "",
-      activity: activityOf(s),
-      idleSec: s.idle_sec,
-      inMeeting: s.mic_in_use || s.camera_in_use,
-    };
-    lastSensorsAt = performance.now();
+    world = { ...world, windows, frontApp: windows[0]?.app ?? "", space: spaceOf(s.space) };
   }
 
   // What the user chose and what the cat remembers survive a restart (local files only).
@@ -318,6 +342,7 @@ async function main(): Promise<void> {
   let worstGap = 0;
   let nextDue = performance.now();
   let cursor = { x: -9999, y: -9999 };
+  let cursorSpeed = 0;
   let down = false;
   let lastDemo = 0;
 
@@ -346,11 +371,16 @@ async function main(): Promise<void> {
     frames++;
     lastT = now;
     try {
-      if (now - lastSensorsAt > 250) await pollSensors();
+      // A window being dragged (the mouse is down, or something moved a moment ago): read the windows
+      // every frame. Otherwise four times a second, with the rest of the sensors.
+      if (now - lastSensorsAt > 250) void pollSensors();
+      else if (down || cat.motion.movedWithin(1)) await pollWindows();
       const p = await invoke<Pointer>("read_pointer");
+      // How fast the cursor moves (px/s, smoothed): a moving cursor is something to watch or play with.
+      if (cursor.x > -9000 && dt > 0) cursorSpeed += (Math.hypot(p.x - cursor.x, p.y - cursor.y) / dt - cursorSpeed) * Math.min(1, dt / 0.15);
       cursor = { x: p.x, y: p.y };
       down = p.down;
-      world = { ...world, cursor };
+      world = { ...world, nowMs: Date.now(), cursor, cursorSpeed };
       if (!placed) {
         cat.place(world, 200);
         placed = true;
@@ -372,7 +402,8 @@ async function main(): Promise<void> {
 
     if (placed) {
       const st: CatState = {
-        body: { ...cat.executor.body },
+        // On another desktop: not drawn here.
+        body: { ...cat.executor.body, hidden: cat.executor.body.hidden || cat.away },
         scale: cat.executor.size.h / 90,
         hit: cat.executor.hitRect(),
         block: cat.blockingRect,
@@ -382,7 +413,7 @@ async function main(): Promise<void> {
         character: character.id,
         mess: cat.mess.snapshot(),
         windows: world.windows.map((w) => ({ id: w.id, app: "", bounds: w.bounds, focused: false, cpu: "low", z: w.z })),
-        thought: thought && (now - thought.since) / 1000 < THOUGHT_SEC && !cat.executor.body.hidden ? { text: thought.text, age: (now - thought.since) / 1000 } : null,
+        thought: thought && (now - thought.since) / 1000 < THOUGHT_SEC && !cat.executor.body.hidden && !cat.away ? { text: thought.text, age: (now - thought.since) / 1000 } : null,
       };
       render(st);
       applyHit(st);
@@ -393,7 +424,7 @@ async function main(): Promise<void> {
         const cur = cat.mind.current;
         const b = st.body;
         say(
-          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms`,
+          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} desktop=${world.space ? `${world.space.id}#${world.space.index}` : "-"}${cat.away ? " (cat on its own desktop)" : ""} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms`,
         );
         frames = 0;
         worstGap = 0;

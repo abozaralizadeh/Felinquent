@@ -42,6 +42,7 @@ export function poseFor(anim: Anim): Pose {
     case "fall": return { ...base, body: { x: 0, y: -50, rx: 36, ry: 22, rot: 0.2 }, head: { x: 30, y: -48, r: 20 }, legs: "air", eyes: "wide", mouth: "open", tail: "up" };
     case "land": return { ...base, body: { x: 0, y: -24, rx: 32, ry: 24, rot: 0 }, head: { x: 20, y: -44, r: 21 }, legs: "crouch" };
     case "perch": return { ...base, legs: "perch", eyes: "half" };
+    case "watch_stand": return { ...base, ...LOW, legs: "walk", tail: "up", eyes: "wide" };
     case "groom": return { ...base, paw: true, eyes: "closed" };
     case "stretch": return { ...base, body: { x: 0, y: -34, rx: 42, ry: 18, rot: 0.3 }, head: { x: 46, y: -22, r: 19 }, legs: "crouch", eyes: "closed", mouth: "open" };
     case "look": return { ...base, head: { x: 14, y: -68, r: 22 } };
@@ -195,6 +196,20 @@ function tail(ctx: Ctx, ch: Character, p: Pose, t: number, wag: boolean): void {
     x1 = x0 - 20;
     y1 = y0 - 26;
   }
+  if (ch.species === "rabbit") {
+    // A cotton puff, no tail to speak of.
+    ell(ctx, x0 - 2, y0 - 4 + Math.sin(t * 3) * 1, 11, 10, 0, pal.belly);
+    return;
+  }
+  if (ch.species === "squirrel") {
+    // A big bushy tail that curls up over the back, with a flick at the tip.
+    const flick = Math.sin(t * (p.spin ? 12 : 3)) * 6;
+    const up = p.tail === "low" || p.tail === "wrap" ? 0.5 : 1;
+    c1x = x0 - 34;
+    c1y = y0 - 24 * up;
+    x1 = x0 - 4 + flick;
+    y1 = y0 - 70 * up;
+  }
   if (ch.species === "dog") {
     // A curved tail that sweeps up and back and wags by swinging around its base.
     // (A fat straight bar that slid sideways looked like a blinking text cursor.)
@@ -205,7 +220,7 @@ function tail(ctx: Ctx, ch: Character, p: Pose, t: number, wag: boolean): void {
     c1x = x0 + Math.cos(a + 0.55) * len * 0.6;
     c1y = y0 + Math.sin(a + 0.55) * len * 0.6;
   }
-  const fat = ch.species === "fox" || ch.species === "raccoon" ? 11 : ch.species === "dog" ? 6 : 5.5;
+  const fat = ch.species === "squirrel" ? 15 : ch.species === "fox" || ch.species === "raccoon" ? 11 : ch.species === "dog" ? 6 : 5.5;
   const path = (): void => {
     ctx.beginPath();
     ctx.moveTo(x0, y0);
@@ -277,6 +292,25 @@ function ears(ctx: Ctx, ch: Character, p: Pose): void {
     } else if (ch.species === "raccoon") {
       ell(ctx, bx, y - r * (flat ? 0.75 : 0.95), r * 0.34, r * 0.34, 0, pal.mark);
       ell(ctx, bx, y - r * (flat ? 0.72 : 0.92), r * 0.17, r * 0.17, 0, pal.ear, false);
+    } else if (ch.species === "rabbit") {
+      // Long ears that stand up, or lie back along the neck when it's cross.
+      ctx.save();
+      ctx.translate(x + side * r * 0.3, y - r * 0.6);
+      ctx.rotate(flat ? -1.3 : side * 0.18 - 0.12);
+      ell(ctx, 0, -r * 0.85, r * 0.26, r * 0.9, 0, pal.base);
+      ell(ctx, 0, -r * 0.8, r * 0.13, r * 0.7, 0, pal.ear, false);
+      ctx.restore();
+    } else if (ch.species === "squirrel") {
+      // Small round ears with a tuft on top.
+      const ey = y - r * (flat ? 0.7 : 0.88);
+      ell(ctx, bx, ey, r * 0.24, r * 0.3, 0, pal.base);
+      ell(ctx, bx, ey + 1, r * 0.12, r * 0.16, 0, pal.ear, false);
+      if (!flat) tri(ctx, [[bx - r * 0.12, ey - r * 0.2], [bx + side * r * 0.08, ey - r * 0.62], [bx + r * 0.12, ey - r * 0.2]], pal.mark, false);
+    } else if (/chihuahua/.test(ch.personality.species ?? "")) {
+      // Huge upright ears, wider than the head.
+      const tip: [number, number] = [bx + side * r * (flat ? 1.2 : 0.75), y - r * (flat ? 0.9 : 1.55)];
+      tri(ctx, [[bx - side * r * 0.45, y - r * 0.55], tip, [bx + side * r * 0.45, y - r * 0.05]], pal.base);
+      tri(ctx, [[bx - side * r * 0.22, y - r * 0.5], [tip[0] - side * r * 0.08, tip[1] + r * 0.32], [bx + side * r * 0.25, y - r * 0.15]], pal.ear, false);
     } else {
       // Floppy dog ears that hang past the cheeks.
       const sag = flat ? 1.0 : 0.8;
@@ -375,7 +409,8 @@ function face(ctx: Ctx, ch: Character, p: Pose, t: number): void {
   if (ch.species === "cat") {
     tri(ctx, [[nx - 3.2, ny], [nx + 3.2, ny], [nx, ny + 3.6]], "#f08c9a", false);
   } else {
-    ell(ctx, nx, ny + 1, ch.species === "dog" ? 5.2 : 4, ch.species === "dog" ? 3.8 : 3, 0, "#3a2a2e", false);
+    if (ch.species === "rabbit") tri(ctx, [[nx - 3, ny], [nx + 3, ny], [nx, ny + 3]], "#f08c9a", false);
+    else ell(ctx, nx, ny + 1, ch.species === "dog" ? 5.2 : 4, ch.species === "dog" ? 3.8 : 3, 0, "#3a2a2e", false);
     ctx.fillStyle = "#fff";
     ctx.beginPath();
     ctx.arc(nx - 1.4, ny, 1, 0, Math.PI * 2);
@@ -429,7 +464,7 @@ function head(ctx: Ctx, ch: Character, p: Pose, t: number): void {
     }
     ctx.restore();
   }
-  if (ch.species === "dog") {
+  if (ch.species === "dog" && !/chihuahua/.test(ch.personality.species ?? "")) {
     // A soft patch around one eye.
     ctx.save();
     ctx.globalAlpha = 0.55;
@@ -515,7 +550,7 @@ export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): void {
 
   if (spr) {
     // The sprite gaits bob in their own frames, so the walking bob above is only for the drawn-in-code art.
-    const head = drawSprite(ctx, spr, body.facing, body.anim, body.x, body.y, scale, o.t, { sx, sy, bob: 0, vy: body.vy, phase: o.phase, slot: o.slot });
+    const head = drawSprite(ctx, spr, body.facing, body.anim, body.x, body.y, scale, o.t, { sx, sy, bob: 0, vy: body.vy, phase: o.phase, slot: o.slot, cursor: o.cursor });
     drawEffects(ctx, body, p.fx, head, scale, o.t);
     return;
   }

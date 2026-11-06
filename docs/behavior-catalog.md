@@ -45,7 +45,7 @@
 
 | ID | Behavior | What happens | Triggered by | Annoy | Brain | Perm | Phase |
 |---|---|---|---|---|---|---|---|
-| B-10 | Follow you | Walks over to the app you just switched to | App switch plus attention need | 1 | LLM | none | MVP |
+| B-10 | Follow you | Walks over to the app you just switched to. Or follows your cursor about and pesters you: trots after it, stops close by, meows, headbutts it, begs, watches it, for 12 s or more | App switch or attention need | 1 | LLM | none | MVP |
 | B-11 | Cross the window | Walks slowly across the active window, tail sweeping over the content | Attention need while you read or type | 1 | LLM | none | MVP |
 | B-12 | Sit on the active window | Sits or loafs on it. Clicks under its body are blocked | High attention need while you're focused | 2 | LLM | none | MVP |
 | B-13 | Sit on the important window | Picks the window that matters most (e.g. `Final_Thesis_v7.docx`, not Reddit) | High attention need | 2 | LLM | SR | v1 |
@@ -54,6 +54,7 @@
 | B-16 | Ignore when called | (The click is now a poke, RF-05. The ignore stays as a menu or dog-whistle-style call.) It looks at you, then turns away | A call while trust is low or it's aloof or grumpy | 0 | LLM | none | MVP |
 | B-17 | Keyboard walk | "Walks on the keyboard": fake gibberish (`jjjjjkkkk;;;`) appears near your text and fades in 3 s. **Nothing is actually typed** | Fast typing plus attention need | 2 | LLM | AX optional (caret position) | v1 |
 | B-18 | Sit in front of the video | Sits over the video you're watching | A video app or title plus attention need | 2 | LLM | SR | v1 |
+| B-48 | Play with the cursor | Treats your cursor as prey: watches it, crouches and wiggles, then pounces, leaps up at it or swipes, a few rounds, then washes as if nothing happened | Cursor moving close by, energy, playful | 1 | Rule | none | MVP |
 | B-19 | Breakfast demand | Meows at your first activity of the day until you give it a treat | First input in the morning | 1 | LLM | none | Later |
 
 ## Mischief (annoyance 1-3, limited by chaos level)
@@ -66,7 +67,7 @@
 | B-23 | Zoomies | Sprints around the screen for ~20 s. At gremlin it runs a chain of up to six legs across window tops, and whatever stands in its way goes flying | Around 3am, or high energy after a long nap | 1 | Rule | none | v1 |
 | B-24 | Block the Dock | Lies across the Dock | High attention need | 2 | LLM | none | v1 |
 | B-25 | Nudge a window | Pushes a window a little to the side (never off-screen) | Gremlin level only | 3 | LLM | AX | Later |
-| B-26 | Knock the toy off | Slowly pushes *its own* toy off a window edge while staring at you | Playful, mischievous | 1 | LLM | none | v1 |
+| B-26 | Its ball | Its own red ball rolls in from the nearer screen edge (or is already lying about). It watches it roll, sneaks up or runs after it, pounces and bats it along two to five times, then washes. The ball is a real thing in the mess (it rolls, bounces, falls off windows) and stays around, it doesn't fade like the other things | Playful | 1 | LLM | none | MVP |
 | B-43 | Knock things off | Sneaks up to a thing standing on a window (a mug, a glass, a plant, a vase, a duck...), looks at it, stares at you, taps it, stares again, then pushes it two to four times until it teeters and falls. Glass and pottery break into pieces of their own drawing, water and soil spill, then it peeks over the edge and looks proud. Things only appear at normal (one at a time, every 2 to 5 min) and gremlin (up to three, every 30 to 90 s); in chill they fade away | A thing on a window, energy, chaos | 1 | LLM | none | MVP |
 | B-44 | Claw a window | Sniffs, then scratches the title bar: claw marks stay on that window and strips of it flutter to the floor | Energy, chaos | 1 | Rule | none | MVP |
 | B-45 | Hunt a fly | A fly buzzes in. It watches, chatters, wiggles and pounces: caught (proud, washes) or missed (dazed, looks away, washes) | Curiosity and energy | 0 | Rule | none | MVP |
@@ -85,7 +86,34 @@ All the breakage is drawn on the cat's own overlay, on top of your windows. Noth
 | RF-04 | Laser | Fast cursor wiggle near the cat | Crouches, wiggles its butt, pounces | MVP |
 | RF-05 | Poke | Single click on the animal | A little scene, not one pose. It depends on the animal and on how many pokes it has had in the last 15 s (see RF-10). Replaces the old "call" click | MVP |
 | RF-10 | Reaction scene | Set off by RF-05 | A scripted list of beats (look, react, leave): ears and eyes first, then the reaction, then the exit. Level 0 is curious or playful, 1 is warning or all out play, 2 is hiss and flee (dog: roll over, tumble), 3 is rage and a long sulk (dog: worn out, puppy eyes; fox: plays dead). Never the same twice in a row. Poked while asleep it wakes in the mood of its kind. A cross reaction keeps it sulky for 20 s to 3 min | MVP |
+| RF-11 | Glance | Your cursor comes within about 260 px and moves | Sitting or loafing, it looks at the cursor and its head follows it, turning round if the cursor goes behind it. A needy animal does it nearly always, an aloof one about a third of the time | MVP |
+| RF-12 | Ride a moving window | You drag the window it stands on | It rides along in real time (the Mac app reads the windows every frame while one moves). Dragged fast it crouches and holds on, then gives you a cross look. Flung and stopped dead, or yanked down hard, it is thrown off: it flies, lands startled, glares at you and washes. Things standing on the window (mugs, plants, its ball, broken pieces) slide when jerked and fly off the same way, but let go much sooner than the animal does | MVP |
 | RF-06 | Treat | Menu → Give treat | Shake sound, and it comes running. A Royal personality may walk slowly on purpose | v1 |
+
+## Desktops
+
+The animal lives on one desktop (a Space on the Mac). Switch to another and it stays behind, going on with its life among that desktop's windows. Go back before it comes over and it's still there. Otherwise it comes over after a while: mostly 5 to 20 s, sometimes a minute or two (sooner for a needy one, later for an aloof one, not while it sleeps), walking in from the side its desktop is on. You swiped right, so its desktop is on the left, so it comes in from the left. Each desktop keeps its own mess. With "Displays have separate Spaces", a switch on another display isn't its business.
+
+## Its own tricks
+
+| ID | Behavior | What happens | Triggered by | Annoy | Brain | Perm | Phase |
+|---|---|---|---|---|---|---|---|
+| B-49 | Do a trick | One of the little routines it made up itself (`src/core/tricks.ts`): a few poses, a few steps or hops, toward you or away. The first time it shows one the bubble names it ("new trick: the needy snub"). Each bout offers its best trick of that kind; rude ones never at chill, lively ones only with energy | A bout of the trick's kind | 1 | LLM | none | MVP |
+
+- **Where tricks come from.** When it wakes from a nap it sometimes makes one up (at most one every three hours): it takes a scene (roll, bounce, sniff, dig, beg, spook, tumble, shy, stalk, a greeting, a snub, a stretch) or a trick it knows, the ones you liked more often, and changes it one to three times: a pose for a related one, a longer or shorter hold, a look at you, the other way round, a beat twice, the start of one and the end of another, a beat less, a move more.
+- **Checked before it's kept.** Each new trick is played in the real executor on a pretend screen. It must finish within 40 s, end on its feet and on the screen, show at least three poses, and not be a near copy of a scene or a trick it knows. Only poses every character has are allowed; a trick can't click, type or touch another app.
+- **Variety by design.** The library is a grid: calm to wild, alone to at you, polite to rude (18 cells, two tricks each, 36 at most). A new trick only pushes out a worse one from the same cell, worse meaning you reacted badly to it or it was shown a lot and nobody cared.
+- **Learned like any action.** A pet or treat right after a trick counts for it, a shoo against it (see Freshness).
+
+## Freshness (what it learns and what bores it)
+
+Every choice the rules make is tilted by three things (`src/core/habits.ts`), per action and per trick:
+
+- **Liked or not.** A pet or a treat within 2 minutes of a choice counts for it, a shoo against it (a shoo counts 1.5 times). This slowly forgets (half-life two weeks), so it follows what you like this month. Once it knows something it draws a guess from what it learned each time (Thompson sampling), so a probably-liked thing still gets tried and a liked one sometimes gets a rest. From 0.5 times to 1.6 times.
+- **Bored.** Doing something makes it a bit stale, and that wears off over a couple of hours (half-life 90 min). Napping, washing and stretching hardly get stale; play and mischief do. Down to 0.2 times.
+- **Curious.** Something it has hardly done, or not for a week or two, gets up to 1.5 times. A newcomer has done nothing, so nothing stands out at first; the bonus grows over the first hundred choices. Something you clearly dislike gets no bonus (else it would come back for being rare).
+
+Measured with `npm run month` (30 simulated days, a made-up human who pets some things and shoos others, normal chaos): 54 different actions and tricks a day, never the same twice in a row, about 9% of choices are tricks, the liked share goes from 14% to 21% over the month (with learning off it drifts from 12% to 7%) and the hated share from 3% to 2% (off: 4% to 6%).
 
 ## Respect modes (the brain can't override these)
 

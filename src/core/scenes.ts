@@ -45,7 +45,8 @@ export function sceneFor(intent: IntentName, staySec: number, rng: Rng): Beat[] 
   return beats ? paced(beats) : null;
 }
 
-function rawScene(intent: IntentName, staySec: number, rng: Rng): Beat[] | null {
+/** The same scenes before pacing: the trick library (tricks.ts) breeds new tricks from these. */
+export function rawScene(intent: IntentName, staySec: number, rng: Rng): Beat[] | null {
   switch (intent) {
     case "roll":
       return [doing("play_bow", 1), doing("belly", rng.range(2.5, 5)), doing("love", 1.2), doing("happy", 1.4)];

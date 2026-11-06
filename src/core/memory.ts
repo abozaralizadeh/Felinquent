@@ -1,4 +1,5 @@
 import { Habits, type HabitsData } from "./habits";
+import { TrickBook, type TricksData } from "./tricks";
 
 export interface MemoryEvent {
   atMs: number;
@@ -17,6 +18,8 @@ export interface Memory {
   exportJson(): string;
   /** What the cat learned about its own choices. */
   habits?: Habits;
+  /** The tricks it made up. */
+  tricks?: TrickBook;
 }
 
 const DAY_MS = 86_400_000;
@@ -27,6 +30,7 @@ const mins = (nowMs: number, t: number) => Math.max(0, Math.round((nowMs - t) / 
 export class InMemoryMemory implements Memory {
   protected list: MemoryEvent[] = [];
   readonly habits = new Habits();
+  readonly tricks = new TrickBook();
 
   log(ev: MemoryEvent): void {
     this.list.push(ev);
@@ -57,7 +61,7 @@ export class InMemoryMemory implements Memory {
     for (const [app, c] of counts) if (c >= 3) lines.push(`shooed from ${app} x${c}`);
     const fav = this.favoriteSpot();
     if (fav) lines.push(`favorite spot: ${fav}`);
-    const habit = this.habits.line();
+    const habit = this.habits.line(nowMs);
     if (habit) lines.push(habit);
     return lines.slice(0, n);
   }
@@ -74,21 +78,24 @@ export class InMemoryMemory implements Memory {
   forgetAll(): void {
     this.list = [];
     this.habits.clear();
+    this.tricks.clear();
   }
 
   exportJson(): string {
-    return JSON.stringify({ events: this.list, habits: this.habits.toJSON() }, null, 2);
+    return JSON.stringify({ events: this.list, habits: this.habits.toJSON(), tricks: this.tricks.toJSON() }, null, 2);
   }
 
   /** Reads what exportJson wrote. Bad or empty input leaves an empty memory. */
   loadJson(text: string): void {
     try {
-      const data = JSON.parse(text) as { events?: MemoryEvent[]; habits?: Partial<HabitsData> };
+      const data = JSON.parse(text) as { events?: MemoryEvent[]; habits?: Partial<HabitsData>; tricks?: TricksData };
       this.list = Array.isArray(data.events) ? data.events : [];
       this.habits.load(data.habits);
+      this.tricks.load(data.tricks);
     } catch {
       this.list = [];
       this.habits.clear();
+      this.tricks.clear();
     }
   }
 }

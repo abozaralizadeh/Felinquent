@@ -26,6 +26,14 @@ struct Sensors {
     since_key_sec: f64,
     mic_in_use: bool,
     camera_in_use: bool,
+    space: Option<sensors::Space>,
+}
+
+/// Only the windows and the desktop: read every frame while a window is being dragged.
+#[derive(Serialize)]
+struct Windows {
+    windows: Vec<sensors::Win>,
+    space: Option<sensors::Space>,
 }
 
 #[derive(Serialize)]
@@ -141,7 +149,15 @@ async fn read_sensors() -> Sensors {
         since_key_sec: sensors::since_key_sec(),
         mic_in_use: sensors::mic_in_use(),
         camera_in_use: sensors::camera_in_use(),
+        space: sensors::space(),
     }
+}
+
+/// The windows and the desktop only, cheap enough for every frame while a window moves, so what
+/// stands on it rides along in real time.
+#[tauri::command]
+async fn read_windows() -> Windows {
+    Windows { windows: sensors::windows("felinquent"), space: sensors::space() }
 }
 
 #[tauri::command]
@@ -222,13 +238,16 @@ fn control(app: &AppHandle, msg: &str) {
 }
 
 // Keep this list in step with src/core/characters.ts (a test checks it).
-const CHARACTERS: [(&str, &str); 6] = [
+const CHARACTERS: [(&str, &str); 9] = [
     ("character:tabby", "Tabby (orange cat)"),
     ("character:inky", "Inky (black cat)"),
     ("character:pearl", "Pearl (white cat)"),
     ("character:mochi", "Mochi (fox)"),
     ("character:bandit", "Bandit (raccoon)"),
     ("character:biscuit", "Biscuit (puppy)"),
+    ("character:chili", "Chili (chihuahua)"),
+    ("character:clover", "Clover (rabbit)"),
+    ("character:hazel", "Hazel (squirrel)"),
 ];
 const CHAOS: [(&str, &str); 3] = [("chaos:chill", "Chill"), ("chaos:normal", "Normal"), ("chaos:gremlin", "Gremlin")];
 
@@ -435,6 +454,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             read_sensors,
+            read_windows,
             read_layout,
             read_pointer,
             set_click_through,

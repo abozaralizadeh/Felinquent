@@ -1,5 +1,5 @@
-import type { Kind } from "./species";
 import type { Rng } from "./rng";
+import type { Kind } from "./species";
 import type { ChaosLevel, IntentName, Needs, WorldSnapshot } from "./types";
 
 /**
@@ -24,11 +24,11 @@ export const BOUT_MEANING: Record<BoutKind, string> = {
 
 /** The actions that belong to each bout. */
 export const BOUT_INTENTS: Record<BoutKind, readonly IntentName[]> = {
-  rest: ["nap", "nap_warm", "cozy", "knead", "groom", "sprawl", "perch", "watch", "slow_blink", "stare", "ignore", "box", "scratch", "sneeze"],
-  explore: ["wander", "tour", "peek", "sniff", "perch", "cross", "chatter", "dig", "spook", "scratch", "watch", "box"],
-  play: ["chase_tail", "bounce", "tumble", "roll", "stalk", "swat", "zoomies", "spook", "knock_toy", "hunt"],
-  social: ["follow", "headbutt", "meow", "beg", "slow_blink", "sit_on", "keyboard_walk", "block_dock", "cross", "gift", "howl", "roll"],
-  mischief: ["knock_off", "claw", "sit_on", "sit_on_video", "keyboard_walk", "block_dock", "zoomies", "hairball", "knock_toy", "nudge_window", "swat"],
+  rest: ["nap", "nap_warm", "cozy", "knead", "groom", "sprawl", "perch", "watch", "slow_blink", "stare", "ignore", "box", "scratch", "sneeze", "trick"],
+  explore: ["wander", "tour", "peek", "sniff", "perch", "cross", "chatter", "dig", "spook", "scratch", "watch", "box", "trick"],
+  play: ["chase_tail", "bounce", "tumble", "roll", "stalk", "swat", "zoomies", "spook", "knock_toy", "hunt", "play_cursor", "trick"],
+  social: ["follow", "headbutt", "meow", "beg", "slow_blink", "sit_on", "keyboard_walk", "block_dock", "cross", "gift", "howl", "roll", "trick"],
+  mischief: ["knock_off", "claw", "sit_on", "sit_on_video", "keyboard_walk", "block_dock", "zoomies", "hairball", "knock_toy", "nudge_window", "swat", "trick"],
 };
 
 /** How long a bout lasts at the normal level, in seconds. */
@@ -68,11 +68,14 @@ const NEXT: Record<BoutKind | "start", Record<BoutKind, number>> = {
   mischief: { rest: 3, explore: 1, play: 1, social: 0.5, mischief: 0.2 },
 };
 
-const KIND_BIAS: Record<Kind, Partial<Record<BoutKind, number>>> = {
+/** A kind that isn't listed (a new animal) gets no bias. */
+const KIND_BIAS: Partial<Record<string, Partial<Record<BoutKind, number>>>> = {
   cat: { rest: 1.3, social: 0.8 },
   dog: { rest: 0.7, social: 1.6, play: 1.4 },
   fox: { explore: 1.4, play: 1.2 },
   raccoon: { mischief: 1.5, explore: 1.2 },
+  rabbit: { rest: 1.2, explore: 1.2, social: 0.7 },
+  squirrel: { explore: 1.5, play: 1.3, rest: 0.7 },
 };
 
 const CHAOS_BIAS: Record<ChaosLevel, Record<BoutKind, number>> = {
@@ -112,7 +115,7 @@ export function boutWeights(i: BoutInput): Record<BoutKind, number> {
     w.social *= 1.3;
     w.mischief *= 1.3;
   }
-  for (const k of BOUT_KINDS) w[k] *= (KIND_BIAS[i.kind][k] ?? 1) * CHAOS_BIAS[i.chaos][k];
+  for (const k of BOUT_KINDS) w[k] *= (KIND_BIAS[i.kind]?.[k] ?? 1) * CHAOS_BIAS[i.chaos][k];
   // Worn out: only rest.
   if (n.energy < 0.25) for (const k of BOUT_KINDS) if (k !== "rest") w[k] = 0;
   return w;

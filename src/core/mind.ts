@@ -62,7 +62,7 @@ const DECISION_GAP_MS: Record<ChaosLevel, number> = { chill: 20_000, normal: 8_0
  * the bout it is in (bouts.ts: long pauses in a rest bout, short ones at play), the chaos level, the
  * species gap and laziness (a cat pauses longer than a dog), and a lively action adds a little.
  */
-const LIVELY: ReadonlySet<IntentName> = new Set<IntentName>(["zoomies", "follow", "tumble", "bounce", "spook", "chase_tail", "react", "stalk", "keyboard_walk", "knock_toy", "swat", "roll", "dig", "howl"]);
+const LIVELY: ReadonlySet<IntentName> = new Set<IntentName>(["zoomies", "follow", "tumble", "bounce", "spook", "chase_tail", "react", "stalk", "keyboard_walk", "knock_toy", "swat", "roll", "dig", "howl", "play_cursor"]);
 
 export class Mind {
   needs: Needs = initialNeeds();
@@ -101,6 +101,8 @@ export class Mind {
   /** Written lines said lately, so they don't repeat. Their own random source keeps the rest of the mind's choices as they were. */
   private said: string[] = [];
   private lineRng = seeded(1013);
+  /** Its own dice for making up tricks, so a seeded run does the same with or without them. */
+  private trickRng = seeded(2027);
   private awaySinceMs: number | null = null;
   private lastTickMs: number | null = null;
   private brain: Brain;
@@ -121,6 +123,10 @@ export class Mind {
     this.personality = p;
   }
 
+  get traits(): Personality {
+    return this.personality;
+  }
+
   /** Swap the main brain at runtime (settings change). Pass the fallback to switch the LLM off. */
   setBrain(brain: Brain): void {
     this.brain = brain;
@@ -129,14 +135,14 @@ export class Mind {
   }
 
   /** The last choice the cat made for itself, so a pet or a shoo soon after can teach it something. */
-  private lastChosen: { intent: IntentName; atMs: number } | null = null;
+  private lastChosen: { intent: string; atMs: number } | null = null;
 
   private learn(good: boolean, now: number): void {
     const c = this.lastChosen;
     const h = this.d.memory.habits;
     if (!c || !h || now - c.atMs > 120_000) return;
-    if (good) h.reward(c.intent);
-    else h.punish(c.intent);
+    if (good) h.reward(c.intent, now);
+    else h.punish(c.intent, now);
     this.lastChosen = null;
   }
 
@@ -265,6 +271,8 @@ export class Mind {
         this.lastDecisionMs = now - this.gapMs;
         this.restUntilMs = -Infinity;
         events.push({ type: "wake" });
+        // Waking up from a nap, it sometimes has a new idea.
+        this.dream(now);
       } else if (!this.current) {
         // Nap ran out of time but the cat is still tired: keep sleeping, no new decision.
         this.current = { intent: "nap", target: "here", approach: "walk", stay_sec: 1800, mood: "sleepy" };
@@ -282,7 +290,12 @@ export class Mind {
 
   private setCurrent(intent: Intent, _now: number, source: "llm" | "rules" | "respect" | "reflex" | "safe", events: MindEvent[]): void {
     this.current = intent;
-    if (source === "llm" || source === "rules") this.lastChosen = { intent: intent.intent, atMs: _now };
+    if (source === "llm" || source === "rules") {
+      // A trick is learned about on its own, not as "trick".
+      const key = intent.trick ? `trick:${intent.trick}` : intent.intent;
+      this.lastChosen = { intent: key, atMs: _now };
+      this.d.memory.habits?.used(key, _now);
+    }
     if (intent.intent !== "react") {
       this.recent.push(intent.intent);
       if (this.recent.length > 10) this.recent.shift();
@@ -294,6 +307,7 @@ export class Mind {
   private ctx(world: WorldSnapshot): RulesContext {
     return {
       habits: this.d.memory.habits,
+      tricks: this.d.memory.tricks,
       chaos: this.settings.chaos,
       world,
       needs: this.needs,
@@ -357,7 +371,7 @@ export class Mind {
     const menu = [...options, ...BASICS.filter((b) => !options.some((o) => o.intent === b.intent))];
     let intent: Intent | null = revisit;
     let source: "llm" | "rules" = revisit ? "rules" : (this.bout?.source ?? "rules");
-    while (!intent && this.bout && this.bout.steps.length > 0) intent = gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs);
+    while (!intent && this.bout && this.bout.steps.length > 0) intent = this.withTrick(gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs), world);
     // The plan ran out but the bout goes on: a few more steps of the same bout.
     if (!intent && this.bout && options.length > 0) {
       const more = await this.planBout(world, options, brainCtx, this.bout.kind);
@@ -365,7 +379,7 @@ export class Mind {
         source = more.source;
         this.bout.steps = more.plan.steps;
         if (more.plan.thought && this.bout.steps[0]) this.bout.steps[0] = { ...this.bout.steps[0], thought: more.plan.thought };
-        while (!intent && this.bout.steps.length > 0) intent = gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs);
+        while (!intent && this.bout.steps.length > 0) intent = this.withTrick(gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs), world);
       } else {
         // Nothing left that fits this bout: end it, the next decision starts another.
         this.bout.untilMs = now;
@@ -394,7 +408,7 @@ export class Mind {
     // say "hunt" four times in a row. With nothing else left, the bout ends.
     const last = this.recent[this.recent.length - 1];
     const fresh = options.filter((o) => o.intent !== last);
-    const bouts = BOUT_KINDS.map((kind) => ({ kind, weight: w[kind], options: fresh.filter((o) => BOUT_INTENTS[kind].includes(o.intent)) })).filter(
+    const bouts = BOUT_KINDS.map((kind) => ({ kind, weight: w[kind], options: fresh.filter((o) => BOUT_INTENTS[kind].includes(o.intent) && (o.kind === undefined || o.kind === kind)) })).filter(
       (b) => (b.weight > 0 || b.kind === fixed) && b.options.length > 0,
     );
     if (bouts.length === 0 || (fixed && !bouts.some((b) => b.kind === fixed))) return null;
@@ -437,6 +451,38 @@ export class Mind {
     if (!plan) return null;
     this.stats.rules += 1;
     return { plan, source: "rules" };
+  }
+
+  /**
+   * A trick step gets its beats from the library. The first time it does one, the bubble names it.
+   * A trick that is gone from the library (pushed out by a better one) is skipped.
+   */
+  private withTrick(intent: Intent | null, world: WorldSnapshot): Intent | null {
+    if (!intent || intent.intent !== "trick") return intent;
+    const book = this.d.memory.tricks;
+    const t = book?.get(intent.trick);
+    if (!book || !t) return null;
+    const { beats, seconds } = book.script(t);
+    const first = book.shown(t.id, world.nowMs);
+    const out: Intent = { ...intent, script: beats, stay_sec: Math.ceil(seconds), mood: t.kind === "mischief" ? "smug" : t.kind === "rest" ? "content" : "playful" };
+    if (first && this.settings.thoughtBubbles) out.thought = `new trick: ${t.name}`;
+    if (first) this.note(world.nowMs, `showed you my new trick, ${t.name}`);
+    return out;
+  }
+
+  /**
+   * Makes up a new trick, at most one every few hours (tricks.ts breeds it, checks it and files it).
+   * Returns its name, or null. `force` skips the wait (the playground's button).
+   */
+  dream(now: number, force = false): string | null {
+    const book = this.d.memory.tricks;
+    if (!book) return null;
+    const got = book.breed(this.trickRng, now, this.d.memory.habits, force);
+    if (!got) return null;
+    this.note(now, `dreamed up a new trick: ${got.added.name}`);
+    this.d.memory.log({ atMs: now, kind: "trick" });
+    this.d.log?.("new trick", { name: got.added.name, kind: got.added.kind, beats: got.added.beats.length, replaced: got.evicted?.name, tries: got.tries });
+    return got.added.name;
   }
 
   /** Starts the next bout: asks for a plan and puts the opening move (a stretch, a wash) first. */
@@ -534,6 +580,7 @@ export class Mind {
         else if (this.needs.trust > 70 && ins.kind !== "dog") level -= 1;
         const reaction = pokeReaction({
           kind: ins.kind,
+          animal: ins.animal,
           level,
           trust: this.needs.trust,
           energy: this.needs.energy,
@@ -617,6 +664,24 @@ export class Mind {
       }
     }
     return events;
+  }
+
+  /**
+   * Its window moved under it: flung off (like being thrown, it minds that), or a rough ride it held
+   * on through. Remembered for the model.
+   */
+  onJolt(now: number, flung: boolean): void {
+    if (flung) {
+      this.needsEvent("throw");
+      this.note(now, "the human moved my window so hard i flew off it");
+      this.d.memory.log({ atMs: now, kind: "flung" });
+    } else this.note(now, "the human dragged my window around with me on it. i held on.");
+  }
+
+  /** It went to the desktop you're on (Spaces), or you left it behind on another one. */
+  onDesktop(now: number, came: boolean): void {
+    this.note(now, came ? "the human went to another desktop. i followed." : "the human went to another desktop without me");
+    if (came && this.current && !this.sleeping) this.notifyDone();
   }
 
   /** The shell passes executor events here (landing after a throw makes the cat groom, "I meant to do that"). */

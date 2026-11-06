@@ -135,6 +135,7 @@ export function parseIntent(text: string, options: Option[]): Intent | null {
   const mood = typeof r.mood === "string" && MOOD_SET.has(r.mood) ? (r.mood as Mood) : "content";
   const stay = typeof r.stay_sec === "number" ? r.stay_sec : 20;
   const out: Intent = { intent: option.intent as IntentName, target, approach, stay_sec: stay, mood };
+  if (option.trick) out.trick = option.trick;
   if (typeof r.thought === "string" && r.thought.trim()) out.thought = r.thought;
   return out;
 }

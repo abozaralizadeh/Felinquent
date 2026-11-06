@@ -5,7 +5,7 @@ import type { MindEvent } from "../core/mind";
 import { CHARACTERS, characterById } from "../core/characters";
 import { ARCHETYPES, DEFAULT_PERSONALITY } from "../core/personality";
 import { seeded } from "../core/rng";
-import type { Activity, ChaosLevel, Settings, WindowInfo, WorldSnapshot } from "../core/types";
+import type { Activity, ChaosLevel, Intent, Settings, WindowInfo, WorldSnapshot } from "../core/types";
 import { DEFAULT_SETTINGS } from "../core/types";
 import { drawCat } from "./draw";
 import { drawMarks, drawMessFront, drawPropsOnly, preloadProps } from "./mess-draw";
@@ -56,6 +56,9 @@ const state = {
   newUntil: new Map<string, number>(),
 };
 state.startOfDay = new Date(state.simNow).setHours(0, 0, 0, 0);
+/** The desktops' windows (the one showing is in state.windows), and which one shows. */
+const desks: WindowInfo[][] = [];
+let desk = 0;
 
 const logLines: string[] = [];
 function log(line: string): void {
@@ -114,6 +117,7 @@ function buildWorld(): WorldSnapshot {
     panic: state.panic,
     quietHours: state.quietHours,
     shooedUntilMs: state.shooedUntilMs,
+    space: { id: `d${desk}`, index: desk, spans: true },
   };
 }
 
@@ -328,10 +332,11 @@ function draw(tSec: number): void {
   mctx.clearRect(0, 0, state.w, state.h);
   drawMarks(mctx, snap, buildWorld().windows, scale);
   drawPropsOnly(ctx, snap, scale);
-  drawCat(ctx, body, { scale, t: tSec, character: characterId });
+  // On another desktop: it isn't here.
+  if (!cat.away) drawCat(ctx, body, { scale, t: tSec, character: characterId, cursor: state.cursor });
   drawMessFront(ctx, snap, scale);
   const r = cat.executor.hitRect();
-  hit.classList.toggle("hidden", body.hidden);
+  hit.classList.toggle("hidden", body.hidden || cat.away);
   hit.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;`;
   const br = cat.blockingRect;
   blockbox.classList.toggle("hidden", !br);
@@ -402,6 +407,9 @@ function frame(now: number): void {
       still.src = both.toDataURL();
       still.style.cssText = `position:absolute;left:0;top:0;width:${state.w}px;height:${state.h}px;pointer-events:none;z-index:200`;
       stage.appendChild(still);
+      // A thought that is up stays in the picture.
+      bubble.style.zIndex = "201";
+      bubble.style.transition = "none";
     }
     return;
   }
@@ -413,6 +421,7 @@ function frame(now: number): void {
 }
 
 function updateStatus(): void {
+  trickCount();
   const n = cat.mind.needs;
   const cur = cat.mind.current;
   const bar = (v: number) => `${Math.round(v * 100)}%`;
@@ -491,10 +500,55 @@ $("treat").addEventListener("click", () => {
 $("addwin").addEventListener("click", addWindow);
 preloadProps();
 // Mischief on demand, to see it without waiting for the cat to feel like it.
-const doNow = (intent: "knock_off" | "claw" | "hunt" | "zoomies", target: string): void => {
-  cat.executor.start({ intent, target, approach: intent === "zoomies" ? "run" : "walk", stay_sec: 20, mood: "smug" });
+const doNow = (intent: "knock_off" | "claw" | "hunt" | "zoomies" | "knock_toy" | "play_cursor" | "follow", target: string): void => {
+  start({ intent, target, approach: intent === "zoomies" ? "run" : "walk", stay_sec: 20, mood: "smug" });
   log(`you asked for ${intent}`);
 };
+/** Starts something you asked for, and tells the mind, so it doesn't pick something else halfway through. */
+function start(intent: Intent): void {
+  cat.mind.sleeping = false;
+  cat.mind.current = intent;
+  cat.executor.start(intent);
+}
+$("ball").addEventListener("click", () => doNow("knock_toy", "here"));
+$("playcur").addEventListener("click", () => doNow("play_cursor", "cursor"));
+$("followme").addEventListener("click", () => doNow("follow", "cursor"));
+
+// Tricks (tricks.ts): it makes them up by itself; these buttons skip the wait.
+const trickCount = (): void => void ($("trickCount").textContent = `knows ${memory.tricks.all.length} tricks`);
+$("dream").addEventListener("click", () => {
+  let name: string | null = null;
+  for (let i = 0; i < 6 && !name; i++) name = cat.mind.dream(state.simNow, true);
+  log(name ? `it made up a new trick: ${name}` : "it tried to make up a trick, nothing good came of it");
+  trickCount();
+});
+$("dotrick").addEventListener("click", () => {
+  const t = memory.tricks.all[memory.tricks.all.length - 1];
+  if (!t) return log("it doesn't know any tricks yet");
+  const { beats, seconds } = memory.tricks.script(t);
+  const first = memory.tricks.shown(t.id, state.simNow);
+  start({ intent: "trick", target: "here", approach: "walk", stay_sec: Math.ceil(seconds), mood: "playful", script: beats, trick: t.id });
+  showThought(first ? `new trick: ${t.name}` : t.name);
+  log(`you asked for its trick "${t.name}"`);
+});
+
+// Desktops, like Spaces on the Mac: each has its own windows. The animal stays on its own desktop
+// and comes over a while later, walking in from the side its desktop is on.
+function switchDesk(to: number): void {
+  if (to < 0 || to > 3 || to === desk) return;
+  desks[desk] = state.windows;
+  desk = to;
+  const { w, h } = state;
+  const mk = (id: string, app: string, x: number, y: number, ww: number, hh: number, z: number): WindowInfo => ({
+    id, app, title: "Untitled", bounds: { x: Math.round(x), y: Math.round(y), w: Math.round(ww), h: Math.round(hh) }, focused: z === 0, cpu: "low", z,
+  });
+  state.windows = desks[desk] ?? [mk(`d${desk}a`, "Notes", w * (0.1 + 0.2 * (desk % 2)), h * 0.25, w * 0.45, h * 0.5, 0), mk(`d${desk}b`, "Mail", w * 0.5, h * 0.4, w * 0.4, h * 0.38, 1)];
+  $("deskName").textContent = `Desktop ${desk + 1}`;
+  renderWindows();
+  log(`you went to desktop ${desk + 1}`);
+}
+$("deskL").addEventListener("click", () => switchDesk(desk - 1));
+$("deskR").addEventListener("click", () => switchDesk(desk + 1));
 $("putmug").addEventListener("click", () => {
   const w = buildWorld();
   const win = w.windows[Math.floor(Math.random() * w.windows.length)];
@@ -563,11 +617,14 @@ $("copy").addEventListener("click", async () => {
 
 resize();
 log("a cat has moved in");
-requestAnimationFrame(frame);
+// With ?timer the first frame comes from a timer too: a hidden page never gets an animation frame.
+if (byTimer) setTimeout(() => frame(performance.now()), 0);
+else requestAnimationFrame(frame);
 
 /**
  * ?scene=knock|shatter|claw|hunt|zoom sets up a bit of gremlin mischief a second after loading, to
- * look at it (or record it) without waiting for the cat to feel like it.
+ * look at it (or record it) without waiting for the cat to feel like it. ?scene=ball brings out its
+ * ball, ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
  */
 const scene = new URLSearchParams(location.search).get("scene");
 if (scene) {
@@ -593,6 +650,12 @@ if (scene) {
     } else if (scene === "claw") doNow("claw", win.id);
     else if (scene === "hunt") doNow("hunt", "here");
     else if (scene === "zoom") doNow("zoomies", "here");
+    else if (scene === "ball") doNow("knock_toy", "here");
+    else if (scene === "trick") {
+      const seed = Number(new URLSearchParams(location.search).get("seed") ?? "0");
+      for (let i = 0; i <= seed; i++) cat.mind.dream(state.simNow + i, true);
+      $("dotrick").click();
+    }
   }, 1000);
   // For a headless browser: what the mess is doing, readable from the page.
   setInterval(() => {

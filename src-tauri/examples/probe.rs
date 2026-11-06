@@ -23,9 +23,13 @@ fn main() {
         let t2 = Instant::now();
         let cam = sensors::camera_in_use();
         let t_cam = t2.elapsed();
+        let t3 = Instant::now();
+        let space = sensors::space();
+        let t_space = t3.elapsed();
         total += t.elapsed();
         if n == 3 {
-            println!("timing: windows {:.2} ms, mic {:.2} ms, camera {:.2} ms", t_win.as_secs_f64() * 1e3, t_mic.as_secs_f64() * 1e3, t_cam.as_secs_f64() * 1e3);
+            println!("timing: windows {:.2} ms, mic {:.2} ms, camera {:.2} ms, desktop {:.2} ms", t_win.as_secs_f64() * 1e3, t_mic.as_secs_f64() * 1e3, t_cam.as_secs_f64() * 1e3, t_space.as_secs_f64() * 1e3);
+            println!("desktop: {space:?}");
         }
         n += 1;
         if n == 1 {

@@ -9,7 +9,7 @@ import { simulate } from "./sim";
 describe("every animal acts like itself", () => {
   it("maps each character to its kind", () => {
     const kinds = Object.fromEntries(CHARACTERS.map((c) => [c.id, kindOf(c.personality.species)]));
-    expect(kinds).toEqual({ tabby: "cat", inky: "cat", pearl: "cat", mochi: "fox", bandit: "raccoon", biscuit: "dog" });
+    expect(kinds).toEqual({ tabby: "cat", inky: "cat", pearl: "cat", mochi: "fox", bandit: "raccoon", biscuit: "dog", chili: "dog", clover: "rabbit", hazel: "squirrel" });
   });
 
   async function calls(id: string, n: number): Promise<number> {

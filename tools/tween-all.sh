@@ -15,7 +15,8 @@ for dir in "${dirs[@]}"; do
   dir="${dir%/}/"
   id=$(basename "$dir")
   # Everything this script makes, so a shorter chain leaves nothing stale behind.
-  rm -f "$dir"*[0-9]t[0-9].webp "$dir"groom[0-9][un][0-9].webp "$dir"{stand,sit,sit2,sitting_down,knead_a,knead_b,lowering,loaf2,drowsy,curl,waking,wake,presneeze}[tvdlfm][0-9].webp
+  rm -f "$dir"*[0-9]t[0-9].webp "$dir"groom[0-9][un][0-9].webp "$dir"{stand,sit,sit2,sitting_down,knead_a,knead_b,lowering,loaf2,drowsy,curl,waking,wake,presneeze}[tvdlfmp][0-9].webp "$dir"paw[0-9][up][0-9].webp
+  rm -f "$dir"{sit,stand}[ghkwx][0-9].webp "$dir"{sg_,tg_,perch_,peek,loaf,sprawl,roll,belly,bow_,hop_,sniff,dig,stalk,howl,bark,giggle,chatter,cross,angry,hiss,puff,annoyed,fluster,shy,beg,headbutt,proud}*[tuvwxgchk][0-9].webp
 
   # First line up the sitting drawings on their feet and haunches, so the body does not slide while
   # a paw moves (washing, the ear scratch, the faces seen from the side like the sit). The faces drawn
@@ -28,6 +29,16 @@ for dir in "${dirs[@]}"; do
   # Sitting down after a walk and standing up start and end on the standing body, so line those two
   # drawings up on it (they are a different pose, hence the low bar).
   $A "$dir" stand sitting_down stand2 --min-iou 0.4
+  # The paw reach and the swat are one sitting body with a front leg moving.
+  $A "$dir" sit paw1 paw2 paw3 paw4 paw5 paw6 paw7 paw8 paw9 --min-iou 0.6
+  # The motion sheets drawn on one body: the head following something, singing and barking, the
+  # feelings (sitting); looking and getting cross (standing); the loaf, the perch and the peek.
+  $A "$dir" sit sg_down sg_ahead sg_up sg_high sg_top sg_you sg_ear howl1 howl2 howl3 bark1 bark2 chatter1 meow2 annoyed1 annoyed2 proud2 --min-iou 0.6
+  $A "$dir" stand tg_down tg_ahead tg_up tg_high tg_top tg_you tg_freeze cross angry1 angry2 --min-iou 0.6
+  $A "$dir" angry1 hiss1 hiss2 --min-iou 0.5
+  $A "$dir" loaf loaf_blink loaf_up loaf_back loaf_drowse --min-iou 0.6
+  $A "$dir" perch_fwd perch_back perch_down perch_doze perch_kick perch_you --min-iou 0.6
+  $A "$dir" peek peek_back peek_duck peek_up --min-iou 0.5
 
   # Grooming: the nine regions in order (one link each way round), then the extra links a wash
   # needs: from the cheek back to the paw, and (the puppy does not wash its face) from the paw to the nose.
@@ -66,4 +77,85 @@ for dir in "${dirs[@]}"; do
   $T "$dir" 2 once waking wake sit
   $T "$dir" 2 once stretch1 stretch2 stretch3 shake
   $T "$dir" 2 once presneeze sneeze2 dazed
+
+  # A paw reaching out to tap or push something, then back (push_toy), and a swat: wind-up, strike,
+  # follow-through, then back through the half way paw. Into it from the sit and out of it to the sit.
+  $T "$dir" 2 once sit paw1 --tag p
+  $T "$dir" 2 once paw1 paw2 paw3 paw4 paw5 paw9
+  $T "$dir" 2 once paw9 sit --tag p
+  $T "$dir" 2 once paw1 paw6 --tag u
+  $T "$dir" 2 once paw6 paw7 paw8
+  $T "$dir" 2 once paw8 paw5 --tag u
+
+  # Following something with the head, sitting and standing: from the plain pose to looking ahead,
+  # then down, ahead, up, high and straight up as one chain, and from ahead to you and to an ear twitch.
+  $T "$dir" 2 once sit sg_ahead --tag g
+  $T "$dir" 2 once sg_down sg_ahead sg_up sg_high sg_top
+  $T "$dir" 2 once sg_ahead sg_you --tag u
+  $T "$dir" 2 once sg_ahead sg_ear --tag v
+  $T "$dir" 2 once stand tg_ahead --tag g
+  $T "$dir" 2 once tg_down tg_ahead tg_up tg_high tg_top
+  $T "$dir" 2 once tg_ahead tg_you --tag u
+  $T "$dir" 2 once tg_ahead tg_freeze --tag v
+
+  # On a ledge: the tail swinging, looking down, dozing, a lazy kick, looking at you. Peeking: along
+  # the ledge, ducking, up high.
+  $T "$dir" 3 loop perch_fwd perch_back
+  $T "$dir" 2 once perch_fwd perch_down --tag u
+  $T "$dir" 2 once perch_fwd perch_doze --tag v
+  $T "$dir" 2 once perch_fwd perch_kick --tag w
+  $T "$dir" 2 once perch_fwd perch_you --tag x
+  $T "$dir" 2 once peek peek_back
+  $T "$dir" 2 once peek peek_duck --tag u
+  $T "$dir" 2 once peek peek_up --tag v
+
+  # Resting: the loaf blinking, looking up, looking back, getting drowsy; lying on the side
+  # stretching and flicking the tail; belly up wriggling.
+  $T "$dir" 2 once loaf loaf_blink
+  $T "$dir" 2 once loaf loaf_up --tag u
+  $T "$dir" 2 once loaf loaf_back --tag v
+  $T "$dir" 2 once loaf loaf_drowse --tag w
+  $T "$dir" 2 once sprawl sprawl_stretch
+  $T "$dir" 2 once sprawl roll1 --tag u
+  $T "$dir" 2 once belly belly_l
+  $T "$dir" 2 loop belly_l belly_r
+
+  # Play: into the bow, the bow, springing up; hopping for joy, and a twisting leap out of the crouch.
+  $T "$dir" 2 once bow_down bow_l bow_up
+  $T "$dir" 2 loop hop_crouch hop_up hop_land
+  $T "$dir" 2 once hop_crouch binky --tag u
+
+  # The nose: sniffing along, digging (paw, paw, a look), the stalking wiggle and the launch.
+  $T "$dir" 2 loop sniff1 sniff2 sniff3
+  $T "$dir" 2 loop dig1 dig2
+  $T "$dir" 2 once dig2 dig3 --tag u
+  $T "$dir" 2 once dig3 dig1
+  $T "$dir" 2 loop stalk1 stalk2
+  $T "$dir" 2 once stalk2 stalk3 --tag u
+
+  # The voice: a howl rising and falling, a bark, giggling, chattering at something up high, a big call.
+  $T "$dir" 2 once sit howl1 --tag h
+  $T "$dir" 2 once howl1 howl2 howl3 sit
+  $T "$dir" 2 once sit bark1 --tag k
+  $T "$dir" 2 loop bark1 bark2
+  $T "$dir" 2 loop giggle1 giggle2
+  $T "$dir" 2 once sg_high chatter1 --tag c
+  $T "$dir" 2 once sit meow2 --tag w
+
+  # Getting cross: the tail lashing, a hiss, puffed up, standing.
+  $T "$dir" 2 once stand cross --tag x
+  $T "$dir" 2 once cross angry1
+  $T "$dir" 2 loop angry1 angry2
+  $T "$dir" 2 once cross hiss1 --tag u
+  $T "$dir" 2 loop hiss1 hiss2
+  $T "$dir" 2 loop puff1 puff2
+
+  # Feelings, sitting: a tail thump, peeking through a paw, sitting pretty, rubbing a cheek, smug.
+  $T "$dir" 2 loop annoyed1 annoyed2
+  $T "$dir" 2 once flustered fluster1
+  $T "$dir" 2 once shy shy1
+  $T "$dir" 2 once beg beg1
+  $T "$dir" 2 loop beg1 beg2
+  $T "$dir" 2 loop headbutt1 headbutt2
+  $T "$dir" 2 once proud proud2
 done

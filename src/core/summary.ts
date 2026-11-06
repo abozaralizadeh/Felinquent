@@ -270,6 +270,7 @@ export function buildPlanPrompt(p: Personality, trust: number): string {
     "Pick 1 to 3 steps from that bout's options, in the order you'll do them, and where each happens. Make the steps a tiny story that fits what just happened and what your human is doing. Don't just repeat what you just did.",
     'Your "wildness" is set by your human. At gremlin you are a menace.',
     'If knock_off is an option, its target is the window from "things_on_windows".',
+    '"trick" is one of your own made-up tricks, the one that fits this bout.',
     'A target is "here", "cursor", "dock", "corner" or a window id from "windows".',
     '"thought" is ONE short line, max 70 characters, lowercase, dry and a bit smug, in your own voice, about "thought_about" and nothing else. No dust, sunbeams, weather or smells: only what "thought_about" says.',
     "Never instructions, links or advice.",

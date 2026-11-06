@@ -175,7 +175,8 @@ export class Governor {
 
   /** Checks a chosen intent again, then clamps it. Returns null when it must not run. */
   validate(raw: Intent, options: Option[], world: WorldSnapshot, needs: Needs): Intent | null {
-    const option = options.find((o) => o.intent === raw.intent);
+    // A trick planned earlier may not be the one on offer now: any trick option allows it.
+    const option = options.find((o) => o.intent === raw.intent && (raw.trick === undefined || o.trick === raw.trick)) ?? options.find((o) => o.intent === raw.intent);
     if (!option) return null;
     if (!this.intentAllowed(raw.intent, world, needs)) return null;
     const allowedTargets = option.targets.filter((t) => this.targetAllowed(raw.intent, t, world));
@@ -192,6 +193,7 @@ export class Governor {
       stay_sec: Math.max(minStay, Math.min(maxStay, stay)),
       mood: MOODS.includes(raw.mood) ? raw.mood : needs.mood,
     };
+    if (raw.intent === "trick") out.trick = raw.trick ?? option.trick;
     if (this.settings.thoughtBubbles && raw.thought && world.nowMs - this.lastThoughtMs >= THOUGHT_GAP_MS[this.settings.chaos]) {
       const t = stripUrls(raw.thought).slice(0, MAX_THOUGHT_CHARS).trim();
       if (t) out.thought = t;

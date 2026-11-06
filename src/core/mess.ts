@@ -1,3 +1,4 @@
+import { GRIP, type WinMotion } from "./motion";
 import { buildPlatforms, segmentsOf, type Platform } from "./platforms";
 import { PROP_ASPECT } from "./prop-aspect";
 import type { Rng } from "./rng";
@@ -30,8 +31,11 @@ export interface Prop {
   vy: number;
   rot: number;
   vr: number;
-  /** rest: standing; slide: being pushed; teeter: on the edge; fall: in the air; settled: down and still. */
-  state: "rest" | "slide" | "teeter" | "fall" | "settled";
+  /**
+   * rest: standing; slide: being pushed; teeter: on the edge; fall: in the air; settled: down and
+   * still; roll: the toy ball rolling on a window top or the floor (windowId null), or lying there.
+   */
+  state: "rest" | "slide" | "teeter" | "fall" | "settled" | "roll";
   alpha: number;
   bornMs: number;
   /** When it came to rest after a fall: it fades out a while later. */
@@ -45,6 +49,10 @@ export interface Prop {
   edge?: number;
   /** The yarn leaves a thread behind it. */
   trail?: { x: number; y: number }[];
+  /** The animal's own toy ball: it stays around (no fading, not cleared at chill) and rolls when batted. */
+  toy?: boolean;
+  /** Sliding on a window that was jerked: its own sideways speed (px/s), which the window drags along. */
+  slip?: number;
 }
 
 /** One piece of something broken: a polygon cut from the drawing (in 0..1 of its box), or a bit of glass, soil or water. */
@@ -66,6 +74,9 @@ export interface Shard {
   settled: boolean;
   settledMs?: number;
   bornMs: number;
+  /** Lying on a window top: it rides along, kept as an offset from the window's left edge. */
+  windowId?: string;
+  offset?: number;
 }
 
 /** A mark on a window: it rides with the window and fades away. dx, dy are from the window's top left. */
@@ -110,13 +121,27 @@ export interface Fly {
   bornMs: number;
 }
 
+/** What lies about on one desktop. */
+export interface MessState {
+  props: Prop[];
+  shards: Shard[];
+  decals: Decal[];
+  strips: Strip[];
+  fly: Fly | null;
+}
+
 export type MessEvent =
   | { type: "broke"; kind: PropKind; x: number; y: number }
   | { type: "fell"; kind: PropKind }
   | { type: "cracked"; windowId: string }
-  | { type: "fly"; caught: boolean };
+  | { type: "fly"; caught: boolean }
+  /** A window moved so hard that what stood on it flew off (the human did it). */
+  | { type: "flung"; kind: PropKind };
 
 const GRAVITY = 2000;
+const STILL: WinMotion = { vx: 0, vy: 0, ax: 0, ay: 0 };
+/** A ball on a window barely holds on: it rolls off at a jerk a mug would ride out. */
+const BALL_GRIP = { hold: 2600, slide: 600, lift: 3600, stop: 150 } as const;
 const MAX_SHARDS = 160;
 const MAX_STRIPS = 40;
 /** Things on the floor (the Dock) fade after this long, so the desktop cleans itself up. */
@@ -211,6 +236,8 @@ export class Mess {
   /** The left and right edges of all the displays: things bounce off them instead of falling out of sight. */
   private wallL = -Infinity;
   private wallR = Infinity;
+  /** How each window is moving (motion.ts), from the Cat. Without it windows are taken to be still. */
+  private motion: (id: string) => WinMotion = () => STILL;
 
   constructor(private rng: Rng) {}
 
@@ -221,6 +248,24 @@ export class Mess {
     this.decals = [];
     this.strips = [];
     this.fly = null;
+  }
+
+  /** Everything lying about on one desktop, put away while you are on another one (Spaces on the Mac). */
+  stash(): MessState {
+    const st: MessState = { props: this.props, shards: this.shards, decals: this.decals, strips: this.strips, fly: this.fly };
+    this.clear();
+    return st;
+  }
+
+  /** Puts back what was lying about on the desktop you came back to. */
+  unstash(st: MessState | undefined): void {
+    this.clear();
+    if (!st) return;
+    this.props = st.props;
+    this.shards = st.shards;
+    this.decals = st.decals;
+    this.strips = st.strips;
+    this.fly = st.fly;
   }
 
   /** A resting prop on this window, the one nearest x if there are several. */
@@ -347,6 +392,124 @@ export class Mess {
     this.outbox.push({ type: "fly", caught: f.willBeCaught });
   }
 
+  /** The animal's toy ball, if it is around. */
+  get toy(): Prop | undefined {
+    return this.props.find((p) => p.toy && (p.state === "roll" || p.state === "fall"));
+  }
+
+  /**
+   * Brings the toy ball out when it isn't around: it rolls in along the floor from the side of the
+   * screen nearer the animal, as if it had been under the sofa all along.
+   */
+  bringToy(nearX: number, nowMs: number): Prop | null {
+    const have = this.toy;
+    if (have) return have;
+    const w = this.world;
+    if (!w) return null;
+    const left = nearX - w.screen.x < w.screen.x + w.screen.w - nearX;
+    const dir: 1 | -1 = left ? 1 : -1;
+    const p: Prop = {
+      id: `p${this.nextId++}`,
+      kind: "yarn",
+      windowId: null,
+      offset: 0,
+      x: left ? w.screen.x + 8 : w.screen.x + w.screen.w - 8,
+      y: w.dockTop,
+      vx: dir * this.rng.range(260, 340),
+      vy: 0,
+      rot: 0,
+      vr: 0,
+      state: "roll",
+      alpha: 0,
+      bornMs: nowMs,
+      teeter: 0,
+      dir,
+      slideLeft: 0,
+      toy: true,
+    };
+    this.props.push(p);
+    return p;
+  }
+
+  /** A swipe of the paw at the ball: it hops a little and rolls off that way. A softer pat sends it less far. */
+  bat(id: string, dir: 1 | -1, strength = 1): void {
+    const p = this.props.find((q) => q.id === id);
+    if (!p || p.state === "fall") return;
+    p.state = "fall";
+    p.windowId = null;
+    p.slip = undefined;
+    p.dir = dir;
+    p.vx = dir * this.rng.range(170, 290) * strength;
+    p.vy = -this.rng.range(80, 200) * Math.min(1, strength);
+    p.vr = dir * this.rng.range(6, 10);
+  }
+
+  /**
+   * A thing standing on a window that moves. It rides along while the window moves gently, slides
+   * when the window is jerked sideways (and goes over the edge if it slides that far), and leaves
+   * the window when it is pulled down from under it or stops hard on the way up. False: it flew off.
+   */
+  private ride(p: Prop, win: WindowInfo, dt: number, grip: { hold: number; slide: number; lift: number; stop: number }): boolean {
+    const m = this.motion(win.id);
+    // Stopped dead on the way up: it goes on up.
+    if (m.stop && m.stop.vy < -grip.stop * 1.5) {
+      this.throwOff(p, m.stop.vx, m.stop.vy * 0.8);
+      return false;
+    }
+    if (m.ay > grip.lift) {
+      this.throwOff(p, p.slip ?? m.vx, Math.min(m.vy, 0));
+      return false;
+    }
+    // Stopped dead: it keeps the speed it had and slides on.
+    if (m.stop && Math.abs(m.stop.vx) > grip.stop && (p.slip === undefined || Math.abs(m.stop.vx) > Math.abs(p.slip))) p.slip = m.stop.vx;
+    if (p.slip === undefined && Math.abs(m.ax) > grip.hold) p.slip = m.vx - m.ax * dt;
+    if (p.slip !== undefined) {
+      const rel = p.slip - m.vx;
+      const pull = grip.slide * dt;
+      if (Math.abs(rel) <= pull && Math.abs(m.ax) < grip.hold) p.slip = undefined;
+      else {
+        p.slip -= Math.sign(rel) * Math.min(pull, Math.abs(rel));
+        p.offset += (p.slip - m.vx) * dt;
+      }
+    }
+    p.x = win.bounds.x + p.offset;
+    // Slid off the end of the window.
+    if (p.slip !== undefined && (p.x < win.bounds.x - 2 || p.x > win.bounds.x + win.bounds.w + 2)) {
+      this.throwOff(p, p.slip, Math.min(m.vy, 0));
+      return false;
+    }
+    // It leans against a jerk, the way a mug tips back when the table moves.
+    if (!p.toy) p.vr += -0.003 * m.ax * dt;
+    return true;
+  }
+
+  /** Off the window it goes, with the speed it had. */
+  private throwOff(p: Prop, vx: number, vy: number): void {
+    p.state = "fall";
+    p.windowId = null;
+    p.slip = undefined;
+    p.dir = vx >= 0 ? 1 : -1;
+    p.vx = vx;
+    p.vy = vy;
+    p.vr = p.dir * this.rng.range(4, 9);
+    this.outbox.push({ type: "flung", kind: p.kind });
+  }
+
+  /** The floor under x: the Dock on the main display, the bottom edge on the others. */
+  private floorAt(x: number, world: WorldSnapshot): number {
+    const f = this.platforms.find((q) => (q.kind === "dock_top" || q.kind === "floor") && x >= q.x1 && x <= q.x2);
+    return f?.y ?? world.dockTop;
+  }
+
+  /** The ball rolls on, slowing down, and turns as it goes. */
+  private roll(p: Prop, dt: number): void {
+    const r = PROP_HEIGHT[p.kind] * this.scale * 0.5;
+    const v = Math.abs(p.vx);
+    const left = Math.max(0, v * Math.pow(0.55, dt) - 60 * dt);
+    p.vx = left < 4 ? 0 : Math.sign(p.vx) * left;
+    p.rot += (p.vx * dt) / r;
+  }
+
   /** Bounces a moving thing off the outer edges of the displays. */
   private wall(o: { x: number; vx: number }): void {
     if (o.x < this.wallL) ((o.x = this.wallL), (o.vx = Math.abs(o.vx) * 0.35));
@@ -416,18 +579,34 @@ export class Mess {
   }
 
   /** Runs one frame: new clutter now and then, things riding their windows, falling, breaking and fading. */
-  step(dt: number, world: WorldSnapshot, chaos: ChaosLevel, catX: number | null): MessEvent[] {
+  step(dt: number, world: WorldSnapshot, chaos: ChaosLevel, catX: number | null, motion?: (id: string) => WinMotion): MessEvent[] {
     const now = world.nowMs;
+    this.motion = motion ?? (() => STILL);
     if (this.world === null || world.windows !== this.world.windows || world.dockTop !== this.world.dockTop) this.platforms = buildPlatforms(world);
     this.world = world;
     const all = [world.screen, ...(world.displays ?? [])];
     this.wallL = Math.min(...all.map((d) => d.x)) + 4;
     this.wallR = Math.max(...all.map((d) => d.x + d.w)) - 4;
     this.spawn(world, chaos, catX);
-    this.stepProps(dt, world);
-    this.stepShards(dt, world);
-    this.stepStrips(dt, world);
-    this.stepFly(dt);
+    // Small steps, so a long frame (or a simulation that steps a second at a time) doesn't make things
+    // bounce for ever. When nothing is moving (the usual case) one step is enough.
+    const moving = (id: string | null | undefined): boolean => {
+      if (!id) return false;
+      const m = this.motion(id);
+      return m.vx !== 0 || m.vy !== 0 || m.ax !== 0 || m.ay !== 0 || m.stop !== undefined;
+    };
+    const lively =
+      this.fly !== null ||
+      this.props.some((p) => (p.state !== "rest" && p.state !== "settled") || p.toy || moving(p.windowId)) ||
+      this.shards.some((x) => !x.settled || moving(x.windowId)) ||
+      this.strips.some((x) => !x.settled);
+    const n = lively ? Math.min(60, Math.ceil(dt / (1 / 30))) : 1;
+    for (let i = 0; i < n; i++) {
+      this.stepProps(dt / n, world);
+      this.stepShards(dt / n, world);
+      this.stepStrips(dt / n, world);
+      this.stepFly(dt / n);
+    }
     // Marks fade and go with their window.
     this.decals = this.decals.filter((d) => now - d.bornMs < d.ttlMs && world.windows.some((w) => w.id === d.windowId));
     const out = this.outbox;
@@ -460,23 +639,35 @@ export class Mess {
     const now = world.nowMs;
     const windows = new Map<string, WindowInfo>(world.windows.map((w) => [w.id, w]));
     for (const p of this.props) {
-      if (p.state === "rest" || p.state === "slide" || p.state === "teeter") {
+      if (p.state === "rest" || p.state === "slide" || p.state === "teeter" || (p.state === "roll" && p.windowId)) {
         const win = p.windowId ? windows.get(p.windowId) : undefined;
         if (!win) {
           // Its window closed (or went away): down it goes.
           p.state = "fall";
           p.windowId = null;
-          p.vx = this.rng.range(-30, 30);
+          p.slip = undefined;
+          p.vx = p.toy ? p.vx : this.rng.range(-30, 30);
           p.vr = this.rng.range(-3, 3);
           this.outbox.push({ type: "fell", kind: p.kind });
           continue;
         }
-        if (p.state === "rest") p.x = win.bounds.x + p.offset;
-        else p.offset = p.x - win.bounds.x;
+        if (!this.ride(p, win, dt, p.toy ? BALL_GRIP : GRIP.prop)) continue;
         p.y = win.bounds.y;
         // Hidden behind a window in front: fade out until it shows again.
         const visible = segmentsOf(this.platforms, win.id).some((s) => p.x >= s.x1 - 4 && p.x <= s.x2 + 4);
-        p.alpha = Math.max(0, Math.min(1, p.alpha + (visible ? dt / 1.2 : -dt / 0.25)));
+        p.alpha = Math.max(0, Math.min(1, p.alpha + (visible ? dt / (p.toy ? 0.3 : 1.2) : -dt / 0.25)));
+        if (p.state === "roll") {
+          // The ball rolls along the window top, and off the end of it.
+          this.roll(p, dt);
+          p.offset += p.vx * dt;
+          p.x = win.bounds.x + p.offset;
+          if (p.x < win.bounds.x || p.x > win.bounds.x + win.bounds.w) {
+            p.state = "fall";
+            p.windowId = null;
+            p.vy = 0;
+          }
+          continue;
+        }
         // A tap's wobble dies down.
         p.rot += p.vr * dt;
         p.vr += (-p.rot * 60 - p.vr * 6) * dt;
@@ -504,6 +695,15 @@ export class Mess {
         }
         continue;
       }
+      if (p.state === "roll") {
+        // The ball on the floor.
+        p.alpha = Math.min(1, p.alpha + dt / 0.3);
+        this.roll(p, dt);
+        p.x += p.vx * dt;
+        this.wall(p);
+        p.y = this.floorAt(p.x, world);
+        continue;
+      }
       if (p.state === "fall") {
         const y0 = p.y;
         p.vy += GRAVITY * dt;
@@ -511,7 +711,8 @@ export class Mess {
         p.y += p.vy * dt;
         p.rot += p.vr * dt;
         this.wall(p);
-        if (p.kind === "yarn") (p.trail ??= []).push({ x: p.x, y: p.y - 6 });
+        // A yarn knocked off a window unwinds behind it (not the animal's own ball, which is played with all day).
+        if (p.kind === "yarn" && !p.toy) (p.trail ??= []).push({ x: p.x, y: p.y - 6 });
         const hit = landingOn(this.platforms, p.x, y0, p.y) ?? (p.y > world.dockTop ? this.platforms.find((q) => q.id === "dock") : undefined);
         if (!hit) {
           if (p.y > world.screen.y + world.screen.h + 200) p.alpha = 0;
@@ -527,6 +728,15 @@ export class Mess {
         p.vy = -p.vy * (p.kind === "duck" || p.kind === "yarn" ? 0.45 : 0.3);
         p.vx *= 0.6;
         p.vr *= 0.5;
+        if (Math.abs(p.vy) < 90 && p.toy) {
+          // The ball lands and rolls on, on a window or on the floor.
+          p.state = "roll";
+          p.vy = 0;
+          p.vx /= 0.6;
+          p.windowId = hit.windowId ?? null;
+          p.offset = p.x - (hit.windowId ? (windows.get(hit.windowId)?.bounds.x ?? 0) : 0);
+          continue;
+        }
         if (Math.abs(p.vy) < 90) {
           p.state = "settled";
           p.settledMs = now;
@@ -556,12 +766,27 @@ export class Mess {
       }
     }
     // Gone (broken, faded, or fell off the screen). One still fading in, or hidden behind a window, stays.
-    this.props = this.props.filter((p) => p.alpha > 0 || p.state === "rest" || p.state === "slide" || p.state === "teeter");
+    this.props = this.props.filter((p) => p.alpha > 0 || p.state === "rest" || p.state === "slide" || p.state === "teeter" || p.state === "roll");
   }
 
   private stepShards(dt: number, world: WorldSnapshot): void {
     const now = world.nowMs;
     for (const s of this.shards) {
+      if (s.settled && s.windowId) {
+        // A piece lying on a window rides along, and a hard jerk throws it off again.
+        const win = world.windows.find((w) => w.id === s.windowId);
+        const m = this.motion(s.windowId);
+        if (win && m.ay <= GRIP.prop.lift && Math.abs(m.ax) <= GRIP.prop.hold) {
+          s.x = win.bounds.x + (s.offset ?? 0);
+          s.y = win.bounds.y;
+          continue;
+        }
+        s.settled = false;
+        s.settledMs = undefined;
+        s.windowId = undefined;
+        s.vx = m.vx + this.rng.range(-40, 40);
+        s.vy = Math.min(m.vy, 0) - this.rng.range(0, 80);
+      }
       if (s.settled) continue;
       const y0 = s.y;
       // Water and soil fall straight; a sliver of glass also drifts a little.
@@ -577,6 +802,8 @@ export class Mess {
         s.settled = true;
         s.settledMs = now;
         s.vy = 0;
+        const win = hit.windowId ? world.windows.find((w) => w.id === hit.windowId) : undefined;
+        if (win) ((s.windowId = win.id), (s.offset = s.x - win.bounds.x));
         continue;
       }
       s.vy = -s.vy * 0.25;

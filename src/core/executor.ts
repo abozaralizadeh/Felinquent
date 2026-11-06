@@ -1,4 +1,5 @@
 import { behavior } from "./behaviors";
+import { BRACE_JERK, BRACE_SPEED, GRIP, type WinMotion } from "./motion";
 import { planRoute, type JumpLimits, type PathStep } from "./pathfinding";
 import { buildPlatforms, segmentsOf, type Platform } from "./platforms";
 import type { Rng } from "./rng";
@@ -13,7 +14,9 @@ export type Anim =
   | "peek" | "chase_tail" | "knead" | "chatter" | "sneeze" | "happy"
   | "angry" | "hiss" | "puffed" | "annoyed" | "flustered" | "play_bow" | "leap" | "belly" | "bark"
   | "shy" | "beg" | "dig" | "sniff" | "tumble" | "sprawl" | "howl" | "giggle" | "startled"
-  | "proud" | "curious" | "love" | "yawn" | "surprise" | "dazed" | "scratch" | "bounce" | "hang";
+  | "proud" | "curious" | "love" | "yawn" | "surprise" | "dazed" | "scratch" | "bounce" | "hang"
+  // Watching something (the cursor): sitting or standing still, only the head turns to follow it.
+  | "watch" | "watch_stand";
 
 /**
  * Something the animal does to the things around it (mess.ts): a paw on a mug, a nudge toward the
@@ -24,13 +27,26 @@ export type Fx =
   | { fx: "nudge"; prop: string; px: number }
   | { fx: "claw" }
   | { fx: "fly_in"; caught: boolean; dx: number; dy: number }
-  | { fx: "pounce_fly" };
+  | { fx: "pounce_fly" }
+  /** The toy ball comes out (it rolls in from the side if it isn't around). */
+  | { fx: "toy_out" }
+  /** A swipe at the toy ball. */
+  | { fx: "bat"; prop: string; strength: number };
 
 /** A thing standing on a window, as the executor sees it. */
 export interface PropSpot {
   id: string;
   windowId: string;
   x: number;
+}
+
+/** The toy ball, as the executor sees it: where it is, on which window (null: the floor), and whether it is still rolling. */
+export interface ToySpot {
+  id: string;
+  x: number;
+  y: number;
+  windowId: string | null;
+  moving: boolean;
 }
 
 /**
@@ -66,14 +82,24 @@ export type ExecEvent =
   /** Touched down: how fast it came down (px/s) and on which window, for a crack in a hard landing. */
   | { type: "impact"; x: number; y: number; speed: number; windowId: string | null }
   | { type: "hang"; windowId: string | null }
-  | { type: "slipped" };
+  | { type: "slipped" }
+  /** Its window was jerked or yanked so hard that it came off. */
+  | { type: "flung" }
+  /** It rode out a rough move of its window. */
+  | { type: "held_on" };
 
 type Step =
-  | { k: "walk"; x: number; speed: number; anim?: Anim }
+  /** free: it may start off the edge of the screen (walking in from another desktop). */
+  | { k: "walk"; x: number; speed: number; anim?: Anim; free?: boolean }
   | { k: "jump"; toId: string; takeoffX: number; landX: number }
-  | { k: "do"; anim: Anim; sec: number; block?: boolean; face?: "cursor" | "away" | 1 | -1; fx?: Fx }
+  /** fxAt: the effect happens this many seconds in (the paw hits the ball mid-swipe), else at the start. */
+  | { k: "do"; anim: Anim; sec: number; block?: boolean; face?: "cursor" | "away" | 1 | -1; fx?: Fx; fxAt?: number }
   | { k: "leap"; dx: number; h: number; anim: Anim; face?: 1 | -1; fx?: Fx }
   | { k: "beat"; beat: Beat }
+  /** Playing with the toy ball: worked out when it comes up, from where the ball is then. */
+  | { k: "toy"; bats: number; waited?: number }
+  /** Following the cursor around or playing with it, until the executor's clock reaches `until`. */
+  | { k: "cursor"; mode: "follow" | "play"; until: number }
   | { k: "hide" };
 
 /**
@@ -89,6 +115,10 @@ const SPEED: Record<Approach, number> = { walk: 64, saunter: 42, sneak: 28, run:
 export const TURN_SEC = 0.6;
 /** Poses that can simply go on when an action is over. Anything else settles back to sitting. */
 const CALM: ReadonlySet<Anim> = new Set<Anim>(["idle_sit", "loaf", "sleep", "perch", "box", "sulk", "turn_away", "sprawl", "peek"]);
+/** Poses from which the animal looks up at the cursor when it comes close (the head follows it). Both watches keep following it and turn round when it goes behind. */
+const GLANCE: ReadonlySet<Anim> = new Set<Anim>(["idle_sit", "look", "stare", "blink", "perch", "watch", "watch_stand"]);
+/** How close the cursor comes before the animal notices it (px at medium size). */
+const GLANCE_DIST = 260;
 
 /**
  * One-off moves and how long one takes, in seconds, then the pose it settles into. An intent that
@@ -112,8 +142,8 @@ const SIZE_SCALE = { S: 0.75, M: 1, L: 1.3 };
 const MISS = [0.03, 0.08, 0.22] as const;
 
 const DO_ANIM: Partial<Record<IntentName, Anim>> = {
-  nap: "sleep", nap_warm: "sleep", wander: "idle_sit", perch: "perch", groom: "groom", watch: "look",
-  stretch: "stretch", stare: "stare", slow_blink: "blink", follow: "idle_sit", cross: "idle_sit",
+  nap: "sleep", nap_warm: "sleep", wander: "idle_sit", perch: "perch", groom: "groom", watch: "watch",
+  stretch: "stretch", stare: "stare", slow_blink: "blink", follow: "idle_sit", cross: "idle_sit", play_cursor: "pounce",
   headbutt: "headbutt", meow: "meow", swat: "swat", knock_toy: "push_toy", zoomies: "idle_sit",
   ignore: "turn_away", sulk: "sulk", box: "box", sit_on: "loaf", sit_on_video: "loaf", block_dock: "loaf",
   keyboard_walk: "keyboard", gift: "gift", hairball: "hairball", nudge_window: "swat", leave: "idle_sit",
@@ -205,6 +235,26 @@ export class Executor {
   private hanging: HangState | null = null;
   /** It let go of a ledge: on landing it shakes it off before anything else. */
   private slipped = false;
+  /** The toy ball, from the Cat (mess.ts). */
+  toyAt: (() => ToySpot | null) | null = null;
+  /** Seconds since the executor started: deadlines for following the cursor. */
+  private clock = 0;
+  /** An effect due part way into the current step. */
+  private fxLater: { fx: Fx; at: number } | null = null;
+  /** Where the cursor was last frame, and for how long it has not moved. */
+  private lastCursor = { x: NaN, y: NaN };
+  private cursorStill = 99;
+  /** Looking at the cursor: seconds left, and no new look before the cooldown ends. */
+  private glance = 0;
+  private glanceCool = 0;
+  /** How likely it is to look when the cursor comes close (the Cat sets it from the personality). */
+  glanceChance = 0.8;
+  /** Holding on to a window that moves: seconds left crouched, whether the ride was rough, and its own speed while it slides. */
+  private brace = 0;
+  private braceRough = false;
+  private slideU: number | null = null;
+  /** Thrown off a window: on landing it shakes it off and gives you a look. */
+  private flung = false;
 
   constructor(
     private rng: Rng,
@@ -252,6 +302,42 @@ export class Executor {
     }
   }
 
+  /**
+   * Comes in from the desktop next door: from beyond the left (-1) or right (1) edge of the main
+   * display, walking along the Dock, then a look round and a look at you.
+   */
+  enterFrom(side: 1 | -1): void {
+    const dock = this.platforms.find((p) => p.id === "dock");
+    if (!dock) return;
+    this.interrupt();
+    this.mode = "ground";
+    this.jump = null;
+    this.hanging = null;
+    this.pending = null;
+    this.landHold = 0;
+    this.brace = 0;
+    this.slideU = null;
+    this.flung = false;
+    this.slipped = false;
+    const b = this.body;
+    b.hidden = false;
+    b.platformId = "dock";
+    this.ridingWindow = null;
+    b.vx = 0;
+    b.vy = 0;
+    b.y = dock.y;
+    b.x = side < 0 ? dock.x1 - this.size.w * 0.6 : dock.x2 + this.size.w * 0.6;
+    b.facing = (-side) as 1 | -1;
+    b.anim = "walk";
+    const into = side < 0 ? dock.x1 + this.rng.range(120, 280) : dock.x2 - this.rng.range(120, 280);
+    this.queue = [
+      { k: "walk", x: into, speed: SPEED.walk, free: true },
+      { k: "do", anim: "look", sec: 1.2 },
+      { k: "do", anim: "watch", sec: 1.6, face: "cursor" },
+    ];
+    this.phase = "moving";
+  }
+
   /** Keeps the latest cursor, time and flags without rebuilding platforms. */
   observe(world: WorldSnapshot): void {
     this.world = world;
@@ -289,7 +375,8 @@ export class Executor {
       this.beginFall();
       return;
     }
-    b.x = Math.max(seg.x1, Math.min(seg.x2, b.x));
+    // Walking in from beyond the edge of the screen: not snapped onto the ledge.
+    if (!(this.current?.k === "walk" && this.current.free)) b.x = Math.max(seg.x1, Math.min(seg.x2, b.x));
     b.y = seg.y;
     b.platformId = seg.id;
     // Still on the way: find a new way to the same spot. Already doing the thing: carry on.
@@ -335,17 +422,7 @@ export class Executor {
       const left = w.cursor.x > (dock.x1 + dock.x2) / 2;
       return { id: dock.id, x: left ? dock.x1 + 40 : dock.x2 - 40 };
     }
-    if (t === "cursor") {
-      let best = dock;
-      let bestD = Infinity;
-      for (const p of this.platforms) {
-        const dx = w.cursor.x < p.x1 ? p.x1 - w.cursor.x : w.cursor.x > p.x2 ? w.cursor.x - p.x2 : 0;
-        const below = p.y >= w.cursor.y - 20 ? 0 : 400;
-        const d = dx + Math.abs(p.y - w.cursor.y) * 0.5 + below;
-        if (d < bestD) ((bestD = d), (best = p));
-      }
-      return { id: best.id, x: Math.max(best.x1 + 2, Math.min(best.x2 - 2, w.cursor.x)) };
-    }
+    if (t === "cursor") return this.spotUnder(w.cursor);
     const segs = segmentsOf(this.platforms, t);
     const seg = segs[0];
     if (!seg) return { id: cur.id, x: this.body.x };
@@ -361,6 +438,19 @@ export class Executor {
       case "cross": return { id: seg.id, x: seg.x1 + 20 };
       default: return { id: seg.id, x: mid + this.rng.range(-jitter, jitter) };
     }
+  }
+
+  /** The ledge right under a point (or the nearest one a little below it), and where on it. */
+  private spotUnder(pt: { x: number; y: number }): { id: string; x: number } {
+    let best = this.platforms.find((p) => p.id === "dock") as Platform;
+    let bestD = Infinity;
+    for (const p of this.platforms) {
+      const dx = pt.x < p.x1 ? p.x1 - pt.x : pt.x > p.x2 ? pt.x - p.x2 : 0;
+      const below = p.y >= pt.y - 20 ? 0 : 400;
+      const d = dx + Math.abs(p.y - pt.y) * 0.5 + below;
+      if (d < bestD) ((bestD = d), (best = p));
+    }
+    return { id: best.id, x: Math.max(best.x1 + 2, Math.min(best.x2 - 2, pt.x)) };
   }
 
   /** How far from the thing the animal stands to reach it with a paw. */
@@ -393,8 +483,8 @@ export class Executor {
   }
 
   /** The walks and jumps that get the animal to where the intent happens. */
-  private routeSteps(intent: Intent, path: PathStep[]): Step[] {
-    const speed = SPEED[intent.approach];
+  private routeSteps(approach: Approach, path: PathStep[]): Step[] {
+    const speed = SPEED[approach];
     const steps: Step[] = [];
     let x = this.body.x;
     path.forEach((p) => {
@@ -448,6 +538,14 @@ export class Executor {
       }
     }
     if (intent.intent === "knock_off" && cur && !intent.script) return [...steps, ...this.knockSteps(cur)];
+    if (intent.intent === "knock_toy" && !intent.script) {
+      // Its own ball: out it comes (rolling in if it was put away), then it plays with it.
+      return [...steps, { k: "do", anim: "look", sec: 0.8, fx: { fx: "toy_out" } }, { k: "toy", bats: Math.floor(this.rng.range(2, 6)) }];
+    }
+    if ((intent.intent === "follow" && intent.target === "cursor") || intent.intent === "play_cursor") {
+      const mode = intent.intent === "follow" ? "follow" : "play";
+      return [...steps, { k: "do", anim: "watch", sec: 0.8, face: "cursor" }, { k: "cursor", mode, until: this.clock + Math.max(8, intent.stay_sec) }];
+    }
     if (intent.intent === "claw" && cur && !intent.script) return [...steps, ...this.clawSteps()];
     if (intent.intent === "hunt" && cur && !intent.script) return [...steps, ...this.huntSteps(cur)];
     // Scripted scenes: a reaction to a click, and the little routines of the playful intents.
@@ -525,6 +623,107 @@ export class Executor {
       }
     }
     steps.push({ k: "do", anim: "peek", sec: 2.6, face: dir }, { k: "do", anim: "proud", sec: 2.4, face: "cursor" }, { k: "do", anim: "idle_sit", sec: 2 });
+    return steps;
+  }
+
+  /** The ledge the toy ball is on. */
+  private toyPlatform(t: ToySpot): Platform | undefined {
+    if (t.windowId) return segmentsOf(this.platforms, t.windowId).find((p) => t.x >= p.x1 - 6 && t.x <= p.x2 + 6);
+    return this.platforms.find((p) => !p.windowId && t.x >= p.x1 && t.x <= p.x2 && Math.abs(p.y - t.y) < 30);
+  }
+
+  /**
+   * One go at the toy ball, from where it is now: watch it while it rolls, go after it (stalking the
+   * last bit), crouch with a wiggle, and swipe it on. The next go follows until the bats run out.
+   */
+  private toyRound(bats: number, waited = 0): Step[] {
+    const b = this.body;
+    const t = this.toyAt?.() ?? null;
+    const cur = this.currentPlatform();
+    if (!t || !cur) return [{ k: "do", anim: "look", sec: 1.5 }, { k: "do", anim: "idle_sit", sec: 1.5 }];
+    const toward: 1 | -1 = t.x >= b.x ? 1 : -1;
+    if (bats <= 0) return [{ k: "do", anim: "watch", sec: 1.4, face: toward }, { k: "do", anim: "proud", sec: 1.8 }, { k: "do", anim: "groom", sec: 3 }];
+    // Still rolling: eyes on it until it stops.
+    // Standing: it is about to go after it.
+    if (t.moving && waited < 20) return [{ k: "do", anim: "watch_stand", sec: 0.35, face: toward }, { k: "toy", bats, waited: waited + 1 }];
+    const plat = this.toyPlatform(t);
+    if (!plat) return [{ k: "do", anim: "watch", sec: 1.5, face: toward }, { k: "do", anim: "idle_sit", sec: 1 }];
+    // Usually on in the same direction; now and then back the other way, or toward the edge for fun.
+    let dir: 1 | -1 = this.rng.next() < 0.7 ? toward : (-toward as 1 | -1);
+    const room = (d: 1 | -1): number => (d === 1 ? plat.x2 - t.x : t.x - plat.x1);
+    if (room((-dir) as 1 | -1) < this.reach + 8) dir = (-dir) as 1 | -1;
+    const standX = Math.max(plat.x1 + 2, Math.min(plat.x2 - 2, t.x - dir * this.reach));
+    const steps: Step[] = [];
+    if (plat.id !== cur.id) {
+      const plan = planRoute(this.platforms, cur.id, b.x, plat.id, standX, this.limits);
+      if (!plan || !plan.reached) return [{ k: "do", anim: "watch", sec: 2, face: toward }, { k: "do", anim: "sulk", sec: 2 }];
+      steps.push(...this.routeSteps(Math.abs(t.x - b.x) > 300 ? "run" : "walk", plan.steps));
+    } else if (Math.abs(standX - b.x) > 6) {
+      const far = Math.abs(standX - b.x);
+      // Runs after it, then creeps up the last bit.
+      if (far > 260) steps.push({ k: "walk", x: standX - Math.sign(standX - b.x) * 90, speed: SPEED.run });
+      steps.push({ k: "walk", x: standX, speed: far > 120 ? SPEED.walk : SPEED.sneak });
+    }
+    steps.push(
+      { k: "do", anim: "pounce", sec: this.rng.range(0.6, 1.4), face: dir },
+      { k: "do", anim: "swat", sec: 0.9, face: dir, fx: { fx: "bat", prop: t.id, strength: this.rng.range(0.6, 1.25) }, fxAt: 0.3 },
+      { k: "toy", bats: bats - 1 },
+    );
+    return steps;
+  }
+
+  /**
+   * Following the cursor around (and pestering you about it), or playing with it like a toy. Worked
+   * out again after every short leg, from where the cursor is then, until the time is up.
+   */
+  private cursorRound(mode: "follow" | "play", until: number): Step[] {
+    const w = this.world;
+    const b = this.body;
+    const cur = this.currentPlatform();
+    if (!w || !cur || this.clock >= until) {
+      return mode === "follow" ? [{ k: "do", anim: "watch", sec: 1.5, face: "cursor" }, { k: "do", anim: "idle_sit", sec: 1 }] : [{ k: "do", anim: "watch", sec: 1, face: "cursor" }, { k: "do", anim: "groom", sec: 2.5 }];
+    }
+    // A cursor that sits still is no fun: it loses interest.
+    if (mode === "play" && this.cursorStill > 4) return [{ k: "do", anim: "look", sec: 1.2, face: "cursor" }, { k: "do", anim: "groom", sec: 2.5 }];
+    const again: Step = { k: "cursor", mode, until };
+    const goal = this.spotUnder(w.cursor);
+    const toward: 1 | -1 = w.cursor.x >= b.x ? 1 : -1;
+    const gap = (mode === "play" ? 80 : 55) * this.sizeScale;
+    if (goal.id !== cur.id) {
+      const plan = planRoute(this.platforms, cur.id, b.x, goal.id, goal.x, this.limits);
+      if (!plan || !plan.reached || plan.steps.length === 0) return [{ k: "do", anim: "watch", sec: 1.5, face: "cursor" }, again];
+      return [...this.routeSteps(Math.abs(goal.x - b.x) > 400 ? "run" : "walk", plan.steps), again];
+    }
+    const far = Math.abs(goal.x - b.x);
+    if (far > gap + 40) {
+      // A short leg at a time, so it turns when the cursor does.
+      const stop = goal.x - Math.sign(goal.x - b.x) * gap;
+      const x = b.x + Math.sign(stop - b.x) * Math.min(Math.abs(stop - b.x), 320);
+      const speed = far > 420 ? SPEED.run : mode === "play" && far < 220 ? SPEED.sneak : SPEED.walk;
+      return [{ k: "walk", x, speed }, again];
+    }
+    const head = b.y - this.size.h * 0.7;
+    const up = head - w.cursor.y;
+    const dx = w.cursor.x - b.x;
+    if (mode === "follow") {
+      // Caught up with you: sit, look up, and have a word about it.
+      const r = this.rng.next();
+      if (r < 0.3) return [{ k: "do", anim: "meow", sec: 1.8, face: "cursor" }, { k: "do", anim: "watch", sec: this.rng.range(1, 2.2), face: "cursor" }, again];
+      if (r < 0.45 && Math.abs(dx) < 70 && up < 70) return [{ k: "do", anim: "headbutt", sec: 2.4, face: "cursor" }, again];
+      if (r < 0.55) return [{ k: "do", anim: "beg", sec: 2.2, face: "cursor" }, again];
+      return [{ k: "do", anim: "watch", sec: this.rng.range(1.4, 3), face: "cursor" }, again];
+    }
+    // Play: crouch and wiggle, then jump at it if it hangs above, swipe at it if it is down here.
+    const steps: Step[] = [{ k: "do", anim: "pounce", sec: this.rng.range(0.5, 1.3), face: "cursor" }];
+    if (up > 30 && up < 280 * this.sizeScale && Math.abs(dx) < 220) {
+      steps.push({ k: "leap", dx: Math.max(-170, Math.min(170, dx)), h: Math.min(300, up + 50), anim: "leap", face: toward });
+    } else if (Math.abs(dx) < this.reach * 1.8) {
+      steps.push({ k: "do", anim: "swat", sec: 0.9, face: "cursor" });
+    } else {
+      steps.push({ k: "leap", dx: Math.max(-140, Math.min(140, dx * 0.8)), h: 45, anim: "leap", face: toward });
+    }
+    // Stays on its feet between goes, eyes on it.
+    steps.push({ k: "do", anim: "watch_stand", sec: this.rng.range(0.5, 1.3), face: "cursor" }, again);
     return steps;
   }
 
@@ -695,7 +894,9 @@ export class Executor {
       this.goal = { id: cur.id, offset: this.body.x };
     }
     const plan = planRoute(this.platforms, cur.id, this.body.x, goal.id, goal.x, this.limits);
-    this.queue = plan ? this.routeSteps(intent, plan.steps) : [];
+    this.queue = plan ? this.routeSteps(intent.approach, plan.steps) : [];
+    // Still coming in from beyond the edge of the screen: first onto the ledge.
+    if (this.body.x < cur.x1 || this.body.x > cur.x2) this.queue.unshift({ k: "walk", x: Math.max(cur.x1 + 30, Math.min(cur.x2 - 30, this.body.x)), speed: SPEED.walk, free: true });
     this.unreachable = plan ? !plan.reached : false;
     this.current = null;
   }
@@ -705,6 +906,8 @@ export class Executor {
     this.vel = 0;
     this.queue = [];
     this.current = null;
+    this.fxLater = null;
+    this.glance = 0;
     this.intent = null;
     this.goal = null;
     this.inTail = false;
@@ -717,6 +920,9 @@ export class Executor {
     this.landHold = 0;
     this.hanging = null;
     this.slipped = false;
+    this.flung = false;
+    this.brace = 0;
+    this.slideU = null;
     this.mode = "held";
     this.body.platformId = null;
     this.ridingWindow = null;
@@ -736,8 +942,90 @@ export class Executor {
     this.body.anim = "fall";
   }
 
+  /**
+   * The window under the animal moves (motion.ts). A gentle move it rides out without a fuss. A fast
+   * one and it crouches and digs its claws in until it stops. Jerked sideways hard enough and it
+   * slides, maybe off the end. Pulled down from under it, or stopped hard on the way up, and it comes
+   * off and flies. Call every frame, after the world was handed over and before update().
+   */
+  ride(m: WinMotion, dt: number): void {
+    if (this.mode !== "ground" || !this.ridingWindow) {
+      this.slideU = null;
+      return;
+    }
+    const g = GRIP.animal;
+    const b = this.body;
+    if (m.stop && m.stop.vy < -g.stop) {
+      this.fling(m.stop.vx, m.stop.vy * 0.7);
+      return;
+    }
+    if (m.ay > g.lift) {
+      this.fling(this.slideU ?? m.vx, Math.min(m.vy, 0));
+      return;
+    }
+    if (m.stop && Math.abs(m.stop.vx) > g.stop && this.slideU === null) this.slideU = m.stop.vx;
+    if (this.slideU === null && Math.abs(m.ax) > g.hold) this.slideU = m.vx - m.ax * dt;
+    if (this.slideU !== null) {
+      const rel = this.slideU - m.vx;
+      const pull = g.slide * dt;
+      if (Math.abs(rel) <= pull && Math.abs(m.ax) < g.hold) this.slideU = null;
+      else {
+        this.slideU -= Math.sign(rel) * Math.min(pull, Math.abs(rel));
+        b.x += (this.slideU - m.vx) * dt;
+        const win = this.world?.windows.find((w) => w.id === this.ridingWindow);
+        if (win && (b.x < win.bounds.x - 4 || b.x > win.bounds.x + win.bounds.w + 4)) {
+          this.fling(this.slideU, Math.min(m.vy, 0));
+          return;
+        }
+        if (win) this.ridingOffset = b.x - win.bounds.x;
+      }
+    }
+    const speed = Math.hypot(m.vx, m.vy);
+    const jerk = Math.hypot(m.ax, m.ay);
+    if (speed > BRACE_SPEED || jerk > BRACE_JERK || this.slideU !== null) {
+      if (this.brace <= 0) this.braceRough = false;
+      this.brace = Math.max(this.brace, 0.35);
+      if (speed > 900 || jerk > g.hold * 0.6) this.braceRough = true;
+    }
+  }
+
+  /** Off the window, with the speed the window gave it. */
+  private fling(vx: number, vy: number): void {
+    this.slideU = null;
+    this.brace = 0;
+    this.fxLater = null;
+    this.glance = 0;
+    this.beginFall();
+    this.body.vx = vx;
+    this.body.vy = vy;
+    this.flung = true;
+    this.outbox.push({ type: "flung" });
+  }
+
+  /** It held on through a rough ride: a look at you, and a wash to calm down. */
+  private afterBrace(): void {
+    const b = this.body;
+    const cur = this.current;
+    if (cur?.k === "do") b.anim = cur.anim;
+    if (!this.braceRough) return;
+    this.braceRough = false;
+    this.outbox.push({ type: "held_on" });
+    // Sitting on the window: it gets up for this (the sit picks up again after, blocking again).
+    this.closeBlock();
+    const rest: Step[] = cur ? [cur.k === "do" ? { ...cur, sec: Math.max(0.3, this.doTimer), fx: undefined } : cur] : [];
+    this.current = null;
+    this.queue.unshift({ k: "do", anim: "annoyed", sec: 1.4, face: "cursor" }, { k: "do", anim: "groom", sec: 2.2 }, ...rest);
+  }
+
   update(dtSec: number): ExecEvent[] {
     const world = this.world;
+    this.clock += dtSec;
+    if (world) {
+      const c = world.cursor;
+      const moved = Math.hypot(c.x - this.lastCursor.x, c.y - this.lastCursor.y);
+      if (!(moved < 2)) ((this.cursorStill = 0), (this.lastCursor = { x: c.x, y: c.y }));
+      else this.cursorStill += dtSec;
+    }
     if (world && !this.body.hidden) {
       if (this.mode === "jump") this.stepJump(dtSec);
       else if (this.mode === "fall") this.stepFall(dtSec, world);
@@ -767,13 +1055,18 @@ export class Executor {
     this.landHold = this.queue[0]?.k === "beat" || this.queue[0]?.k === "leap" ? 0.16 : 0.28;
     this.syncRiding(p);
     this.outbox.push({ type: "landed" });
-    if (this.slipped) {
-      this.slipped = false;
+    if (this.slipped || this.flung) {
       // Fell off a ledge: it shakes it off and has a wash, then (on the way somewhere) tries again.
+      // Thrown off by its window: a fright, a look at whoever did that, a wash.
+      const after: Step[] = this.flung
+        ? [{ k: "do", anim: "startled", sec: 0.9 }, { k: "do", anim: "annoyed", sec: 1.6, face: "cursor" }, { k: "do", anim: "groom", sec: 2.4 }]
+        : [{ k: "do", anim: "dazed", sec: 1.4 }, { k: "do", anim: "groom", sec: 2.4 }];
+      this.slipped = false;
+      this.flung = false;
       if (this.intent && !this.inTail) {
         this.replan();
-        this.queue.unshift({ k: "do", anim: "dazed", sec: 1.4 }, { k: "do", anim: "groom", sec: 2.4 });
-      } else this.queue = [{ k: "do", anim: "dazed", sec: 1.4 }, { k: "do", anim: "groom", sec: 2.4 }];
+        this.queue.unshift(...after);
+      } else this.queue = after;
       this.current = null;
     }
     if (this.pending) {
@@ -800,7 +1093,9 @@ export class Executor {
     const all = [world.screen, ...(world.displays ?? [])];
     const minX = Math.min(...all.map((d) => d.x));
     const maxX = Math.max(...all.map((d) => d.x + d.w));
-    b.x = Math.max(minX, Math.min(maxX, b.x + b.vx * dt));
+    b.x += b.vx * dt;
+    // Thrown at the edge of the screen: it bounces off it instead of sliding down it.
+    if (b.x < minX || b.x > maxX) ((b.x = Math.max(minX, Math.min(maxX, b.x))), (b.vx = -b.vx * 0.3));
     b.y += b.vy * dt;
     if (b.vy < 0) return;
     let hit: Platform | undefined;
@@ -896,6 +1191,13 @@ export class Executor {
       b.anim = "land";
       return;
     }
+    if (this.brace > 0) {
+      // Crouched low with its claws in while the window moves; whatever it was doing waits.
+      this.brace -= dt;
+      b.anim = this.slideU !== null ? "startled" : "land";
+      if (this.brace <= 0) this.afterBrace();
+      return;
+    }
     if (!this.current) {
       // Arrived: now plan the action itself, from where it really is.
       if (this.queue.length === 0 && this.intent && !this.inTail) {
@@ -906,14 +1208,23 @@ export class Executor {
       if (!this.current) {
         if (this.phase !== "idle") this.finish();
         // Done: settle down instead of going on bouncing, and after a while lie down.
-        if (!CALM.has(b.anim)) b.anim = "idle_sit";
+        if (!CALM.has(b.anim) && b.anim !== "watch") b.anim = "idle_sit";
         this.idleSec += dt;
+        if (this.lookAtCursor(dt, "idle_sit")) return;
         // A huff doesn't last: after a while it turns back round, and later lies down.
         if (this.idleSec > 12 && (b.anim === "turn_away" || b.anim === "sulk")) b.anim = "idle_sit";
         if (this.idleSec > 30 && b.anim === "idle_sit") b.anim = "loaf";
         return;
       }
+      // Steps worked out only now, from where the ball or the cursor is (each expansion starts with a plain step).
+      for (let i = 0; i < 4 && this.current && (this.current.k === "toy" || this.current.k === "cursor"); i++) {
+        const c: Step = this.current;
+        this.queue.unshift(...(c.k === "toy" ? this.toyRound(c.bats, c.waited) : c.k === "cursor" ? this.cursorRound(c.mode, c.until) : []));
+        this.current = this.queue.shift() ?? null;
+      }
+      if (!this.current) return;
       if (this.current.k === "beat") this.current = this.resolveBeat(this.current.beat);
+      this.fxLater = null;
       if (this.current.k === "do") {
         this.phase = "doing";
         this.doTimer = this.current.sec;
@@ -924,7 +1235,8 @@ export class Executor {
           const toward = this.world.cursor.x >= b.x ? 1 : -1;
           b.facing = face === "cursor" ? toward : (-toward as 1 | -1);
         }
-        if (this.current.fx) this.emitFx(this.current.fx);
+        if (this.current.fx && this.current.fxAt) this.fxLater = { fx: this.current.fx, at: this.current.fxAt };
+        else if (this.current.fx) this.emitFx(this.current.fx);
         if (this.current.block) {
           const p = this.currentPlatform();
           const target = this.intent?.target ?? "here";
@@ -1008,7 +1320,9 @@ export class Executor {
         b.x += Math.sign(dx) * step;
       }
       const p = this.currentPlatform();
-      if (p) {
+      // Walking in from beyond the edge of the screen (from another desktop) isn't held to the ledge until it is on it.
+      const onIt = p && b.x >= p.x1 && b.x <= p.x2;
+      if (p && (onIt || !s.free)) {
         b.x = Math.max(p.x1, Math.min(p.x2, b.x));
         b.y = p.y;
         this.syncRiding(p);
@@ -1016,11 +1330,63 @@ export class Executor {
     } else if (s.k === "do") {
       this.vel = 0;
       this.doTimer -= dt;
+      if (this.fxLater && s.sec - this.doTimer >= this.fxLater.at) {
+        this.emitFx(this.fxLater.fx);
+        this.fxLater = null;
+      }
+      this.lookAtCursor(dt, s.anim, s.face === "away");
       if (this.doTimer <= 0) {
+        if (this.glance > 0) ((this.glance = 0), (this.glanceCool = this.rng.range(3, 8)));
         this.closeBlock();
         this.current = null;
       }
     }
+  }
+
+  /**
+   * The cursor comes close while the animal sits: it looks at it, its head following it, and turns
+   * round if it went behind. It looks away again when the cursor leaves or stops for a while. Not
+   * while it is ignoring you on purpose. True while it is looking.
+   */
+  private lookAtCursor(dt: number, base: Anim, ignoring = false): boolean {
+    const w = this.world;
+    const b = this.body;
+    this.glanceCool -= dt;
+    if (!w || ignoring || !GLANCE.has(base)) {
+      this.glance = 0;
+      return false;
+    }
+    const dx = w.cursor.x - b.x;
+    const d = Math.hypot(dx, w.cursor.y - (b.y - this.size.h * 0.7));
+    const near = d < GLANCE_DIST * this.sizeScale;
+    const lively = this.cursorStill < 0.4;
+    const watching = base === "watch" || base === "watch_stand";
+    if (watching || this.glance > 0) {
+      if (!watching) {
+        if (near && lively) this.glance = Math.max(this.glance, 1.2);
+        this.glance -= dt;
+        if (this.glance <= 0 || d > GLANCE_DIST * 1.5 * this.sizeScale) {
+          this.glance = 0;
+          this.glanceCool = this.rng.range(3, 8);
+          b.anim = base;
+          return false;
+        }
+      }
+      b.anim = watching ? base : "watch";
+      // It turns round when the cursor goes well behind it (the drawings only look back over the shoulder).
+      if (Math.abs(dx) > 40 && Math.sign(dx) !== b.facing) b.facing = dx > 0 ? 1 : -1;
+      return true;
+    }
+    if (near && lively && this.glanceCool <= 0) {
+      if (this.rng.next() < this.glanceChance) {
+        this.glance = this.rng.range(2.2, 4.5);
+        b.anim = "watch";
+        if (Math.abs(dx) > 30) b.facing = dx > 0 ? 1 : -1;
+        return true;
+      }
+      this.glanceCool = this.rng.range(2, 5);
+    }
+    return false;
   }
 
   /** Turns a beat into a concrete step, using where the cat and the cursor are right now. */

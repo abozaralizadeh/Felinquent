@@ -10,9 +10,13 @@ It walks along the tops of your windows, naps on the Dock, sits on the thing you
 
 Turn the chaos level up and it gets worse. Mugs, plants and glasses show up on your windows and it pushes them off, slowly, while looking at you. They break into pieces on the floor. It claws title bars, chases flies, and at gremlin it runs laps across your windows and lands hard enough to crack one. None of it is real: the mess is drawn on the cat's own see-through layer, your windows are never touched, and Panic clears it all.
 
-![Tabby, Inky, Pearl, Mochi, Bandit and Biscuit, each in eleven poses](docs/assets/characters-sprites.jpg)
+Move your cursor close and it looks at it. Sometimes it follows you around and pesters you, or decides the cursor is prey and pounces on it. It has its own red ball to chase. Drag the window it's sitting on and it rides along; fling it and the animal (and the mug next to it) goes flying. Switch to another desktop and it stays behind, then wanders over a bit later from the side you came from.
 
-There are six characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a raccoon (Bandit) and a dog (Biscuit). Each has its own instincts. The cats nap and ignore you, the dog comes running, the fox stalks, the raccoon steals.
+It also makes up its own tricks. When it wakes from a nap it sometimes remixes something it knows into a new little routine, tries it out, and the first time it shows you, the bubble names it ("new trick: the needy snub"). It notices what you pet it for and what you shoo it for, gets bored of doing the same thing, and is curious about what it hasn't done in a while, so it doesn't settle into a loop.
+
+![Tabby, Inky, Pearl, Mochi, Bandit, Biscuit, Chili, Clover and Hazel, each in eleven poses](docs/assets/characters-sprites.jpg)
+
+There are nine characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a raccoon (Bandit), two dogs (Biscuit, and Chili the chihuahua), a rabbit (Clover) and a squirrel (Hazel). Each has its own instincts. The cats nap and ignore you, the dogs come running (the chihuahua yaps about it), the fox stalks, the raccoon steals, the rabbit startles and does happy little jumps, the squirrel can't sit still and tells you off. The rabbit and the squirrel hop instead of walking. Every pose is a little drawn sequence, not one still picture.
 
 ![Eight moments of the walk cycle over the same patch of floor](docs/assets/rigged-walk-film.jpg)
 
@@ -50,7 +54,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. Drag the pretend windows, hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Try the Meeting and Panic switches, and the chaos level.
+Open http://localhost:5173. Drag the pretend windows (slowly, then fast), hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Try the Meeting and Panic switches, the chaos level, the desktop arrows, its ball, and "Make up a trick".
 
 To build the Mac app from source instead of downloading it (needs Rust):
 
@@ -67,11 +71,12 @@ npm run check:forbidden    # fails if any code fakes input or captures the scree
 npm run build
 npm run eval -- --brain rules    # scores a brain on repeatable scenarios (also: fake, ollama)
 npm run pace -- 60 biscuit       # how busy an animal looks over a simulated hour
+npm run month -- 30 normal       # a simulated month: variety, tricks, and whether it learns what you like
 ```
 
 ## How it works
 
-The cat's day comes in bouts: a long rest, a stroll, some play, a visit to you, some mischief. Its body picks the next bout from what it just did, how it feels and the chaos level. A slow brain (rules, or a small local model) then plans a few steps inside it, with pauses in between, and can only pick from a menu that the rules and a governor prepare. The governor approves every action. A fast layer moves the cat, plays the animation and handles your pointer. The Mac shell is [Tauri](https://tauri.app): one transparent, click-through window per display.
+The cat's day comes in bouts: a long rest, a stroll, some play, a visit to you, some mischief. Its body picks the next bout from what it just did, how it feels and the chaos level. A slow brain (rules, or a small local model) then plans a few steps inside it, with pauses in between, and can only pick from a menu that the rules and a governor prepare. What it learned about you, what it's bored of and what's new to it tilt that menu, and its own tricks are on it too. The governor approves every action. A fast layer moves the cat, plays the animation and handles your pointer. The Mac shell is [Tauri](https://tauri.app): one transparent, click-through window per display.
 
 | Doc | What's in it |
 |---|---|

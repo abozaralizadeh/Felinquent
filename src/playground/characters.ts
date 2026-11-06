@@ -22,6 +22,8 @@ if (big) {
   canvas.width = strip ? 1800 : custom ? Math.max(1320, custom.length * 220) : 1320;
   canvas.height = 360;
 }
+// One row of 150 px per character, however many there are.
+else canvas.height = 150 * list.length;
 const colW = canvas.width / POSES.length;
 const rowH = canvas.height / list.length;
 const sc = big ? 2.6 : 1.05;

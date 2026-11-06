@@ -7,7 +7,7 @@ import type { Kind } from "../src/core/species";
 import { makeWorld } from "../src/core/world";
 import { T0, at, newCat } from "./helpers";
 
-const ID_BY_KIND: Record<Kind, string> = { cat: "tabby", dog: "biscuit", fox: "mochi", raccoon: "bandit" };
+const ID_BY_KIND: Record<Kind, string> = { cat: "tabby", dog: "biscuit", fox: "mochi", raccoon: "bandit", rabbit: "clover", squirrel: "hazel" };
 const anims = (script: Beat[]) => script.flatMap((b) => ("do" in b ? [b.do] : "anim" in b && b.anim ? [b.anim] : []));
 const ANGRY = ["angry", "hiss", "puffed"];
 
@@ -26,7 +26,7 @@ function pokes(kind: Kind, n: number, seed = 1): { name: string; anims: string[]
 
 describe("a click gets a reaction, and it escalates", () => {
   it("every poke starts a scripted reaction", () => {
-    for (const kind of ["cat", "dog", "fox", "raccoon"] as const) expect(pokes(kind, 1)[0]!.anims.length).toBeGreaterThan(1);
+    for (const kind of ["cat", "dog", "fox", "raccoon", "rabbit", "squirrel"] as const) expect(pokes(kind, 1)[0]!.anims.length).toBeGreaterThan(1);
   });
 
   it("a cat that is poked again and again ends up hissing and storming off", () => {

@@ -106,8 +106,11 @@ All sensors live behind a `Sensors` trait, so the Windows port and the playgroun
 | Caret position (not text) | Keyboard walk (B-17) | AX focused element → bounds for range | **Accessibility** (opt-in) | UI Automation |
 | Move a window | Gremlin nudge (B-25) | AX set position | **Accessibility** (opt-in) | `SetWindowPos` |
 | Battery | RM-07 | IOKit power sources | none | `GetSystemPowerStatus` |
+| Which desktop (Space) is showing, and its place in the row | Desktops: it stays on its own and walks in from the side | `CGSCopyManagedDisplaySpaces` on the main connection (read only, looked up with `dlsym`, so a missing symbol just means "no desktop info") | none | not yet (`None`) |
 
 **Polling:** the window list at 4 Hz, diffed into events (opened, closed, moved, focused). Everything else at 1-4 Hz. Polling pauses while the cat is hidden. The cost gets checked in S-2.
+
+**As built (Mac).** The overlay page asks for `read_sensors` every 250 ms without waiting for the answer, and for `read_windows` (the window list only, a few ms) every frame while the mouse button is down or a window moved in the last second. So a window being dragged is seen at the frame rate and what stands on it moves with it, not four times a second.
 
 ## 6. Slow brain
 
@@ -263,6 +266,8 @@ It runs twice: once to filter `options`, once to validate the chosen intent. It 
 | `hunt` | B-45 | 0 | 10 to 40 s | A drawn fly; nothing else |
 | `beg` | B-38 | 1 | ≤ 30 s | Cursor must be a little way off |
 | `react` | RF-05, RF-10 | 0 | the script's length | Reflex only. Never offered to the brain. Respect modes still win |
+| `play_cursor` | B-48 | 1 | 10 to 40 s | Cursor within 450 px and moving, energy > 0.4. Rounds of watch, crouch, pounce or leap or swipe at the cursor |
+| `trick` | B-49 | 1 | the trick's length (≤ 40 s of beats) | One per bout kind on the menu (the best that kind scores now). Mischief tricks never at chill, play and mischief tricks need energy > 0.45. The trick's beats are checked when it's made and again when it's loaded from disk. Only overlay poses and moves |
 | `leave` | respect modes | 0 | n/a | Always allowed |
 
 **Other rules:**
@@ -271,7 +276,12 @@ It runs twice: once to filter `options`, once to validate the chosen intent. It 
 - A respect mode forces `nap` in a far corner, or `leave`.
 - `thought` is trimmed to 80 characters with URLs stripped. Bubbles are at most one per 8 min at chill, 4 min at normal and 150 s at gremlin. On the Mac the bubble is drawn on the overlay above the animal for 6 s and fades; its text is never logged.
 - An unknown or missing target → the nearest valid one.
+- **Freshness.** Every rules score is multiplied by what it learned (`habits.ts`): liked (0.5 to 1.6, a draw from a discounted Beta estimate), fresh (down to 0.2 when done a lot lately) and new (up to 1.5 for something rarely done). Tricks are learned one by one, as `trick:<id>`.
 - **Pace.** Every scripted scene and reaction goes through `paced()` in `scenes.ts`: each pose is held at least 1.1 s (a flinch 0.6 s), all beats are 1.3 times longer than written, and a scene that doesn't end calm gets a 1.8 s sit at the end. When an action is over the executor settles into a calm pose, turns back from a huff after 12 s and lies down after 30 s. Lively idle poses are split: a short busy part, then a plain sit. One-off moves (`ONCE` in `executor.ts`: stretch, swat, meow, headbutt, sneeze, bark...) play once for their own length and the rest of the stay is a calm pose. Walks under 40 px are skipped (a jump takes off from where the animal stands) and runs under 160 px are walked.
+
+### 6.7.1 Tools for variety
+
+`npm run month -- [days] [chaos] [--seed N] [--days-detail]` runs the real Mind (rules brain) with a stand-in body and a made-up human for a month, with learning on and off, and prints different things per day, repeats in a row, new against the last three days, tricks per day and the liked and hated shares (`tools/month-sim.ts`, also used by `tests/freshness.test.ts` and `tests/tricks.test.ts`).
 
 ### 6.8 Setting up the local model (as built, Mac)
 
@@ -318,6 +328,32 @@ The platform builder turns window rectangles into walkable segments:
 - **Unreachable target** → walk to the nearest reachable point and *stare at it* (a real cat move).
 - The executor turns an intent into steps (path, then the animation sequence, then the stay timer). Steps can be interrupted by reflexes and respect modes (abort within one frame).
 
+### 7.2.1 Riding a moving window (`motion.ts`)
+
+- `WindowMotion` turns the window lists into a smoothed velocity and acceleration per window (time constants 45 ms and 60 ms). A new list object is a sample. Samples more than 0.1 s apart carry no speed (a window snapped somewhere is a jump, not a fling), and no sample for 0.12 s means it stopped. A **dead stop** is two readings in a row barely moving after it went faster than 450 px/s; it's reported once, with the speed it had.
+- Each thing on a window has a grip (px/s², gravity is 2000): **hold** (a sideways jerk above this and it slips), **slide** (while slipping the window drags it toward its own speed at most this hard), **lift** (a pull down above this and it leaves the window), **stop** (a dead stop from faster than this and it keeps going).
+
+| | hold | slide | lift | stop |
+|---|---|---|---|---|
+| a prop | 8000 | 1100 | 4600 | 450 |
+| the animal | 11000 | 6000 | 7000 | 1300 |
+| its ball | 2600 | 600 | 3600 | 150 |
+
+- Slipping, a thing keeps its own sideways speed and falls off past the window's edge. The animal crouches (`land`) while its window goes faster than 450 px/s or is jerked over 2600 px/s², then gives you a look. Thrown off, it flies from where it was (the ride is worked out before it's moved with the window), lands startled, glares at the cursor and washes, and the Mind notes it.
+- The mess sub-steps at 1/30 s while something moves, so a long frame doesn't make things bounce for ever.
+
+### 7.2.2 The cursor
+
+- **Glance (RF-11).** Sitting or loafing with the cursor within 260 px (times the size) and moving in the last 0.4 s, it plays `watch` and the head follows the cursor; past its back it turns round. The chance per approach is 0.95 minus 0.6 times aloofness.
+- **Follow and play.** `follow` aimed at the cursor and `play_cursor` are steps that expand while they run (`cursor` steps): follow trots after the cursor and stops near it for a meow, a headbutt, a beg or a watch; play crouches, then pounces, leaps or swipes at where the cursor is now.
+- **Its ball.** `knock_toy` brings the ball out (`toy_out`: it rolls in from the nearer screen edge at 260 to 340 px/s, or is already there). The `toy` step watches it while it rolls, routes or runs to it, sneaks the last bit, pounces and bats it (`bat` effect 0.3 s into the swipe), two to five times. The ball is a prop with `toy: true` that rolls, never fades and is never a thing to knock off.
+
+### 7.2.3 Desktops
+
+- `WorldSnapshot.space` is `{ id, index, spans }`: the desktop showing, its place in the row, and whether one desktop spans all displays. `Cat` keeps `home` (its desktop) and, while you're elsewhere, `homeWorld`: the windows of its desktop as you left them. The animal lives on those (the cursor is far away for it) and isn't drawn or hit-tested.
+- It comes over after 5 to 20 s, or 40 to 120 s now and then (more often for an aloof one), times (0.5 + 1.8 × aloofness) / (0.6 + neediness), not while asleep, held or in the air. It enters from the left when the new desktop is to the right of its home (`enterFrom`), else from the right.
+- The mess is stashed per desktop (at most eight) and comes back when you do.
+
 ### 7.3 Reflex detection
 
 | Reflex | Detected when |
@@ -362,6 +398,26 @@ The executor sends effect events (`tap`, `nudge`, `claw`, `fly_in`, `pounce_fly`
 - Location: `~/Library/Application Support/<bundle-id>/`.
 - Memory lines for the prompt are built from `facts` plus the last 5 `events`.
 - **Forget everything** wipes the SQLite stores but keeps the cat's name and coat.
+
+**As built.** The Mac app keeps one `memory.json` (events, habits, tricks), saved at most every 30 s when it changed.
+
+### 9.1 Habits (`habits.ts`)
+
+Per action (and per trick, as `trick:<id>`): `a` and `b`, discounted counts of good and bad reactions (half-life 14 days), `n`, a discounted count of times done (7 days), `s`, staleness (90 min), and the clock of the last update; plus `life`, the number of choices ever made. The rules multiplier is liking × freshness × curiosity, clamped to 0.15 to 2.4:
+
+- liking = 2^((θ − 0.5) × 3), clamped to 0.5 to 1.6, where θ is drawn from Beta(3 + a, 3 + b) once it knows something, else the mean;
+- freshness = 1 / (1 + 0.3 s′ + 0.12 s′²), at least 0.2, where s′ is the staleness times how easily that action bores it (nap 0.05, groom 0.2, play 1);
+- curiosity = 1 + min(1, life / 100) × 0.5 / (1 + known / 2), with known = n + 2 (a + b), and 1 for anything clearly disliked (θ mean below 0.42) or part of life (nap, groom, stretch).
+
+The old counter format (`liked`, `disliked`) still loads, and the new file keeps those fields too.
+
+### 9.2 Tricks (`tricks.ts`)
+
+- A trick: `{ id, name, beats, kind, born: { atMs, from }, shown, lastMs }`. Beats are the scene language (`do` a pose for some seconds, facing the cursor or away; `go` toward the cursor, away or a stroll, by some px, at a speed; `leap`). Poses come from `TRICK_POSES` (37 that every character has). `cleanBeat` clamps every number (holds 0.3 to 6 s, walks 20 to 400 px, leaps 20 to 200 px and 20 to 90 high) and drops anything else.
+- **Breeding** (`breed`, at most once per 3 h, on waking from a nap): a parent from the seed scenes or the library (weighted by fitness squared), one to three mutations, near copies rejected (edit distance over beat tokens under 0.25), then `checkTrick` plays it in a real `Executor` on a pretend screen with the cursor on each side. It must finish, take at most 40 s of beats, end on its feet and on screen, and show three or more poses.
+- **The grid** (MAP-Elites): energy (3 bins) × social (3) × rudeness (2) from the beats, two per cell. Fitness is the habits estimate for the trick plus 0.15 / (1 + shown). A new trick replaces the worst in its cell only if it's fitter.
+- **On the menu**: each trick is a `trick` option with its id and kind, scored 0.14 times the usual multipliers; then only the best per kind stays. `planBout` matches a trick option only to its own kind. The Mind fills in the beats (`paced`) when the step starts; the first time, the thought is "new trick: <name>". The model only sees `trick` among the options and can't write beats (hard rule 5 unchanged).
+- Names are made from words (an adjective from where it sits in the grid, a noun from its most telling pose): "the needy snub", "the bouncy boing".
 
 ## 10. Logging and diagnostics
 

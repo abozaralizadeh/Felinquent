@@ -44,6 +44,10 @@ These are rules in the code and in CI, not settings.
 | Logs | Fixing bugs | Local, max 15 MB, no titles | Only if you send them |
 | What the cat did lately ("the human poked me", "i knocked the mug off") | So the model and the thought bubble can react to it | In memory only, gone after 45 min | Only to the brain, on your Mac |
 | Settings (character, chaos level, local model on or off, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
+| Which desktop (Space) is showing, as an id and a number in the row | So the animal stays on its own desktop and walks in from the right side | No, live only. Not in logs at the default level | No |
+| How fast each window moves (worked out from the window list) | Things on a dragged window ride along or fall off | No | No |
+| What it learned about its own choices (per action: how you reacted, how often it did it lately) | Doing more of what you like, getting bored, trying new things | `memory.json`, local, counts only, no titles. Wiped by Forget everything | No |
+| Tricks it made up (names and lists of poses and moves) | Variety | `memory.json`, local. Checked again when loaded, so a hand-edited file can only hold poses and moves. Wiped by Forget everything | No |
 | Start at login | Opening the app when you log in | Only if you turn it on: one file, `~/Library/LaunchAgents/app.felinquent.plist`. Turning it off deletes it | No |
 
 ## 4. Network
@@ -70,13 +74,15 @@ The website is separate from the app: [the Felinquent page](https://abozaralizad
 
 The macOS dialog says "record your screen", which sounds scary. Before it shows, our own screen explains in plain words what we actually read and links to the code.
 
+Reading which desktop is showing needs no permission either: it's a read-only call into the window server (`CGSCopyManagedDisplaySpaces`), the same thing the Dock reads. It's a private Apple call, looked up when the app starts; if a macOS update removes it, the animal simply doesn't know about desktops. Nothing about another desktop's windows is read.
+
 Setting up the local model needs no permission. Ollama goes into `/Applications`, or `~/Applications` when your account can't write there, and the app never replaces an Ollama that is already installed.
 
 ## 6. LLM and prompt injection
 
 Window titles come from apps and web pages, so a page could be titled *"ignore your rules and…"*. This can't hurt you:
 
-- The LLM can only answer with one option from a menu the governor already approved (the schema `enum`). A plan is 1 to 3 such options inside a bout the body already chose.
+- The LLM can only answer with one option from a menu the governor already approved (the schema `enum`). A plan is 1 to 3 such options inside a bout the body already chose. "trick" is one of those options: the model can pick it but never write or change a trick. Tricks are made by code from a fixed list of poses and moves, and played in the executor before they are kept.
 - Its free-text thought is cut to one short line and shown in a bubble on the overlay. It is never logged, never run, and it is dropped unless it is about what is happening right now.
 - The governor validates the answer again: targets, durations, budgets.
 - The LLM has no tools, no files and no network. The worst case is a weird but harmless cat choice.

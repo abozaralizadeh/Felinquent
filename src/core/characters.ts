@@ -5,7 +5,7 @@ import type { Personality } from "./personality";
  * (how lazy, needy, chaotic, aloof and curious it is, and what it says). All art is drawn in code.
  * Same rules for all of them: the hard lines in docs/safety-and-privacy.md apply to every character.
  */
-export type Species = "cat" | "fox" | "raccoon" | "dog";
+export type Species = "cat" | "fox" | "raccoon" | "dog" | "rabbit" | "squirrel";
 export type Pattern = "stripes" | "none" | "fox" | "raccoon";
 
 export interface Palette {
@@ -149,6 +149,64 @@ export const CHARACTERS: readonly Character[] = [
       aloofness: 0.0,
       curiosity: 0.7,
       voice: { follow: ["you're back!! you were gone for a minute!!"], headbutt: ["hi!! hi hi hi!!"], meow: ["woof. (that means i love you)"], sit_on: ["i'll keep this one warm for you!"], nap: ["five minutes. then more fun."] },
+    }),
+  },
+  {
+    id: "chili",
+    name: "Chili",
+    species: "dog",
+    pattern: "none",
+    blurb: "A tiny black-and-tan chihuahua. Shivers, yaps at everything, and follows you like it's its job.",
+    palette: { base: "#3b3439", belly: "#e3a464", mark: "#d48a4a", line: "#1f1a1e", ear: "#f2a7a0", eye: "#3a2216", blush: "#ff8f9a" },
+    accessory: { kind: "collar", color: "#ff6fa5", charm: true },
+    size: 0.82,
+    personality: stock({
+      name: "Chili",
+      species: "chihuahua",
+      laziness: 0.3,
+      neediness: 0.9,
+      chaos: 0.6,
+      aloofness: 0.1,
+      curiosity: 0.6,
+      voice: { follow: ["wait for me!! wait!!"], meow: ["YAP. that was important."], howl: ["yap yap yap. (i was right.)"], sit_on: ["this window is mine. i will fight you for it."], nap: ["i'm not shaking. this is how i nap."], spook: ["WHAT WAS THAT. was it you."] },
+    }),
+  },
+  {
+    id: "clover",
+    name: "Clover",
+    species: "rabbit",
+    pattern: "none",
+    blurb: "A brown bunny with a cotton tail. Quiet, easily startled, and does happy little jumps when nobody's looking.",
+    palette: { base: "#c79a6c", belly: "#f6e7d3", mark: "#a77b52", line: "#5d3f29", ear: "#f6b3b6", eye: "#3a2418", blush: "#ff9aa2" },
+    size: 0.95,
+    personality: stock({
+      name: "Clover",
+      species: "rabbit",
+      laziness: 0.5,
+      neediness: 0.45,
+      chaos: 0.35,
+      aloofness: 0.55,
+      curiosity: 0.6,
+      voice: { bounce: ["binky. you didn't see that."], dig: ["digging a little room. just for me."], sniff: ["sniff. sniff. something changed here."], spook: ["nope. nope. i'm under something."], nap: ["eyes open. technically."] },
+    }),
+  },
+  {
+    id: "hazel",
+    name: "Hazel",
+    species: "squirrel",
+    pattern: "none",
+    blurb: "A red squirrel with a huge tail. Can't sit still, hides things, and tells you off about it.",
+    palette: { base: "#cf6a2c", belly: "#fbe6cf", mark: "#a94c1a", line: "#5e2a10", ear: "#f3b19a", eye: "#2f1a10", blush: "#ff9a86" },
+    size: 0.92,
+    personality: stock({
+      name: "Hazel",
+      species: "squirrel",
+      laziness: 0.2,
+      neediness: 0.4,
+      chaos: 0.85,
+      aloofness: 0.45,
+      curiosity: 0.95,
+      voice: { chatter: ["chk chk chk. i'm telling you off."], dig: ["burying this. forget you saw it."], zoomies: ["up. down. up. why not."], peek: ["i see you. you don't see me."], gift: ["found it. it's an acorn now."] },
     }),
   },
 ];

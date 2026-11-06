@@ -1,5 +1,6 @@
 import { Executor, type ExecEvent } from "./executor";
-import { Mess, type MessEvent } from "./mess";
+import { Mess, type MessEvent, type MessState } from "./mess";
+import { WindowMotion } from "./motion";
 import { Governor } from "./governor";
 import { InMemoryMemory, type Memory } from "./memory";
 import { Mind, type MindEvent } from "./mind";
@@ -53,6 +54,19 @@ export class Cat {
   private lastShape = "";
   private heldFromWindow: string | undefined;
   private lastWorld: WorldSnapshot | null = null;
+  /** How each window moves, so things on it ride along, slide or fly off (motion.ts). */
+  readonly motion = new WindowMotion();
+  /**
+   * Desktops (Spaces on the Mac). The animal lives on one of them: when you go to another, it stays
+   * behind and goes on with its life there (its desktop's windows as you left them), and comes over
+   * a while later, walking in from the side its desktop is on. What lies about stays on each desktop.
+   */
+  private home: { id: string; index: number } | null = null;
+  private homeWorld: WorldSnapshot | null = null;
+  private comeAtMs: number | null = null;
+  private shownSpace: string | null = null;
+  private messBySpace = new Map<string, MessState>();
+  private desktopRng: Rng = seeded(4243);
 
   constructor(opts: CatOptions = {}) {
     const rng = opts.rng ?? seeded(1);
@@ -66,8 +80,13 @@ export class Cat {
     this.mess.scale = this.executor.size.h / 90;
     this.executor.props = () =>
       this.mess.props
-        .filter((p) => p.state === "rest" && p.windowId !== null && p.alpha > 0.9)
+        .filter((p) => p.state === "rest" && p.windowId !== null && p.alpha > 0.9 && !p.toy)
         .map((p) => ({ id: p.id, windowId: p.windowId as string, x: p.x }));
+    this.executor.toyAt = () => {
+      const t = this.mess.toy;
+      return t ? { id: t.id, x: t.x, y: t.y, windowId: t.windowId, moving: t.state === "fall" || Math.abs(t.vx) > 25 } : null;
+    };
+    this.executor.glanceChance = 0.95 - 0.6 * (opts.personality ?? DEFAULT_PERSONALITY).aloofness;
     this.memory = opts.memory ?? new InMemoryMemory();
     this.mind = new Mind({
       brain: opts.brain ?? this.rules,
@@ -94,6 +113,12 @@ export class Cat {
   setPersonality(p: Personality): void {
     this.mind.setPersonality(p);
     this.executor.setInstinct(instinctFor(p.species));
+    this.executor.glanceChance = 0.95 - 0.6 * p.aloofness;
+  }
+
+  /** The animal is on another desktop than the one you're looking at: don't draw it. */
+  get away(): boolean {
+    return this.homeWorld !== null;
   }
 
   setBrain(brain: Brain): void {
@@ -143,7 +168,16 @@ export class Cat {
   }
 
   /** dtSec drives needs and decisions. execDtSec (default: the same) drives movement, so a demo can warp time. */
-  async step(world: WorldSnapshot, dtSec: number, execDtSec: number = dtSec): Promise<StepResult> {
+  async step(live: WorldSnapshot, dtSec: number, execDtSec: number = dtSec): Promise<StepResult> {
+    this.motion.update(live.windows, execDtSec);
+    this.desktops(live);
+    // Away on its own desktop: it lives among that desktop's windows, and you and your cursor aren't there.
+    const world: WorldSnapshot = this.homeWorld
+      ? { ...live, windows: this.homeWorld.windows, frontApp: this.homeWorld.frontApp, cursor: { x: -100_000, y: -100_000 }, cursorSpeed: 0 }
+      : live;
+    // How the window under it moves, before it is carried to where the window is now: thrown off
+    // by a yank, it leaves from where it was, not from the window's new spot.
+    if (!this.homeWorld) this.executor.ride(this.motion.of(this.executor.windowId), execDtSec);
     this.syncWorld(world);
     const moving = this.executor.phase === "moving" || this.executor.airborne;
     const mind = await this.mind.tick(world, dtSec, moving, this.executor.held);
@@ -160,9 +194,75 @@ export class Cat {
       }
       this.onExec(ev, world);
     }
-    this.bumpWhileRunning();
-    for (const ev of this.mess.step(execDtSec, world, chaos, this.executor.body.hidden ? null : this.executor.body.x)) this.onMess(ev, world);
+    if (!this.homeWorld) this.bumpWhileRunning();
+    const catX = this.executor.body.hidden || this.homeWorld ? null : this.executor.body.x;
+    for (const ev of this.mess.step(execDtSec, live, chaos, catX, (id) => this.motion.of(id))) this.onMess(ev, live);
     return { mind: out, reflexes: [] };
+  }
+
+  /**
+   * You went to another desktop: the animal stays where it was, and the mess of each desktop stays
+   * on it. Back before it came over: there it is. Otherwise it comes over after a while (a needy
+   * one soon, an aloof one when it feels like it, a sleeping one when it wakes up), from the side
+   * its desktop is on: you swiped right, so it was to the left, so it comes in from the left.
+   */
+  private desktops(live: WorldSnapshot): void {
+    const sp = live.space;
+    if (!sp) return;
+    const now = live.nowMs;
+    if (this.shownSpace !== null && sp.id !== this.shownSpace) {
+      this.messBySpace.set(this.shownSpace, this.mess.stash());
+      this.mess.unstash(this.messBySpace.get(sp.id));
+      this.messBySpace.delete(sp.id);
+      // Only a few desktops are remembered.
+      while (this.messBySpace.size > 8) this.messBySpace.delete(this.messBySpace.keys().next().value as string);
+    }
+    this.shownSpace = sp.id;
+    if (!this.home) {
+      this.home = { id: sp.id, index: sp.index };
+      return;
+    }
+    if (sp.id === this.home.id) {
+      if (this.homeWorld) {
+        // Back on its desktop before it came over.
+        this.homeWorld = null;
+        this.comeAtMs = null;
+      }
+      return;
+    }
+    if (!this.homeWorld) {
+      const b = this.executor.body;
+      const onMain = b.x >= live.screen.x && b.x <= live.screen.x + live.screen.w;
+      // Each display has its own desktops and it's on another display: this switch isn't its business.
+      if ((!sp.spans && !onMain) || b.hidden || !this.lastWorld) {
+        this.home = { id: sp.id, index: sp.index };
+        return;
+      }
+      this.homeWorld = this.lastWorld;
+      this.comeAtMs = null;
+      this.mind.onDesktop(now, false);
+    }
+    // When it comes over. Not while it sleeps, is held or is in the air.
+    if (this.mind.sleeping || this.executor.airborne || this.executor.held) {
+      this.comeAtMs = null;
+      return;
+    }
+    if (this.comeAtMs === null) {
+      const p = this.mind.traits;
+      const r = this.desktopRng;
+      // Mostly a few seconds to half a minute; now and then (an aloof one more often) it takes its time.
+      const slow = r.next() < 0.2 + 0.3 * p.aloofness;
+      this.comeAtMs = now + (slow ? r.range(40, 120) : r.range(5, 20)) * 1000 * (0.5 + 1.8 * p.aloofness) / (0.6 + p.neediness);
+    }
+    if (now < this.comeAtMs) return;
+    const side: 1 | -1 = sp.index > this.home.index ? -1 : sp.index < this.home.index ? 1 : this.desktopRng.next() < 0.5 ? -1 : 1;
+    this.home = { id: sp.id, index: sp.index };
+    this.homeWorld = null;
+    this.comeAtMs = null;
+    this.executor.interrupt();
+    this.syncWorld(live, true);
+    this.executor.enterFrom(side);
+    this.mind.onDesktop(now, true);
   }
 
   /** The paw, the claws and the leap reach the things around the animal. */
@@ -175,6 +275,8 @@ export class Cat {
       else if (f.fx === "claw" && ev.windowId) this.mess.claw(ev.windowId, ev.x + ev.dir * this.executor.size.w * 0.28, ev.dir, now);
       else if (f.fx === "fly_in") this.mess.flyIn(ev.x + f.dx, ev.y + f.dy, ev.dir, f.caught, now);
       else if (f.fx === "pounce_fly") this.mess.pounceFly();
+      else if (f.fx === "toy_out") this.mess.bringToy(ev.x, now);
+      else if (f.fx === "bat") this.mess.bat(f.prop, ev.dir, f.strength);
     } else if (ev.type === "impact") {
       // Only a gremlin comes down hard enough to crack a window.
       // Not every landing, or the screen would be all cracks: one now and then.
@@ -182,6 +284,8 @@ export class Cat {
         this.lastCrackMs = now;
         this.mess.crack(ev.windowId, ev.x, (ev.speed - 1000) / 800, now);
       }
+    } else if (ev.type === "flung" || ev.type === "held_on") {
+      this.mind.onJolt(now, ev.type === "flung");
     } else if (ev.type === "hang") {
       this.mind.note(now, "i fell short of a jump and hung off the edge of a window");
     } else if (ev.type === "slipped") {
@@ -209,6 +313,7 @@ export class Cat {
     else if (ev.type === "fell" && mine) this.mind.note(now, doing === "knock_off" ? `i pushed the ${ev.kind} off the edge` : `i ran into the ${ev.kind} and it went flying`);
     else if (ev.type === "cracked") this.mind.note(now, "i landed so hard a window cracked");
     else if (ev.type === "fly") this.mind.note(now, ev.caught ? "i caught a fly" : "a fly got away from me");
+    else if (ev.type === "flung") this.mind.note(now, `the human moved a window so hard the ${ev.kind} flew off it`);
   }
 
   /** A reflex happened (from the pointer or from a menu button). Runs the Mind's reaction and starts any intent. */
@@ -220,6 +325,8 @@ export class Cat {
 
   /** Feed one pointer sample. Returns what the cat reacted to. */
   pointer(sample: PointerSample, world: WorldSnapshot): ReflexEvent[] {
+    // On another desktop: nothing here to pet or pick up.
+    if (this.homeWorld) return [];
     const events = this.reflexes.feed(sample);
     if (this.executor.held) this.executor.dragTo(sample.x, sample.y);
     for (const ev of events) {

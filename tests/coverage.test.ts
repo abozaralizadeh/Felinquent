@@ -6,6 +6,7 @@ import { initialNeeds } from "../src/core/needs";
 import { ARCHETYPES } from "../src/core/personality";
 import { candidates, type RulesContext } from "../src/core/rules";
 import { seeded } from "../src/core/rng";
+import { TrickBook } from "../src/core/tricks";
 import { DEFAULT_SETTINGS, type IntentName, type Needs, type Settings, type WorldSnapshot } from "../src/core/types";
 import { makeWorld } from "../src/core/world";
 import { T0 } from "./helpers";
@@ -19,7 +20,12 @@ interface Situation {
   newWindow?: boolean;
   /** A thing stands on the first window (mess.ts). */
   props?: boolean;
+  /** It has made up a few tricks (tricks.ts). */
+  tricks?: boolean;
 }
+
+const book = new TrickBook();
+for (let i = 0; i < 30; i++) book.breed(seeded(i + 1), T0 + i, undefined, true);
 
 /** The situation that makes each behavior a sensible choice. Intents not listed are reactions, not choices. */
 const SITUATIONS: Partial<Record<IntentName, Situation>> = {
@@ -38,6 +44,7 @@ const SITUATIONS: Partial<Record<IntentName, Situation>> = {
   meow: { needs: { attention: 0.8 } },
   swat: { needs: { energy: 0.9 }, catNearCursor: true },
   knock_toy: { needs: { energy: 0.9, mood: "playful" } },
+  play_cursor: { world: { cursorSpeed: 200 }, needs: { energy: 0.9, mood: "playful" }, catNearCursor: true },
   zoomies: { world: { hour: 3 }, needs: { energy: 0.9 } },
   sit_on: { needs: { attention: 0.9 } },
   sit_on_video: { needs: { attention: 0.9 }, settings: { smartTargeting: true } },
@@ -69,6 +76,7 @@ const SITUATIONS: Partial<Record<IntentName, Situation>> = {
   knock_off: { needs: { attention: 0.8, energy: 0.8 }, props: true },
   claw: { needs: { attention: 0.8, energy: 0.9 } },
   hunt: { needs: { energy: 0.9, curiosity: 0.9 } },
+  trick: { needs: { energy: 0.8 }, tricks: true },
 };
 
 function build(s: Situation) {
@@ -88,6 +96,7 @@ function build(s: Situation) {
     recent: [],
     rng: seeded(1),
     propWindows: s.props ? [(world.windows[0] as { id: string }).id] : [],
+    tricks: s.tricks ? book : undefined,
   };
   return { settings, world, needs, ctx };
 }
@@ -108,7 +117,9 @@ describe("every behavior can be chosen and runs to the end", () => {
         const w = world.windows[0]!;
         ex.props = () => [{ id: "p1", windowId: w.id, x: w.bounds.x + w.bounds.w * 0.6 }];
       }
-      ex.start({ intent: name, target: option!.targets[0]!, approach: "run", stay_sec: 3, mood: "content" });
+      const t = book.get(option!.trick);
+      const script = t ? book.script(t).beats : undefined;
+      ex.start({ intent: name, target: option!.targets[0]!, approach: "run", stay_sec: 3, mood: "content", script, trick: t?.id });
       let done = false;
       for (let i = 0; i < 90 * 60 && !done; i++) done = ex.update(1 / 60).some((e) => e.type === "done");
       expect(done, "finished").toBe(true);

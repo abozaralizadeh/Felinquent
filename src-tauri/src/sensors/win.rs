@@ -93,6 +93,11 @@ pub fn windows(skip_owner: &str) -> Vec<Win> {
 }
 
 /// Seconds since the last keyboard or mouse input. A number only.
+/// Virtual desktops on Windows aren't read yet.
+pub fn space() -> Option<super::Space> {
+    None
+}
+
 pub fn idle_sec() -> f64 {
     unsafe {
         let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };

@@ -32,7 +32,7 @@ HERO = {
     "poses": ["sit", "blink", "stand", "curious", "lookup", "swat_a", "swat_b", "proud", "yawn", "lowering", "loaf", "sleep", "love", "startled", "annoyed", "joy"],
 }
 HERO_SCALE = 0.6
-CHARACTERS = ["tabby", "inky", "pearl", "mochi", "bandit", "biscuit"]
+CHARACTERS = ["tabby", "inky", "pearl", "mochi", "bandit", "biscuit", "chili", "clover", "hazel"]
 
 
 def load(char: str, name: str) -> Image.Image:

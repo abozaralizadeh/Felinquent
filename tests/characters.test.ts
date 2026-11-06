@@ -58,7 +58,8 @@ describe("characters", () => {
     // The needy puppy asks for attention more than the aloof white cat.
     const needy = (id: string) => (counts[id]?.follow ?? 0) + (counts[id]?.meow ?? 0) + (counts[id]?.headbutt ?? 0) + (counts[id]?.cross ?? 0);
     expect(needy("biscuit")).toBeGreaterThanOrEqual(needy("pearl"));
-  });
+    // Nine animals, three hours each: several seconds, more on a busy machine.
+  }, 60_000);
 
   it("the Mac menu lists every character (the Rust list and the TypeScript list must match)", () => {
     const rust = fs.readFileSync("src-tauri/src/main.rs", "utf8");

@@ -17,7 +17,7 @@ const detail = args.includes("--detail");
 // --seed N: another random run, to tell a real change from noise.
 const seedAt = args.indexOf("--seed");
 const SEED = seedAt >= 0 ? Number(args[seedAt + 1]) : 11;
-const [minArg, only] = args.filter((a, i) => !a.startsWith("--") && i !== seedAt + 1);
+const [minArg, only] = args.filter((a, i) => !a.startsWith("--") && (seedAt < 0 || i !== seedAt + 1));
 const MIN = Number(minArg ?? "60");
 const T0 = Date.UTC(2026, 10, 2, 10, 0, 0);
 // Animations that are cycles of frames: their frame changes are the motion itself, not a change of pose.

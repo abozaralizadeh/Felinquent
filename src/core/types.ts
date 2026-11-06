@@ -53,6 +53,12 @@ export interface WorldSnapshot {
   quietHours: boolean;
   /** The cat is away until this time (Shoo for 1 hour). */
   shooedUntilMs: number;
+  /**
+   * The desktop (a Space on the Mac) the main display shows: an id, and its place in the row of
+   * desktops (0 is the leftmost). spans: one desktop covers every display (no separate Spaces).
+   * Unknown on systems without them.
+   */
+  space?: { id: string; index: number; spans: boolean };
 }
 
 export interface Needs {
@@ -114,6 +120,9 @@ export type IntentName =
   | "knock_off"
   | "claw"
   | "hunt"
+  | "play_cursor"
+  /** One of its own made-up tricks (tricks.ts). Which one is in Intent.trick. */
+  | "trick"
   | "leave";
 
 export interface Intent {
@@ -126,6 +135,8 @@ export interface Intent {
   thought?: string;
   /** A scripted scene (a reaction to a click). Without it the executor builds the moves from the intent. */
   script?: Beat[];
+  /** For "trick": which of its tricks (an id from tricks.ts). */
+  trick?: string;
 }
 
 export interface Option {
@@ -133,6 +144,9 @@ export interface Option {
   /** Valid targets for this intent right now. The first one is the default. */
   targets: string[];
   score: number;
+  /** For "trick": which trick, and the bout it belongs to. */
+  trick?: string;
+  kind?: "rest" | "explore" | "play" | "social" | "mischief";
 }
 
 export interface Settings {

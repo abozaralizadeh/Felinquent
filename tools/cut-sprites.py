@@ -38,6 +38,11 @@ ref_val = float(opt("--ref-val", "0") or 0)
 ref_count = int(opt("--ref-count", "9") or 9)
 # 1-based grid positions (skipped frames count) whose median size sets the scale, instead of the first K.
 ref_pick = [int(v) - 1 for v in (opt("--ref-pick", "") or "").split(",") if v]
+# --solo keeps only the drawing itself: bits that float free of it (a puff of a sneeze, dizzy stars,
+# motion lines, a dream bubble) are dropped.
+solo = "--solo" in args
+if solo:
+    args.remove("--solo")
 sheet, out_dir, names = Path(args[0]), Path(args[1]), args[2:]
 out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -90,6 +95,13 @@ for lab, y0, y1, x0, x1, _, _ in ordered:
     keepmask = region[y0 : y1 + 1, x0 : x1 + 1]
     a = alpha[y0 : y1 + 1, x0 : x1 + 1] * keepmask
     c = rgb[y0 : y1 + 1, x0 : x1 + 1]
+    if solo:
+        parts, k = ndimage.label(a > 0.15, structure=np.ones((3, 3)))
+        if k > 1:
+            areas = ndimage.sum(a > 0.5, parts, index=range(1, k + 1))
+            big = float(areas.max())
+            keep_ids = [i + 1 for i, v in enumerate(areas) if v >= 0.04 * big]
+            a = a * ndimage.binary_dilation(np.isin(parts, keep_ids), iterations=2)
     rgba = np.dstack([np.clip(c, 0, 255), a * 255.0]).astype(np.uint8)
     im = Image.fromarray(rgba, "RGBA")
     bbox = im.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()

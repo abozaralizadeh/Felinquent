@@ -11,8 +11,8 @@ use core_graphics::window::{
     copy_window_info, kCGNullWindowID, kCGWindowListExcludeDesktopElements,
     kCGWindowListOptionOnScreenOnly,
 };
-use super::{Display, Win};
-use std::os::raw::c_void;
+use super::{Display, Space, Win};
+use std::os::raw::{c_char, c_void};
 
 type Dict = CFDictionary<CFString, CFType>;
 
@@ -178,6 +178,96 @@ pub fn camera_in_use() -> bool {
         }
         false
     }
+}
+
+// ---- Desktops (Spaces) -------------------------------------------------------
+//
+// Which desktop is showing, and where it sits in the row, so the cat can stay behind on its own
+// desktop and later walk in from the side it's on. macOS has no public call for this; these are the
+// read-only CoreGraphics calls window managers use. They are looked up at run time, so a macOS
+// without them simply has no desktops to tell apart (the cat then just stays with you).
+
+extern "C" {
+    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+}
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFUUIDCreateString(alloc: *const c_void, uuid: *const c_void) -> *const c_void;
+    fn CFRelease(cf: *const c_void);
+}
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGMainDisplayID() -> u32;
+}
+/// RTLD_DEFAULT on macOS: search every image already loaded.
+const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
+
+fn symbol(name: &std::ffi::CStr) -> *mut c_void {
+    // SAFETY: dlsym with RTLD_DEFAULT and a NUL-terminated name only looks a symbol up.
+    unsafe { dlsym(RTLD_DEFAULT, name.as_ptr()) }
+}
+
+fn space_id(d: &Dict) -> Option<i64> {
+    num(d, "id64").or_else(|| num(d, "ManagedSpaceID")).map(|n| n as i64)
+}
+
+/// The main display's UUID, as the desktop list names displays when each has its own desktops.
+fn main_display_uuid() -> Option<String> {
+    let f = symbol(c"CGDisplayCreateUUIDFromDisplayID");
+    if f.is_null() {
+        return None;
+    }
+    // SAFETY: CGDisplayCreateUUIDFromDisplayID(CGDirectDisplayID) -> CFUUIDRef (+1, may be NULL).
+    let create: extern "C" fn(u32) -> *const c_void = unsafe { std::mem::transmute(f) };
+    let uuid = create(unsafe { CGMainDisplayID() });
+    if uuid.is_null() {
+        return None;
+    }
+    // SAFETY: a live CFUUIDRef; both results are released or wrapped exactly once.
+    unsafe {
+        let s = CFUUIDCreateString(std::ptr::null(), uuid);
+        CFRelease(uuid);
+        if s.is_null() {
+            return None;
+        }
+        Some(CFString::wrap_under_create_rule(s as _).to_string())
+    }
+}
+
+/// The desktop the main display shows now, or None if macOS doesn't say.
+pub fn space() -> Option<Space> {
+    let conn = symbol(c"CGSMainConnectionID");
+    let copy = symbol(c"CGSCopyManagedDisplaySpaces");
+    if conn.is_null() || copy.is_null() {
+        return None;
+    }
+    // SAFETY: int CGSMainConnectionID(void) and CFArrayRef CGSCopyManagedDisplaySpaces(int) (+1).
+    let (conn, copy): (extern "C" fn() -> i32, extern "C" fn(i32) -> *const c_void) = unsafe { (std::mem::transmute(conn), std::mem::transmute(copy)) };
+    let arr = copy(conn());
+    if arr.is_null() {
+        return None;
+    }
+    // SAFETY: the copy is ours (+1) and an array of dictionaries.
+    let arr: CFArray<CFDictionary<CFString, CFType>> = unsafe { CFArray::wrap_under_create_rule(arr as _) };
+    let main_uuid = main_display_uuid();
+    let entries: Vec<Dict> = arr.iter().map(|d| d.clone()).collect();
+    // "Main" means one row of desktops for all displays; else find the main display's own row.
+    let pick = entries
+        .iter()
+        .find(|d| text(d, "Display Identifier").as_deref() == Some("Main"))
+        .or_else(|| {
+            let uuid = main_uuid.as_deref()?;
+            entries.iter().find(|d| text(d, "Display Identifier").is_some_and(|i| i.eq_ignore_ascii_case(uuid)))
+        })
+        .or(entries.first())?;
+    let spans = text(pick, "Display Identifier").as_deref() == Some("Main");
+    let current = space_id(&dict(pick, "Current Space")?)?;
+    let k = CFString::new("Spaces");
+    let list = pick.find(&k)?;
+    // SAFETY: "Spaces" is an array of dictionaries; get rule, the entry owns it.
+    let list: CFArray<CFDictionary<CFString, CFType>> = unsafe { CFArray::wrap_under_get_rule(list.as_concrete_TypeRef() as _) };
+    let index = list.iter().position(|d| space_id(&d.clone()) == Some(current)).map(|i| i as i32).unwrap_or(-1);
+    Some(Space { id: current.to_string(), index, spans })
 }
 
 // ---- Displays ----------------------------------------------------------------
