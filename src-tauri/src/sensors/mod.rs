@@ -20,13 +20,14 @@ pub struct Win {
 
 /// The desktop (a Space on the Mac) the main display shows, and its place in the row of desktops
 /// (0 is the leftmost). spans: one row of desktops covers every display. app: it's an app in full
-/// screen, not a desktop (the cat's window isn't shown there).
+/// screen, not a desktop. hidden: the cat's window can't be shown there (main.rs sets it).
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Space {
     pub id: String,
     pub index: i32,
     pub spans: bool,
     pub app: bool,
+    pub hidden: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -67,6 +68,9 @@ mod other {
         false
     }
     pub fn camera_in_use() -> bool {
+        false
+    }
+    pub fn display_kept_awake() -> bool {
         false
     }
     pub fn displays() -> Vec<Display> {

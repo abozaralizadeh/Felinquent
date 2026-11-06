@@ -16,8 +16,8 @@ import { drawThought, THOUGHT_SEC, type ShownThought } from "./thought";
 import { onSpriteSet, setSpriteUrl, SPRITE_URL } from "./sprites";
 
 interface NativeWin { id: string; app: string; x: number; y: number; w: number; h: number; z: number }
-interface NativeSpace { id: string; index: number; spans: boolean; app?: boolean }
-interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; space: NativeSpace | null }
+interface NativeSpace { id: string; index: number; spans: boolean; app?: boolean; hidden?: boolean }
+interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; display_awake?: boolean; space: NativeSpace | null }
 interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null }
 interface Layout { index: number; displays: Rect[]; dock_top: number }
 interface Pointer { x: number; y: number; down: boolean }
@@ -173,7 +173,7 @@ async function main(): Promise<void> {
       z: w.z,
     }));
   }
-  const spaceOf = (s: NativeSpace | null): WorldSnapshot["space"] => (s ? { id: s.id, index: s.index, spans: s.spans, app: s.app } : undefined);
+  const spaceOf = (s: NativeSpace | null): WorldSnapshot["space"] => (s ? { id: s.id, index: s.index, spans: s.spans, app: s.app, hidden: s.hidden } : undefined);
 
   /** Everything the cat senses, four times a second. Not awaited by the frame, so a slow read never stalls the drawing. */
   async function pollSensors(): Promise<void> {
@@ -191,6 +191,9 @@ async function main(): Promise<void> {
         activity: activityOf(s),
         idleSec: s.idle_sec,
         inMeeting: s.mic_in_use || s.camera_in_use,
+        // A full-screen app keeping the display awake is a video or a presentation: it goes outside
+        // (respect mode RM-02). A full-screen app you just work in is fine.
+        fullscreen: !!s.space?.app && !!s.display_awake,
         space: spaceOf(s.space),
       };
     } finally {
@@ -440,7 +443,7 @@ async function main(): Promise<void> {
         const cur = cat.mind.current;
         const b = st.body;
         say(
-          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} desktop=${world.space ? `${world.space.id}#${world.space.index}${world.space.app ? " (full-screen app)" : ""}` : "-"}${cat.away ? " (cat on its own desktop)" : ""} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms shown=${document.visibilityState === "visible" ? "yes" : "no"}`,
+          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} desktop=${world.space ? `${world.space.id}#${world.space.index}${world.space.app ? " (full-screen app)" : ""}${world.fullscreen ? " (video or slides: outside)" : ""}` : "-"}${cat.away ? " (cat on its own desktop)" : ""} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms shown=${document.visibilityState === "visible" ? "yes" : "no"}`,
         );
         frames = 0;
         worstGap = 0;

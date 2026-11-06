@@ -10,7 +10,7 @@ It walks along the tops of your windows, naps on the Dock, sits on the thing you
 
 Turn the chaos level up and it gets worse. Mugs, plants and glasses show up on your windows and it pushes them off, slowly, while looking at you. They break into pieces on the floor. It claws title bars, chases flies, and at gremlin it runs laps across your windows and lands hard enough to crack one. None of it is real: the mess is drawn on the cat's own see-through layer, your windows are never touched, and Panic clears it all.
 
-Move your cursor close and it looks at it. Sometimes it follows you around and pesters you, or decides the cursor is prey and pounces on it. Each animal has its own toy to chase: a red yarn ball, a catnip fish, a stolen sock, a carrot, an acorn and so on. Drag the window it's sitting on and it rides along; fling it and the animal (and the mug next to it) goes flying. Switch to another desktop and it stays behind, then wanders over a bit later from the side you came from (a treat from the menu calls it over right away).
+Move your cursor close and it looks at it. Sometimes it follows you around and pesters you, or decides the cursor is prey and pounces on it. Each animal has its own toy to chase: a red yarn ball, a catnip fish, a stolen sock, a carrot, an acorn and so on. Drag the window it's sitting on and it rides along; fling it and the animal (and the mug next to it) goes flying. Switch to another desktop and it stays behind, then wanders over a bit later from the side you came from, full-screen apps included (a treat from the menu calls it over right away).
 
 It also makes up its own tricks. When it wakes from a nap it sometimes remixes something it knows into a new little routine, tries it out, and the first time it shows you, the bubble names it ("new trick: the needy snub"). It notices what you pet it for and what you shoo it for, gets bored of doing the same thing, and is curious about what it hasn't done in a while, so it doesn't settle into a loop.
 
@@ -40,7 +40,7 @@ After that it lives in the menu bar. Pick a character, set the chaos level, hide
 
 - It can get in your way, on purpose. It never types, clicks, scrolls, moves your cursor, closes anything or sends anything. A check in CI fails the build if code that fakes input shows up.
 - No screenshots or screen capture, ever. It reads window positions, idle time and whether the camera or mic is on, nothing else.
-- It backs off in meetings, fullscreen and screen sharing, and there's a panic hotkey.
+- It backs off in meetings, full-screen videos and presentations, and screen sharing, and there's a panic hotkey.
 - Everything runs locally. No accounts, no analytics, no cloud. The one thing it fetches on its own is the update check, a small file from GitHub with nothing about you in it, and you can turn it off. An optional small local model (through [Ollama](https://ollama.com)) plans what the cat does next and gives it thoughts in a little bubble. Turn it on in the menu and, if Ollama or the model is missing, the app offers to set them up (it asks first and shows the sizes). Without it a rules brain does the same job.
 
 The full list is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).

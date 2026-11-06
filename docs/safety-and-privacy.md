@@ -8,7 +8,7 @@
 - **The cat lives on your machine.** Its brain runs on your machine too.
 - **It never takes screenshots and never reads what you type.**
 - **It can get in your way. It can never type, click, close, delete, send or buy anything.**
-- **It backs off** in meetings, presentations and fullscreen apps.
+- **It backs off** in meetings, presentations and full-screen videos. (It does come to a full-screen app you just work in.)
 - **You can make it vanish instantly** with one hotkey.
 - **The source is public**, so anyone can check all of this.
 
@@ -44,7 +44,8 @@ These are rules in the code and in CI, not settings.
 | Logs | Fixing bugs | Local, max 15 MB, no titles | Only if you send them |
 | What the cat did lately ("the human poked me", "i knocked the mug off") | So the model and the thought bubble can react to it | In memory only, gone after 45 min | Only to the brain, on your Mac |
 | Settings (character, chaos level, local model on or off, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
-| Which desktop (Space) is showing, as an id and a number in the row, and whether it's an app in full screen | So the animal stays on its own desktop, walks in from the right side and doesn't move onto a full-screen app where it can't be seen | No, live only. The log has the id and the number (just numbers, no names) | No |
+| Which desktop (Space) is showing, as an id and a number in the row, and whether it's an app in full screen | So the animal stays on its own desktop, walks in from the right side and knows when a full-screen app is in front | No, live only. The log has the id and the number (just numbers, no names) | No |
+| Whether something keeps the display awake (one system-wide yes or no: a video playing or a presentation running). Not which app, not what it shows | On a full-screen app, the cat goes outside while a video plays or slides are shown (RM-02) | No, live only | No |
 | How fast each window moves (worked out from the window list) | Things on a dragged window ride along or fall off | No | No |
 | What it learned about its own choices (per action: how you reacted, how often it did it lately) | Doing more of what you like, getting bored, trying new things | `memory.json`, local, counts only, no titles. Wiped by Forget everything | No |
 | Tricks it made up (names and lists of poses and moves) | Variety | `memory.json`, local. Checked again when loaded, so a hand-edited file can only hold poses and moves. Wiped by Forget everything | No |
@@ -75,6 +76,8 @@ The website is separate from the app: [the Felinquent page](https://abozaralizad
 The macOS dialog says "record your screen", which sounds scary. Before it shows, our own screen explains in plain words what we actually read and links to the code.
 
 Reading which desktop is showing needs no permission either: it's a read-only call into the window server (`CGSCopyManagedDisplaySpaces`), the same thing the Dock reads. It's a private Apple call, looked up when the app starts; if a macOS update removes it, the animal simply doesn't know about desktops. Nothing about another desktop's windows is read.
+
+Knowing that something keeps the display awake needs no permission: it's the public power-management call `IOPMCopyAssertionsStatus`, the same count `pmset -g assertions` prints. Only the system-wide count is read.
 
 Setting up the local model needs no permission. Ollama goes into `/Applications`, or `~/Applications` when your account can't write there, and the app never replaces an Ollama that is already installed.
 

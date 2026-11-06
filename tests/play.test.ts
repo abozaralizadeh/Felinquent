@@ -357,9 +357,9 @@ describe("desktops", () => {
     expect(cat.executor.body.x).toBeGreaterThan(0);
   });
 
-  it("never moves onto an app in full screen (it can't be seen there), and comes once you're on a desktop again", async () => {
+  it("never moves onto a Space where it can't be seen (a full-screen app, overlay on every desktop), and comes once you're on a desktop again", async () => {
     const { cat, step, wait, base } = await setup();
-    const fullScreen = { id: "f", index: 2, spans: true, app: true };
+    const fullScreen = { id: "f", index: 2, spans: true, app: true, hidden: true };
     const big: WindowInfo[] = [{ id: "f1", app: "Safari", bounds: { x: 0, y: 0, w: 1440, h: 900 }, focused: true, cpu: "low", z: 0 }];
     await step({}, 1);
     await step({ space: fullScreen, windows: big }, 0.5);
@@ -376,6 +376,18 @@ describe("desktops", () => {
     await step({ space: spaceB, windows: other }, 0.5);
     expect(cat.away).toBe(true);
     const took = await wait({ space: spaceB, windows: other }, 400, () => !cat.away);
+    expect(cat.away).toBe(false);
+    expect(took).toBeLessThan(400);
+  });
+
+  it("comes over to a full-screen app it can be seen on, like to any desktop", async () => {
+    const { cat, step, wait } = await setup();
+    const fullScreen = { id: "f", index: 2, spans: true, app: true };
+    const big: WindowInfo[] = [{ id: "f1", app: "Safari", bounds: { x: 0, y: 0, w: 1440, h: 900 }, focused: true, cpu: "low", z: 0 }];
+    await step({}, 1);
+    await step({ space: fullScreen, windows: big }, 0.5);
+    expect(cat.away).toBe(true);
+    const took = await wait({ space: fullScreen, windows: big }, 400, () => !cat.away);
     expect(cat.away).toBe(false);
     expect(took).toBeLessThan(400);
   });

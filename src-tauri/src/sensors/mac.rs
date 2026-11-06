@@ -234,8 +234,8 @@ fn main_display_uuid() -> Option<String> {
     }
 }
 
-/// The desktop the main display shows now, or None if macOS doesn't say.
-pub fn space() -> Option<Space> {
+/// The window server's list of displays and their desktops, or None if macOS doesn't say.
+fn managed_spaces() -> Option<CFArray<CFDictionary<CFString, CFType>>> {
     let conn = symbol(c"CGSMainConnectionID");
     let copy = symbol(c"CGSCopyManagedDisplaySpaces");
     if conn.is_null() || copy.is_null() {
@@ -248,7 +248,40 @@ pub fn space() -> Option<Space> {
         return None;
     }
     // SAFETY: the copy is ours (+1) and an array of dictionaries.
-    let arr: CFArray<CFDictionary<CFString, CFType>> = unsafe { CFArray::wrap_under_create_rule(arr as _) };
+    Some(unsafe { CFArray::wrap_under_create_rule(arr as _) })
+}
+
+/// The desktop every display shows now, as one string, to notice a switch on any display.
+pub fn current_spaces() -> String {
+    let Some(arr) = managed_spaces() else { return String::new() };
+    arr.iter()
+        .filter_map(|d| dict(&d.clone(), "Current Space").and_then(|c| space_id(&c)))
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Something keeps the display awake: a video playing or a presentation running (browsers, video
+/// players and Keynote ask for this). Only the system-wide count is read, not which app or what.
+pub fn display_kept_awake() -> bool {
+    let mut status: core_foundation::dictionary::CFDictionaryRef = std::ptr::null();
+    // SAFETY: IOPMCopyAssertionsStatus fills a +1 dictionary of assertion name -> count.
+    if unsafe { IOPMCopyAssertionsStatus(&mut status) } != 0 || status.is_null() {
+        return false;
+    }
+    // SAFETY: the dictionary is ours (+1).
+    let d: Dict = unsafe { CFDictionary::wrap_under_create_rule(status) };
+    ["PreventUserIdleDisplaySleep", "NoDisplaySleepAssertion"].iter().any(|k| num(&d, k).is_some_and(|n| n > 0.0))
+}
+
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    fn IOPMCopyAssertionsStatus(status: *mut core_foundation::dictionary::CFDictionaryRef) -> i32;
+}
+
+/// The desktop the main display shows now, or None if macOS doesn't say.
+pub fn space() -> Option<Space> {
+    let arr = managed_spaces()?;
     let main_uuid = main_display_uuid();
     let entries: Vec<Dict> = arr.iter().map(|d| d.clone()).collect();
     // "Main" means one row of desktops for all displays; else find the main display's own row.
@@ -270,7 +303,7 @@ pub fn space() -> Option<Space> {
     // SAFETY: "Spaces" is an array of dictionaries; get rule, the entry owns it.
     let list: CFArray<CFDictionary<CFString, CFType>> = unsafe { CFArray::wrap_under_get_rule(list.as_concrete_TypeRef() as _) };
     let index = list.iter().position(|d| space_id(&d.clone()) == Some(current)).map(|i| i as i32).unwrap_or(-1);
-    Some(Space { id: current.to_string(), index, spans, app })
+    Some(Space { id: current.to_string(), index, spans, app, hidden: false })
 }
 
 // ---- Displays ----------------------------------------------------------------

@@ -56,10 +56,10 @@ export interface WorldSnapshot {
   /**
    * The desktop (a Space on the Mac) the main display shows: an id, and its place in the row of
    * desktops (0 is the leftmost). spans: one desktop covers every display (no separate Spaces).
-   * app: an app in full screen, not a desktop; the animal can't be shown there.
-   * Unknown on systems without them.
+   * app: an app in full screen, not a desktop. hidden: the animal's window can't be shown there
+   * (on a Mac set up to keep the overlay on every desktop at once). Unknown on systems without them.
    */
-  space?: { id: string; index: number; spans: boolean; app?: boolean };
+  space?: { id: string; index: number; spans: boolean; app?: boolean; hidden?: boolean };
 }
 
 export interface Needs {

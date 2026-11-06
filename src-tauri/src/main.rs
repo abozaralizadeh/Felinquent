@@ -26,6 +26,8 @@ struct Sensors {
     since_key_sec: f64,
     mic_in_use: bool,
     camera_in_use: bool,
+    /// A video playing or a presentation running keeps the display awake.
+    display_awake: bool,
     space: Option<sensors::Space>,
 }
 
@@ -149,15 +151,27 @@ async fn read_sensors() -> Sensors {
         since_key_sec: sensors::since_key_sec(),
         mic_in_use: sensors::mic_in_use(),
         camera_in_use: sensors::camera_in_use(),
-        space: sensors::space(),
+        display_awake: sensors::display_kept_awake(),
+        space: space_now(),
     }
+}
+
+/// The desktop showing, and whether the cat's window can be shown on it (not on a full-screen
+/// app unless the overlay follows you from Space to Space).
+fn space_now() -> Option<sensors::Space> {
+    let mut s = sensors::space()?;
+    #[cfg(target_os = "macos")]
+    {
+        s.hidden = s.app && !follows_spaces();
+    }
+    Some(s)
 }
 
 /// The windows and the desktop only, cheap enough for every frame while a window moves, so what
 /// stands on it rides along in real time.
 #[tauri::command]
 async fn read_windows() -> Windows {
-    Windows { windows: sensors::windows("felinquent"), space: sensors::space() }
+    Windows { windows: sensors::windows("felinquent"), space: space_now() }
 }
 
 #[tauri::command]
@@ -321,14 +335,57 @@ fn tune_ns_window(window: &WebviewWindow) {
         // Above the Dock (level 20) so the cat can lie on it, below the menu bar level.
         ns.setLevel(21);
         ns.setHasShadow(false);
-        ns.setCollectionBehavior(
-            B::CanJoinAllSpaces | B::Stationary | B::FullScreenAuxiliary | B::IgnoresCycle,
-        );
-        // Off until it's tested live on a full-screen app's Space: FELINQUENT_PANEL=1 turns it on.
-        if std::env::var("FELINQUENT_PANEL").is_ok() {
+        if follows_spaces() {
+            // It goes to the Space you're on, full-screen apps included, when it's put in front
+            // (follow_spaces does that on every switch).
+            ns.setCollectionBehavior(B::MoveToActiveSpace | B::FullScreenAuxiliary | B::IgnoresCycle);
             make_panel(ns);
+            ns.orderFrontRegardless();
+        } else {
+            // On every desktop at once. macOS doesn't show a window like this on a full-screen app.
+            ns.setCollectionBehavior(B::CanJoinAllSpaces | B::Stationary | B::FullScreenAuxiliary | B::IgnoresCycle);
         }
     }
+}
+
+/// The overlay windows are non-activating panels that go to whichever Space you're on, so the cat
+/// shows on full-screen apps too. A plain window on every desktop at once is left off those by
+/// macOS, and moving to the active Space alone doesn't get it there either: it takes both (tried
+/// live on 6 Nov 2026). FELINQUENT_PANEL=off goes back to the plain window on every desktop.
+#[cfg(target_os = "macos")]
+fn follows_spaces() -> bool {
+    std::env::var("FELINQUENT_PANEL").as_deref() != Ok("off")
+}
+
+/// Watches which Space each display shows and puts the overlay windows in front on every switch,
+/// which moves them to that Space (they're MoveToActiveSpace). A switch shows up within 150 ms.
+#[cfg(target_os = "macos")]
+fn follow_spaces(app: &AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let mut last = sensors::current_spaces();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let now = sensors::current_spaces();
+            if now == last {
+                continue;
+            }
+            last = now;
+            let h = handle.clone();
+            let _ = handle.run_on_main_thread(move || {
+                for (_, w) in h.webview_windows() {
+                    if let Ok(ptr) = w.ns_window() {
+                        // SAFETY: Tauri hands us the live NSWindow; we're on the main thread.
+                        let ns: &objc2_app_kit::NSWindow = unsafe { &*(ptr as *mut objc2_app_kit::NSWindow) };
+                        ns.orderFrontRegardless();
+                    }
+                }
+                if std::env::var_os("FELINQUENT_SPACES_DEBUG").is_some() {
+                    logfile::write("spaces: switched, the overlay follows");
+                }
+            });
+        }
+    });
 }
 
 /// Turns an overlay window into a non-activating panel. macOS only shows a panel like that on top
@@ -457,6 +514,11 @@ fn main() {
                 };
                 fit_to(&w, d);
                 println!("[overlay] window {} on display {:.0},{:.0} {:.0}x{:.0}", w.label(), d.x, d.y, d.w, d.h);
+            }
+
+            #[cfg(target_os = "macos")]
+            if follows_spaces() {
+                follow_spaces(app.handle());
             }
 
             // FELINQUENT_SPACES_DEBUG=1 logs, every 3 s, how macOS sees each overlay window (which

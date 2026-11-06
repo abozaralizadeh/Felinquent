@@ -303,10 +303,10 @@ export class Cat {
       this.comeAtMs = null;
       this.mind.onDesktop(now, false);
     }
-    // An app in full screen: macOS doesn't show the animal's window there, so it never moves in (it
-    // would be lost, even to a treat). It waits on its own desktop, and the wait starts when you
-    // come to a real one.
-    if (sp.app) {
+    // A Space where the animal's window isn't shown (an app in full screen, when the overlay stays
+    // on every desktop at once): it never moves in, or it would be lost, even to a treat. It waits
+    // on its own desktop, and the wait starts when you come to one it can be seen on.
+    if (sp.hidden) {
       this.comeAtMs = null;
       return;
     }

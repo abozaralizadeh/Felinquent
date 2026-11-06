@@ -98,6 +98,11 @@ pub fn space() -> Option<super::Space> {
     None
 }
 
+/// Not read on Windows yet.
+pub fn display_kept_awake() -> bool {
+    false
+}
+
 pub fn idle_sec() -> f64 {
     unsafe {
         let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };

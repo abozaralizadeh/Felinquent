@@ -92,7 +92,7 @@ All the breakage is drawn on the cat's own overlay, on top of your windows. Noth
 
 ## Desktops
 
-The animal lives on one desktop (a Space on the Mac). Switch to another and it stays behind, going on with its life among that desktop's windows. Go back before it comes over and it's still there. Otherwise it comes over after a while: mostly a few seconds to half a minute, now and then a minute or two (sooner for a needy one, later for an aloof one), walking in from the side its desktop is on. You swiped right, so its desktop is on the left, so it comes in from the left. Asleep, it naps on for about a minute, then wakes up to the quiet and comes looking. A treat from the menu calls it over at once. It never moves onto an app in full screen: macOS doesn't show it there, so it waits on its own desktop and comes once you're on a desktop again. Each desktop keeps its own mess. With "Displays have separate Spaces", a switch on another display isn't its business.
+The animal lives on one desktop (a Space on the Mac). Switch to another and it stays behind, going on with its life among that desktop's windows. Go back before it comes over and it's still there. Otherwise it comes over after a while: mostly a few seconds to half a minute, now and then a minute or two (sooner for a needy one, later for an aloof one), walking in from the side its desktop is on. You swiped right, so its desktop is on the left, so it comes in from the left. Asleep, it naps on for about a minute, then wakes up to the quiet and comes looking. A treat from the menu calls it over at once. Apps in full screen count as desktops: it comes over there too, and goes outside while one plays a video or shows slides (RM-02). Each desktop keeps its own mess. With "Displays have separate Spaces", a switch on another display isn't its business.
 
 ## Its own tricks
 
@@ -120,7 +120,7 @@ Measured with `npm run month` (30 simulated days, a made-up human who pets some 
 | ID | Mode | Detected by | What the cat does | Phase |
 |---|---|---|---|---|
 | RM-01 | Meeting | Camera or mic in use, or a meeting app in front | No blocking, no sound; naps in a far corner | MVP |
-| RM-02 | Fullscreen / presentation | Frontmost window covers the whole display | Leaves the screen ("goes outside") | MVP |
+| RM-02 | Fullscreen video / presentation | An app in full screen in front while something keeps the display awake (a video playing, slides showing). A full-screen app you just work in doesn't count | Leaves the screen ("goes outside"), back when it stops | MVP |
 | RM-03 | Screen sharing | Best-effort detection | Same as meeting | v1 |
 | RM-04 | Shoo for 1 hour | Menu | Walks off the screen for an hour. Click it again to call the cat back early, and a treat ends it too. The menu ticks it while it lasts | MVP |
 | RM-05 | Panic | Hotkey or menu | Vanishes instantly. The same hotkey or menu item brings it back. The menu ticks it while the cat is hidden | MVP |

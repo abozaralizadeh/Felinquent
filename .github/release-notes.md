@@ -2,15 +2,15 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-It follows you to the new desktop for real now, even when it was napping, and Give treat calls it over right away. It doesn't wander onto full-screen apps any more, where you couldn't see it at all. Every animal has its own toy now (a fish, a carrot, an acorn...). And the download is about half the size.
+It shows up on full-screen apps now. Switch to one and it walks over like on any other desktop. When a full-screen app plays a video or shows slides, it goes outside and comes back once that stops.
 
-## More about 0.1.6
+## More about 0.1.7
 
-**Desktops.** Sliding between desktops confused it. Halfway through the swipe macOS already shows the next desktop's windows, so the cat fell off windows that were still there and never really left. That's fixed. If it was asleep it now naps a minute more and then comes looking, and **Give treat** calls it over at once. It also used to follow you onto an app in full screen, where macOS doesn't show it, so it was just gone. Now it waits on its own desktop and comes over once you're back on one. Showing it on full-screen apps too is next.
+Until now macOS kept the cat off apps in full screen, so if you work in full screen it was mostly just gone (and in 0.1.5 it could even get stuck there where you couldn't see it). Now its window follows you to whatever is on screen, full-screen apps too, on every display. Clicking it also never pulls Felinquent to the front any more.
 
-**Toys.** Tabby keeps the red yarn. Inky has a catnip fish, Pearl a jingle ball, Mochi a sock it stole, Bandit a ball of shiny foil, Biscuit a tennis ball, Chili a tiny squeaky bone, Clover a carrot and Hazel an acorn. The round ones roll, the others skid and flop over.
+It still backs off for videos and presentations. It doesn't look at what's on screen: macOS says when something is keeping the display awake (a playing video, a slideshow), and that's enough.
 
-**Smaller download.** About 97 MB instead of 173. The drawings were packed in twice (once for Apple Silicon and once for Intel), now they're in there once.
+New in 0.1.6 too, if you skipped it: each animal has its own toy, a treat calls it over from another desktop, and the download is 97 MB instead of 173.
 
 ## Updating
 
