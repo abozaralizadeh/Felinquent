@@ -2,21 +2,25 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-The update question works on the first click now. Before, it could ignore clicks on Update now and you had to click a few times. The same fix goes for the questions that set up the local model. Coming from 0.1.2? Then you also get 0.1.3: the cat acts in calmer stretches, thinks in a bubble, and at normal and gremlin knocks things off your windows.
+The cat notices you now. It looks at your cursor, follows it and sometimes plays with it. Drag a window and whatever sits on it rides along, and a fast drag throws it off. Switch desktops and it walks over later. It learns what you like and makes up its own tricks. Every move is fully drawn, there's a new icon, and three new animals: a chihuahua, a rabbit and a squirrel.
 
-## New in 0.1.3
+## More about 0.1.5
 
-The cat stopped repeating itself. It now does things in little stretches (rest, explore, play, mischief) and takes its time between moves. With the local model on, it plans a few steps ahead and thinks out loud in a small bubble. No model yet? The app offers to set it up. At normal and gremlin it knocks things off your windows and they break (only drawn, your real windows are fine).
+**You and the cursor.** Bring the cursor close and the cat looks up at it, and its head follows it around. Sometimes it follows you across the screen, or decides the cursor is prey and plays with it (getting in your way on purpose). That red ball finally makes sense: it's a real toy now that rolls in, gets chased and batted around.
 
-## The mess, in more detail
+**Windows.** Drag a window with the cat or a mug on it and they move with it right away, no lag. Drag fast or yank it and things slide and fall off. The cat lands, looks startled and glares at you.
 
-At normal and gremlin, little things show up on top of your windows now and then: a mug, a plant, a vase, a rubber duck. The cat walks over, gives one a push and watches it fall. Some break into pieces. It also claws window edges and chases flies. At gremlin it lands hard enough to crack a window, does zoomies from window to window and misses more jumps, hanging off a ledge before it drops. All of it is drawn on the cat's own see-through layer and fades away after a while. Nothing touches your real windows, and chill keeps it all off.
+**Desktops.** Switch to another desktop and the cat stays where it was. A bit later it walks in from the side you came from.
 
-The thought bubble only talks about real stuff: you poked it, you've been in the same app for an hour, a mug just broke. When the model writes something off topic (the 1b model loves dust and sunbeams), the cat says a written line for that moment instead. Thoughts are never logged.
+**It learns.** It remembers what you liked (a pet, a treat) and what got it shooed, gets bored of doing the same thing over and over, and gets curious about stuff it hasn't done in a while. It also makes up its own tricks from its moves and tells you the name the first time it shows one. **Forget everything it learned** in the menu wipes all of it.
+
+**Art.** Every move is drawn with its in-between frames now (sitting, loafing, perching on a window edge, howling, begging, digging...), so it moves a lot more like a real animal. Three new animals: Chili the chihuahua, Clover the rabbit and Hazel the squirrel. The rabbit and the squirrel hop. The app icon is the tabby now, drawn like the rest of them, and the menu bar shows its head.
+
+The download is bigger because of all the new drawings, about 130 MB.
 
 ## Updating
 
-Already on 0.1.2 or 0.1.3? The app asks you within 12 hours, or pick **Check for updates…** in the menu now. That question still has the old bug one last time, so if Update now doesn't react, click it again.
+Already on 0.1.2 or newer? The app asks you within 12 hours, or pick **Check for updates…** in the menu now. On 0.1.2 and 0.1.3 that question still has the old bug, so if Update now doesn't react, click it again.
 
 Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned).
 
