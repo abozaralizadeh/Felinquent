@@ -19,12 +19,14 @@ pub struct Win {
 }
 
 /// The desktop (a Space on the Mac) the main display shows, and its place in the row of desktops
-/// (0 is the leftmost). spans: one row of desktops covers every display.
+/// (0 is the leftmost). spans: one row of desktops covers every display. app: it's an app in full
+/// screen, not a desktop (the cat's window isn't shown there).
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Space {
     pub id: String,
     pub index: i32,
     pub spans: bool,
+    pub app: bool,
 }
 
 #[derive(Serialize, Clone, Debug)]

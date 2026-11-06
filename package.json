@@ -1,6 +1,6 @@
 {
   "name": "felinquent",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:app": "npm run build && node -e \"require('fs').rmSync('dist/sprites', { recursive: true, force: true })\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

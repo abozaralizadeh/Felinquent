@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Felinquent",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "identifier": "app.felinquent",
   "build": {
     "frontendDist": "../dist",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build:app"
   },
   "app": {
     "macOSPrivateApi": true,
@@ -29,12 +29,31 @@
         "height": 900
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$RESOURCE/sprites/**"
+        ]
+      }
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg", "nsis"],
-    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
+    "targets": [
+      "app",
+      "dmg",
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../src/playground/public/sprites/": "sprites/"
+    },
     "category": "Entertainment",
     "shortDescription": "A desktop pet that does whatever it wants.",
     "copyright": "Copyright (c) 2026 Abozar Alizadeh. Free for non-commercial use.",
@@ -43,17 +62,32 @@
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",
       "dmg": {
-        "windowSize": { "width": 600, "height": 380 },
-        "appPosition": { "x": 160, "y": 180 },
-        "applicationFolderPosition": { "x": 440, "y": 180 }
+        "windowSize": {
+          "width": 600,
+          "height": 380
+        },
+        "appPosition": {
+          "x": 160,
+          "y": 180
+        },
+        "applicationFolderPosition": {
+          "x": 440,
+          "y": 180
+        }
       }
     },
-    "windows": { "nsis": { "installMode": "currentUser" } }
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDNkRFNEYwNDFFMDY1NUMKUldSY1plQkI4T1J0Zk9zYThnSXVXNGJrUmhrVHR1a3diSW12azFxNm5WeHhqckRxRmtSUzg1MEEK",
-      "endpoints": ["https://github.com/abozaralizadeh/Felinquent/releases/latest/download/latest.json"]
+      "endpoints": [
+        "https://github.com/abozaralizadeh/Felinquent/releases/latest/download/latest.json"
+      ]
     }
   }
 }

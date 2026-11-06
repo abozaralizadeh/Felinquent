@@ -2,21 +2,15 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-The cat notices you now. It looks at your cursor, follows it and sometimes plays with it. Drag a window and whatever sits on it rides along, and a fast drag throws it off. Switch desktops and it walks over later. It learns what you like and makes up its own tricks. Every move is fully drawn, there's a new icon, and three new animals: a chihuahua, a rabbit and a squirrel.
+It follows you to the new desktop for real now, even when it was napping, and Give treat calls it over right away. It doesn't wander onto full-screen apps any more, where you couldn't see it at all. Every animal has its own toy now (a fish, a carrot, an acorn...). And the download is about half the size.
 
-## More about 0.1.5
+## More about 0.1.6
 
-**You and the cursor.** Bring the cursor close and the cat looks up at it, and its head follows it around. Sometimes it follows you across the screen, or decides the cursor is prey and plays with it (getting in your way on purpose). That red ball finally makes sense: it's a real toy now that rolls in, gets chased and batted around.
+**Desktops.** Sliding between desktops confused it. Halfway through the swipe macOS already shows the next desktop's windows, so the cat fell off windows that were still there and never really left. That's fixed. If it was asleep it now naps a minute more and then comes looking, and **Give treat** calls it over at once. It also used to follow you onto an app in full screen, where macOS doesn't show it, so it was just gone. Now it waits on its own desktop and comes over once you're back on one. Showing it on full-screen apps too is next.
 
-**Windows.** Drag a window with the cat or a mug on it and they move with it right away, no lag. Drag fast or yank it and things slide and fall off. The cat lands, looks startled and glares at you.
+**Toys.** Tabby keeps the red yarn. Inky has a catnip fish, Pearl a jingle ball, Mochi a sock it stole, Bandit a ball of shiny foil, Biscuit a tennis ball, Chili a tiny squeaky bone, Clover a carrot and Hazel an acorn. The round ones roll, the others skid and flop over.
 
-**Desktops.** Switch to another desktop and the cat stays where it was. A bit later it walks in from the side you came from.
-
-**It learns.** It remembers what you liked (a pet, a treat) and what got it shooed, gets bored of doing the same thing over and over, and gets curious about stuff it hasn't done in a while. It also makes up its own tricks from its moves and tells you the name the first time it shows one. **Forget everything it learned** in the menu wipes all of it.
-
-**Art.** Every move is drawn with its in-between frames now (sitting, loafing, perching on a window edge, howling, begging, digging...), so it moves a lot more like a real animal. Three new animals: Chili the chihuahua, Clover the rabbit and Hazel the squirrel. The rabbit and the squirrel hop. The app icon is the tabby now, drawn like the rest of them, and the menu bar shows its head.
-
-The download is bigger because of all the new drawings, about 170 MB (it was 75 MB).
+**Smaller download.** About SIZE MB instead of 173. The drawings were packed in twice (once for Apple Silicon and once for Intel), now they're in there once.
 
 ## Updating
 

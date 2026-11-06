@@ -13,9 +13,10 @@ import { drawCat } from "./draw";
 import type { MessSnapshot } from "../core/mess";
 import { drawMessBehind, drawMessFront, preloadProps } from "./mess-draw";
 import { drawThought, THOUGHT_SEC, type ShownThought } from "./thought";
+import { onSpriteSet, setSpriteUrl, SPRITE_URL } from "./sprites";
 
 interface NativeWin { id: string; app: string; x: number; y: number; w: number; h: number; z: number }
-interface NativeSpace { id: string; index: number; spans: boolean }
+interface NativeSpace { id: string; index: number; spans: boolean; app?: boolean }
 interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; space: NativeSpace | null }
 interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null }
 interface Layout { index: number; displays: Rect[]; dock_top: number }
@@ -42,7 +43,8 @@ interface CatState {
 const dark = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
 
 interface TauriGlobal {
-  core: { invoke: <T>(cmd: string, args?: object) => Promise<T> };
+  core: { invoke: <T>(cmd: string, args?: object) => Promise<T>; convertFileSrc: (path: string) => string };
+  path?: { resourceDir: () => Promise<string> };
   event: { emit: (name: string, payload?: unknown) => Promise<void>; listen: <T>(name: string, cb: (e: { payload: T }) => void) => Promise<() => void> };
 }
 const tauri = (window as unknown as { __TAURI__?: TauriGlobal }).__TAURI__;
@@ -51,6 +53,20 @@ const invoke = <T>(cmd: string, args?: object): Promise<T> => {
   return tauri.core.invoke<T>(cmd, args);
 };
 const say = (line: string): void => void invoke("debug_log", { line }).catch(() => {});
+
+// The app keeps the drawings once, in its Resources folder, and loads them from there. Built into
+// the program they'd be in it twice: a universal Mac app is one program per chip. The dev server
+// (it has a port) serves them next to the page.
+if (tauri?.path && location.port === "") {
+  const t = tauri;
+  setSpriteUrl(
+    t.path!.resourceDir().then(
+      (dir) => (id: string, key: string) => t.core.convertFileSrc(`${dir}/sprites/${id}/${key}.webp`),
+      () => SPRITE_URL,
+    ),
+  );
+}
+onSpriteSet((id, missing, usable) => say(`sprites: ${id} ${usable ? "ready" : "can't be drawn"}${missing ? `, ${missing} frames missing` : ""}`));
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
@@ -157,7 +173,7 @@ async function main(): Promise<void> {
       z: w.z,
     }));
   }
-  const spaceOf = (s: NativeSpace | null): WorldSnapshot["space"] => (s ? { id: s.id, index: s.index, spans: s.spans } : undefined);
+  const spaceOf = (s: NativeSpace | null): WorldSnapshot["space"] => (s ? { id: s.id, index: s.index, spans: s.spans, app: s.app } : undefined);
 
   /** Everything the cat senses, four times a second. Not awaited by the frame, so a slow read never stalls the drawing. */
   async function pollSensors(): Promise<void> {
@@ -424,7 +440,7 @@ async function main(): Promise<void> {
         const cur = cat.mind.current;
         const b = st.body;
         say(
-          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} desktop=${world.space ? `${world.space.id}#${world.space.index}` : "-"}${cat.away ? " (cat on its own desktop)" : ""} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms`,
+          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} desktop=${world.space ? `${world.space.id}#${world.space.index}${world.space.app ? " (full-screen app)" : ""}` : "-"}${cat.away ? " (cat on its own desktop)" : ""} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms shown=${document.visibilityState === "visible" ? "yes" : "no"}`,
         );
         frames = 0;
         worstGap = 0;

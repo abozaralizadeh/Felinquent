@@ -261,13 +261,16 @@ pub fn space() -> Option<Space> {
         })
         .or(entries.first())?;
     let spans = text(pick, "Display Identifier").as_deref() == Some("Main");
-    let current = space_id(&dict(pick, "Current Space")?)?;
+    let now = dict(pick, "Current Space")?;
+    let current = space_id(&now)?;
+    // type 0 is a desktop, 4 an app in full screen.
+    let app = num(&now, "type").is_some_and(|t| t as i64 == 4);
     let k = CFString::new("Spaces");
     let list = pick.find(&k)?;
     // SAFETY: "Spaces" is an array of dictionaries; get rule, the entry owns it.
     let list: CFArray<CFDictionary<CFString, CFType>> = unsafe { CFArray::wrap_under_get_rule(list.as_concrete_TypeRef() as _) };
     let index = list.iter().position(|d| space_id(&d.clone()) == Some(current)).map(|i| i as i32).unwrap_or(-1);
-    Some(Space { id: current.to_string(), index, spans })
+    Some(Space { id: current.to_string(), index, spans, app })
 }
 
 // ---- Displays ----------------------------------------------------------------

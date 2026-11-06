@@ -11,10 +11,19 @@ import type { ChaosLevel, WindowInfo, WorldSnapshot } from "./types";
  * hunt. Everything here is plain geometry and physics; src/playground/mess-draw.ts draws it.
  * Abozar asked for a chaos level where it "can run around and break things" (6 Nov 2026).
  */
-export type PropKind = "mug" | "glass" | "plant" | "vase" | "yarn" | "pencils" | "teacup" | "duck" | "mouse";
+export type ToyKind = "yarn" | "jingle" | "fish" | "sock" | "foil" | "tennis" | "bone" | "carrot" | "acorn";
+export type PropKind = "mug" | "glass" | "plant" | "vase" | "yarn" | "pencils" | "teacup" | "duck" | "mouse" | ToyKind;
+/** What stands about on window tops to be knocked off. */
 export const PROP_KINDS: readonly PropKind[] = ["mug", "glass", "plant", "vase", "yarn", "pencils", "teacup", "duck", "mouse"];
+/** Each animal's own toy (Personality.toy): the yarn is the tabby's, the others belong to one animal each. */
+export const TOY_KINDS: readonly ToyKind[] = ["yarn", "jingle", "fish", "sock", "foil", "tennis", "bone", "carrot", "acorn"];
+/** Toys that roll. The fish, the bone and the carrot skid and come to a stop lying flat. */
+export const ROLLS: ReadonlySet<PropKind> = new Set<PropKind>(["yarn", "jingle", "sock", "foil", "tennis", "acorn"]);
 /** Height in pixels at the medium size. The drawing keeps its own proportions. */
-export const PROP_HEIGHT: Record<PropKind, number> = { mug: 30, glass: 34, plant: 40, vase: 42, yarn: 26, pencils: 46, teacup: 24, duck: 28, mouse: 18 };
+export const PROP_HEIGHT: Record<PropKind, number> = {
+  mug: 30, glass: 34, plant: 40, vase: 42, yarn: 26, pencils: 46, teacup: 24, duck: 28, mouse: 18,
+  jingle: 21, fish: 18, sock: 23, foil: 20, tennis: 22, bone: 14, carrot: 17, acorn: 21,
+};
 /** What shatters when it lands hard. The rest bounces (and the yarn rolls). */
 export const FRAGILE: ReadonlySet<PropKind> = new Set<PropKind>(["mug", "glass", "plant", "vase", "teacup", "pencils"]);
 
@@ -33,7 +42,7 @@ export interface Prop {
   vr: number;
   /**
    * rest: standing; slide: being pushed; teeter: on the edge; fall: in the air; settled: down and
-   * still; roll: the toy ball rolling on a window top or the floor (windowId null), or lying there.
+   * still; roll: the animal's toy rolling or skidding on a window top or the floor (windowId null), or lying there.
    */
   state: "rest" | "slide" | "teeter" | "fall" | "settled" | "roll";
   alpha: number;
@@ -49,7 +58,7 @@ export interface Prop {
   edge?: number;
   /** The yarn leaves a thread behind it. */
   trail?: { x: number; y: number }[];
-  /** The animal's own toy ball: it stays around (no fading, not cleared at chill) and rolls when batted. */
+  /** The animal's own toy: it stays around (no fading, not cleared at chill) and rolls or skids when batted. */
   toy?: boolean;
   /** Sliding on a window that was jerked: its own sideways speed (px/s), which the window drags along. */
   slip?: number;
@@ -227,6 +236,7 @@ export class Mess {
   strips: Strip[] = [];
   fly: Fly | null = null;
   private nextId = 1;
+  private ownToy: ToyKind = "yarn";
   private nextSpawnMs: number | null = null;
   private platforms: Platform[] = [];
   private world: WorldSnapshot | null = null;
@@ -261,7 +271,8 @@ export class Mess {
   unstash(st: MessState | undefined): void {
     this.clear();
     if (!st) return;
-    this.props = st.props;
+    // Another animal's toy, left there before you switched animals, is put away.
+    this.props = st.props.filter((p) => !p.toy || p.kind === this.ownToy);
     this.shards = st.shards;
     this.decals = st.decals;
     this.strips = st.strips;
@@ -392,7 +403,17 @@ export class Mess {
     this.outbox.push({ type: "fly", caught: f.willBeCaught });
   }
 
-  /** The animal's toy ball, if it is around. */
+  /** Which toy the animal has. Another one (another animal) puts the old one away. */
+  get toyKind(): ToyKind {
+    return this.ownToy;
+  }
+  set toyKind(k: ToyKind) {
+    if (k === this.ownToy) return;
+    this.ownToy = k;
+    this.props = this.props.filter((p) => !p.toy);
+  }
+
+  /** The animal's toy, if it is around. */
   get toy(): Prop | undefined {
     return this.props.find((p) => p.toy && (p.state === "roll" || p.state === "fall"));
   }
@@ -410,7 +431,7 @@ export class Mess {
     const dir: 1 | -1 = left ? 1 : -1;
     const p: Prop = {
       id: `p${this.nextId++}`,
-      kind: "yarn",
+      kind: this.ownToy,
       windowId: null,
       offset: 0,
       x: left ? w.screen.x + 8 : w.screen.x + w.screen.w - 8,
@@ -501,13 +522,21 @@ export class Mess {
     return f?.y ?? world.dockTop;
   }
 
-  /** The ball rolls on, slowing down, and turns as it goes. */
+  /** A ball rolls on, slowing down, and turns as it goes. A long toy skids, stops sooner and settles flat. */
   private roll(p: Prop, dt: number): void {
-    const r = PROP_HEIGHT[p.kind] * this.scale * 0.5;
     const v = Math.abs(p.vx);
-    const left = Math.max(0, v * Math.pow(0.55, dt) - 60 * dt);
+    if (ROLLS.has(p.kind)) {
+      const r = PROP_HEIGHT[p.kind] * this.scale * 0.5;
+      const left = Math.max(0, v * Math.pow(0.55, dt) - 60 * dt);
+      p.vx = left < 4 ? 0 : Math.sign(p.vx) * left;
+      p.rot += (p.vx * dt) / r;
+      return;
+    }
+    const left = Math.max(0, v * Math.pow(0.3, dt) - 150 * dt);
     p.vx = left < 4 ? 0 : Math.sign(p.vx) * left;
-    p.rot += (p.vx * dt) / r;
+    // Either way up, whichever is nearer.
+    const flat = Math.round(p.rot / Math.PI) * Math.PI;
+    p.rot += (flat - p.rot) * Math.min(1, dt * 12);
   }
 
   /** Bounces a moving thing off the outer edges of the displays. */
@@ -725,7 +754,7 @@ export class Mess {
           continue;
         }
         // Bounces: less each time, until it lies there.
-        p.vy = -p.vy * (p.kind === "duck" || p.kind === "yarn" ? 0.45 : 0.3);
+        p.vy = -p.vy * (p.kind === "duck" || ROLLS.has(p.kind) ? 0.45 : 0.3);
         p.vx *= 0.6;
         p.vr *= 0.5;
         if (Math.abs(p.vy) < 90 && p.toy) {
@@ -864,7 +893,7 @@ export class Mess {
   /** A copy for drawing (and for the windows on other displays). */
   snapshot(): MessSnapshot {
     return {
-      props: this.props.filter((p) => p.alpha > 0).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, rot: p.rot, alpha: p.alpha, trail: p.trail?.slice(-160) })),
+      props: this.props.filter((p) => p.alpha > 0).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, rot: p.rot, alpha: p.alpha, trail: p.trail?.slice(-160), lying: p.toy && p.state === "roll" })),
       shards: this.shards.map((s) => ({ kind: s.kind, x: s.x, y: s.y, rot: s.rot, poly: s.poly, cx: s.cx, cy: s.cy, w: s.w, h: s.h, alpha: s.settled && s.settledMs !== undefined ? fade(this.world?.nowMs ?? 0, s.settledMs) : 1 })),
       decals: this.decals.map((d) => ({ ...d, alpha: Math.min(1, ((d.bornMs + d.ttlMs) - (this.world?.nowMs ?? 0)) / 6000) })),
       strips: this.strips.map((s) => ({ x: s.x, y: s.y, rot: s.rot, w: s.w, h: s.h, seed: s.seed, alpha: s.settled && s.settledMs !== undefined ? fade(this.world?.nowMs ?? 0, s.settledMs) : 1 })),
@@ -876,7 +905,8 @@ export class Mess {
 const fade = (now: number, settledMs: number): number => Math.max(0, Math.min(1, 1 - (now - settledMs - FLOOR_LINGER_MS) / FADE_MS));
 
 export interface MessSnapshot {
-  props: { id: string; kind: PropKind; x: number; y: number; rot: number; alpha: number; trail?: { x: number; y: number }[] }[];
+  /** lying: the animal's toy on a window top or the floor, however it has turned. */
+  props: { id: string; kind: PropKind; x: number; y: number; rot: number; alpha: number; trail?: { x: number; y: number }[]; lying?: boolean }[];
   shards: { kind: Shard["kind"]; x: number; y: number; rot: number; poly: number[]; cx: number; cy: number; w: number; h: number; alpha: number }[];
   decals: (Decal & { alpha: number })[];
   strips: { x: number; y: number; rot: number; w: number; h: number; seed: number; alpha: number }[];

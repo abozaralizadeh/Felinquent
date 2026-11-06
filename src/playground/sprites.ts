@@ -168,6 +168,24 @@ export interface SpriteSet {
 const sets = new Map<string, SpriteSet | "none">();
 const loading = new Map<string, Promise<void>>();
 
+/** Where a frame's file is: next to the page (the playground and the dev server). */
+export const SPRITE_URL = (id: string, key: string): string => `./sprites/${id}/${key}.webp`;
+let spriteUrl: Promise<(id: string, key: string) => string> = Promise.resolve(SPRITE_URL);
+let loaded: ((id: string, missing: number, usable: boolean) => void) | null = null;
+
+/**
+ * Elsewhere: the Mac app keeps the drawings once in its Resources folder, not inside the program.
+ * Loading waits for the promise, so set it before the first frame is drawn.
+ */
+export function setSpriteUrl(url: Promise<(id: string, key: string) => string>): void {
+  spriteUrl = url;
+}
+
+/** Told once a character's set has loaded: how many frames are missing and whether it can be drawn. */
+export function onSpriteSet(cb: (id: string, missing: number, usable: boolean) => void): void {
+  loaded = cb;
+}
+
 function loadImage(src: string, el: HTMLImageElement, tries = 2): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     el.onload = (): void => resolve(true);
@@ -187,10 +205,11 @@ function load(id: string): Promise<void> {
   const queue = [...SPRITE_KEYS];
   const results: boolean[] = [];
   const worker = async (): Promise<void> => {
+    const url = await spriteUrl;
     for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
       const el = new Image();
       img[key] = el;
-      results.push(await loadImage(`./sprites/${id}/${key}.webp`, el));
+      results.push(await loadImage(url(id, key), el));
     }
   };
   const done = Promise.all(Array.from({ length: 12 }, worker)).then(() => {
@@ -199,7 +218,9 @@ function load(id: string): Promise<void> {
     const ok = (k: SpriteKey): boolean => (img[k]?.naturalWidth ?? 0) > 0;
     const missing = SPRITE_KEYS.filter((k) => !ok(k));
     if (missing.length) console.warn(`sprites/${id}: ${missing.length} frames missing, drawn as their nearest drawing: ${missing.slice(0, 12).join(" ")}${missing.length > 12 ? " ..." : ""}`);
-    sets.set(id, results.length && ok("sit") && ok("stand") ? { id, img } : "none");
+    const usable = results.length > 0 && ok("sit") && ok("stand");
+    sets.set(id, usable ? { id, img } : "none");
+    loaded?.(id, missing.length, usable);
   });
   loading.set(id, done);
   return done;

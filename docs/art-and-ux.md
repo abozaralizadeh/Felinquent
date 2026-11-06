@@ -69,7 +69,7 @@
 | A-24 | hairball_cough | 8 | no | B-22 | v1 |
 | A-25 | box_peek | 4 | ✓ | B-21 | v1 |
 | A-26 | stare (ears twitching) | 3 | ✓ | B-07 | v1 |
-| A-27 | push_toy (an empty paw pushes, then eye contact; the ball is a real thing on the overlay, not part of the drawing) | 6 | no | B-26 | v1 |
+| A-27 | push_toy (an empty paw pushes, then eye contact; the toy is a real thing on the overlay, not part of the drawing) | 6 | no | B-26 | v1 |
 | A-28 | zoomies (fast run, puffed tail) | 6 | ✓ | B-23 | v1 |
 | A-29 | ear scratch with a hind leg (head tilts, the leg comes up, a dozen strokes at about 5.6 a second, a head shake) | 9 + 16 in-betweens | no | B-37 | MVP |
 | A-30 | turn round on the spot, standing and sitting (side, head round, three quarters, front, the far three quarters, the far side) | 5 + 5, the far side mirrored | no | B-02, all walks | MVP |
@@ -85,7 +85,7 @@
 | A-40 | feelings: annoyed (two), flustered, shy, beg (two), headbutt (two), proud | 9 + in-betweens | ✓ | B-14, B-38, B-42 | MVP |
 | A-41 | hop gait for the rabbit and the squirrel: the drawn hop (gather, push off, fly, land on the front paws, swing the hind feet through) placed on the ground with `hop-gait.py`, a walk that pauses between small hops, a steady trot hop and a bounding run | 32 + 24 + 20 | ✓ | all walks | MVP |
 
-**Things and marks (drawn on the overlay, not the animal).** Nine props from one illustrated sheet (cut with `tools/cut-props.py` into `public/props/*.webp` at 3x their height on screen: mug 30 px, glass 34, plant 40, vase 42, yarn 26, pencils 46, teacup 24, duck 28, toy mouse 18). Broken pieces are cut from the same drawing, so a broken mug looks like that mug. Cracks are a spiderweb with a dark under-stroke and a light line; claw marks are three or four short parallel scratches with a chip; strips use the window chrome colour (light #ececec, dark #3a3a3c). The fly is a small dark body with a wing blur and red eyes, 1.7 times the old size so it reads on a big screen.
+**Things and marks (drawn on the overlay, not the animal).** Nine props from one illustrated sheet (cut with `tools/cut-props.py` into `public/props/*.webp` at 3x their height on screen: mug 30 px, glass 34, plant 40, vase 42, yarn 26, pencils 46, teacup 24, duck 28, toy mouse 18). Each animal's own toy comes from a second sheet in the same style (jingle ball 21, catnip fish 18, sock 23, foil ball 20, tennis ball 22, squeaky bone 14, carrot 17, acorn 21; the tabby keeps the yarn); the cutter keeps the rows of the other sheet in `prop-aspect.ts`. Broken pieces are cut from the same drawing, so a broken mug looks like that mug. Cracks are a spiderweb with a dark under-stroke and a light line; claw marks are three or four short parallel scratches with a chip; strips use the window chrome colour (light #ececec, dark #3a3a3c). The fly is a small dark body with a wing blur and red eyes, 1.7 times the old size so it reads on a big screen.
 
 **MVP: 19 animations, ~100 frames per coat.** The placeholder cat in P0-P1 can be a simple shape with just walk, sit and sleep.
 

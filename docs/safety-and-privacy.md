@@ -44,7 +44,7 @@ These are rules in the code and in CI, not settings.
 | Logs | Fixing bugs | Local, max 15 MB, no titles | Only if you send them |
 | What the cat did lately ("the human poked me", "i knocked the mug off") | So the model and the thought bubble can react to it | In memory only, gone after 45 min | Only to the brain, on your Mac |
 | Settings (character, chaos level, local model on or off, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
-| Which desktop (Space) is showing, as an id and a number in the row | So the animal stays on its own desktop and walks in from the right side | No, live only. Not in logs at the default level | No |
+| Which desktop (Space) is showing, as an id and a number in the row, and whether it's an app in full screen | So the animal stays on its own desktop, walks in from the right side and doesn't move onto a full-screen app where it can't be seen | No, live only. The log has the id and the number (just numbers, no names) | No |
 | How fast each window moves (worked out from the window list) | Things on a dragged window ride along or fall off | No | No |
 | What it learned about its own choices (per action: how you reacted, how often it did it lately) | Doing more of what you like, getting bored, trying new things | `memory.json`, local, counts only, no titles. Wiped by Forget everything | No |
 | Tricks it made up (names and lists of poses and moves) | Variety | `memory.json`, local. Checked again when loaded, so a hand-edited file can only hold poses and moves. Wiped by Forget everything | No |

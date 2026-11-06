@@ -52,7 +52,7 @@ export const CHARACTERS: readonly Character[] = [
     palette: { base: "#f2a650", belly: "#fde7bf", mark: "#d9822a", line: "#6a3f26", ear: "#f8b4a8", eye: "#3b2417", blush: "#ff8f8f" },
     accessory: { kind: "collar", color: "#e0525a", charm: true },
     size: 1,
-    personality: stock({ name: "Tabby", species: "cat", laziness: 0.6, neediness: 0.5, chaos: 0.5, aloofness: 0.5, curiosity: 0.5 }),
+    personality: stock({ name: "Tabby", toy: "yarn", species: "cat", laziness: 0.6, neediness: 0.5, chaos: 0.5, aloofness: 0.5, curiosity: 0.5 }),
   },
   {
     id: "inky",
@@ -63,7 +63,7 @@ export const CHARACTERS: readonly Character[] = [
     palette: { base: "#454459", belly: "#5f5e78", mark: "#2f2e3f", line: "#1c1b27", ear: "#e79aaa", eye: "#f5c431", blush: "#ff9aa8" },
     size: 1,
     personality: stock({
-      name: "Inky",
+      name: "Inky", toy: "fish",
       species: "black cat",
       laziness: 0.4,
       neediness: 0.9,
@@ -83,7 +83,7 @@ export const CHARACTERS: readonly Character[] = [
     accessory: { kind: "collar", color: "#8a6fd1", charm: true },
     size: 1.02,
     personality: stock({
-      name: "Pearl",
+      name: "Pearl", toy: "jingle",
       species: "white cat",
       laziness: 0.5,
       neediness: 0.3,
@@ -102,7 +102,7 @@ export const CHARACTERS: readonly Character[] = [
     palette: { base: "#f6dcae", belly: "#fff7e6", mark: "#c98b55", line: "#7a4b2c", ear: "#fbd0c0", eye: "#43281a", blush: "#ff9c8a" },
     size: 1.02,
     personality: stock({
-      name: "Mochi",
+      name: "Mochi", toy: "sock",
       species: "fox",
       laziness: 0.3,
       neediness: 0.6,
@@ -121,7 +121,7 @@ export const CHARACTERS: readonly Character[] = [
     palette: { base: "#aaa6b4", belly: "#e8e4ee", mark: "#3f3b4b", line: "#34303f", ear: "#d9c9d6", eye: "#241f2b", blush: "#ff9fb0" },
     size: 1.04,
     personality: stock({
-      name: "Bandit",
+      name: "Bandit", toy: "foil",
       species: "raccoon",
       laziness: 0.35,
       neediness: 0.4,
@@ -141,7 +141,7 @@ export const CHARACTERS: readonly Character[] = [
     accessory: { kind: "collar", color: "#3d7be0", charm: true },
     size: 1.05,
     personality: stock({
-      name: "Biscuit",
+      name: "Biscuit", toy: "tennis",
       species: "puppy",
       laziness: 0.3,
       neediness: 0.98,
@@ -161,7 +161,7 @@ export const CHARACTERS: readonly Character[] = [
     accessory: { kind: "collar", color: "#ff6fa5", charm: true },
     size: 0.82,
     personality: stock({
-      name: "Chili",
+      name: "Chili", toy: "bone",
       species: "chihuahua",
       laziness: 0.3,
       neediness: 0.9,
@@ -180,7 +180,7 @@ export const CHARACTERS: readonly Character[] = [
     palette: { base: "#c79a6c", belly: "#f6e7d3", mark: "#a77b52", line: "#5d3f29", ear: "#f6b3b6", eye: "#3a2418", blush: "#ff9aa2" },
     size: 0.95,
     personality: stock({
-      name: "Clover",
+      name: "Clover", toy: "carrot",
       species: "rabbit",
       laziness: 0.5,
       neediness: 0.45,
@@ -199,7 +199,7 @@ export const CHARACTERS: readonly Character[] = [
     palette: { base: "#cf6a2c", belly: "#fbe6cf", mark: "#a94c1a", line: "#5e2a10", ear: "#f3b19a", eye: "#2f1a10", blush: "#ff9a86" },
     size: 0.92,
     personality: stock({
-      name: "Hazel",
+      name: "Hazel", toy: "acorn",
       species: "squirrel",
       laziness: 0.2,
       neediness: 0.4,

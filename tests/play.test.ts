@@ -1,7 +1,11 @@
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Cat } from "../src/core/cat";
+import { CHARACTERS, characterById } from "../src/core/characters";
 import { Executor, type ExecEvent } from "../src/core/executor";
-import { Mess, type MessEvent } from "../src/core/mess";
+import { Mess, TOY_KINDS, type MessEvent } from "../src/core/mess";
+import type { Personality } from "../src/core/personality";
+import { PROP_ASPECT } from "../src/core/prop-aspect";
 import { WindowMotion } from "../src/core/motion";
 import { seeded } from "../src/core/rng";
 import type { WindowInfo, WorldSnapshot } from "../src/core/types";
@@ -128,9 +132,9 @@ describe("riding a window that moves", () => {
 });
 
 /** A gremlin cat told to do one thing, with the cursor where the test says. */
-async function run(intent: "knock_toy" | "follow" | "play_cursor", cursorAt: (t: number) => { x: number; y: number }, seconds: number) {
+async function run(intent: "knock_toy" | "follow" | "play_cursor", cursorAt: (t: number) => { x: number; y: number }, seconds: number, personality?: Personality) {
   const base = makeWorld({ nowMs: T0 });
-  const cat = new Cat({ rng: seeded(9), settings: { chaos: "gremlin" }, minDecisionGapMs: 600_000 });
+  const cat = new Cat({ rng: seeded(9), settings: { chaos: "gremlin" }, minDecisionGapMs: 600_000, personality });
   cat.place(base, 300);
   await cat.step(base, DT);
   cat.mind.forceNeeds({ energy: 0.95 });
@@ -160,6 +164,43 @@ describe("its toy ball", () => {
     // The old pose with a ball painted in never shows.
     expect(r.anims).not.toContain("push_toy");
     expect(r.done).toBe(true);
+  });
+
+  it("every animal has a toy of its own, drawn", () => {
+    const toys = CHARACTERS.map((c) => c.personality.toy);
+    expect(new Set(toys).size).toBe(CHARACTERS.length);
+    for (const t of toys) {
+      expect(TOY_KINDS).toContain(t);
+      expect(existsSync(new URL(`../src/playground/public/props/${t}.webp`, import.meta.url))).toBe(true);
+      expect(PROP_ASPECT[t as string]).toBeGreaterThan(0);
+    }
+  });
+
+  it("brings out its own toy, and another animal's toy goes when you switch", async () => {
+    const r = await run("knock_toy", () => ({ x: 1300, y: 200 }), 20, characterById("clover").personality);
+    expect(r.cat.mess.toy?.kind).toBe("carrot");
+    r.cat.setPersonality(characterById("biscuit").personality);
+    expect(r.cat.mess.toy).toBeUndefined();
+    expect(r.cat.mess.toyKind).toBe("tennis");
+  });
+
+  it("a long toy skids to a stop lying flat; a ball rolls on further", async () => {
+    const slide = async (kind: "carrot" | "tennis"): Promise<{ dist: number; rot: number }> => {
+      const m = new Mess(seeded(3));
+      m.toyKind = kind;
+      const world = at(makeWorld(), T0);
+      m.step(0.01, world, "chill", null);
+      const t = m.bringToy(700, T0) as NonNullable<ReturnType<Mess["bringToy"]>>;
+      for (let i = 0; i < 60; i++) m.step(1 / 60, world, "chill", null);
+      const x0 = t.x;
+      m.bat(t.id, 1);
+      for (let i = 0; i < 60 * 8; i++) m.step(1 / 60, world, "chill", null);
+      return { dist: Math.abs(t.x - x0), rot: t.rot };
+    };
+    const carrot = await slide("carrot");
+    const ball = await slide("tennis");
+    expect(carrot.dist).toBeLessThan(ball.dist);
+    expect(Math.abs(Math.sin(carrot.rot))).toBeLessThan(0.05);
   });
 
   it("the ball stays around and doesn't fade like the mess does", async () => {
@@ -257,6 +298,86 @@ describe("desktops", () => {
     const xs = [cat.executor.body.x, ...(await step({ space: spaceB, windows: other }, 4))];
     expect(Math.min(...xs)).toBeLessThan(0);
     expect(cat.executor.body.x).toBeGreaterThan(0);
+  });
+
+  it("mid-swipe, the next desktop's windows show up under the old desktop's name: it stays on its window and keeps its own desktop", async () => {
+    const { cat, step } = await setup();
+    // After the mind's first pick, so it doesn't replace this one.
+    await step({}, 0.5);
+    cat.executor.start({ intent: "sit_on", target: "w1", approach: "walk", stay_sec: 600, mood: "smug" });
+    await step({}, 30, () => cat.executor.windowId === "w1" && cat.executor.phase === "doing");
+    expect(cat.executor.windowId).toBe("w1");
+    // A few reads where macOS lists the next desktop's windows but still names this one.
+    await step({ windows: other }, 0.3);
+    expect(cat.executor.windowId).toBe("w1");
+    await step({ space: spaceB, windows: other }, 1);
+    expect(cat.away).toBe(true);
+    // Away, it lives among its own desktop's windows, not the ones from half way through the swipe.
+    expect(cat.executor.platforms.some((p) => p.id.startsWith("w1"))).toBe(true);
+    expect(cat.executor.platforms.some((p) => p.id.startsWith("x1"))).toBe(false);
+    // Back, mid-swipe again: still on its window.
+    await step({ windows: other }, 0.3);
+    await step({}, 1);
+    expect(cat.away).toBe(false);
+    expect(cat.executor.windowId).toBe("w1");
+  });
+
+  it("a real change that only looks like a swipe is believed after a second", async () => {
+    const { cat, step } = await setup();
+    // After the mind's first pick, so it doesn't replace this one.
+    await step({}, 0.5);
+    cat.executor.start({ intent: "sit_on", target: "w1", approach: "walk", stay_sec: 600, mood: "smug" });
+    await step({}, 30, () => cat.executor.windowId === "w1" && cat.executor.phase === "doing");
+    // Every window closes and no desktop change follows: after the hold it falls like it should.
+    await step({ windows: [] }, 3);
+    expect(cat.executor.windowId).toBeNull();
+  });
+
+  it("asleep when you leave, it naps on a little, then wakes and comes over", async () => {
+    const { cat, step, wait } = await setup();
+    await step({}, 1);
+    cat.mind.forceNeeds({ energy: 0.02 });
+    cat.mind.sleeping = true;
+    await step({ space: spaceB, windows: other }, 0.5);
+    expect(cat.away).toBe(true);
+    const took = await wait({ space: spaceB, windows: other }, 600, () => !cat.away);
+    expect(cat.away).toBe(false);
+    // About a minute past its time, not the half hour a nap can last.
+    expect(took).toBeLessThan(200);
+  });
+
+  it("a treat from the menu calls it over at once", async () => {
+    const { cat, step, base } = await setup();
+    await step({}, 1);
+    await step({ space: spaceB, windows: other }, 0.5);
+    expect(cat.away).toBe(true);
+    cat.treat(at(base, base.nowMs + 2000, { space: spaceB, windows: other }));
+    expect(cat.away).toBe(false);
+    await step({ space: spaceB, windows: other }, 3);
+    expect(cat.executor.body.x).toBeGreaterThan(0);
+  });
+
+  it("never moves onto an app in full screen (it can't be seen there), and comes once you're on a desktop again", async () => {
+    const { cat, step, wait, base } = await setup();
+    const fullScreen = { id: "f", index: 2, spans: true, app: true };
+    const big: WindowInfo[] = [{ id: "f1", app: "Safari", bounds: { x: 0, y: 0, w: 1440, h: 900 }, focused: true, cpu: "low", z: 0 }];
+    await step({}, 1);
+    await step({ space: fullScreen, windows: big }, 0.5);
+    expect(cat.away).toBe(true);
+    // Ten minutes there, and a treat: it stays on its own desktop.
+    await wait({ space: fullScreen, windows: big }, 600, () => !cat.away);
+    cat.treat(at(base, base.nowMs + 700_000, { space: fullScreen, windows: big }));
+    expect(cat.away).toBe(true);
+    // Back on its own desktop: there it is.
+    await step({}, 0.5);
+    expect(cat.away).toBe(false);
+    // Out to the full-screen app and on to another desktop: it comes over to that one as usual.
+    await step({ space: fullScreen, windows: big }, 0.5);
+    await step({ space: spaceB, windows: other }, 0.5);
+    expect(cat.away).toBe(true);
+    const took = await wait({ space: spaceB, windows: other }, 400, () => !cat.away);
+    expect(cat.away).toBe(false);
+    expect(took).toBeLessThan(400);
   });
 
   it("each desktop keeps its own mess", async () => {

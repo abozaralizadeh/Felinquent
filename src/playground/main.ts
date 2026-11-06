@@ -477,6 +477,9 @@ function pickCharacter(id: string): void {
 }
 characterSelect.addEventListener("change", () => pickCharacter(characterSelect.value));
 $("characterHint").textContent = characterById("tabby").blurb;
+// ?character=<id> starts with that animal (to look at one, or record it).
+const startWith = new URLSearchParams(location.search).get("character");
+if (startWith) pickCharacter(startWith);
 $("persona").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
   cat.setPersonality(key === "mix" ? DEFAULT_PERSONALITY : (ARCHETYPES[key] ?? DEFAULT_PERSONALITY));
@@ -624,7 +627,7 @@ else requestAnimationFrame(frame);
 /**
  * ?scene=knock|shatter|claw|hunt|zoom sets up a bit of gremlin mischief a second after loading, to
  * look at it (or record it) without waiting for the cat to feel like it. ?scene=ball brings out its
- * ball, ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
+ * own toy (each animal has its own; ?character=<id> picks the animal), ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
  */
 const scene = new URLSearchParams(location.search).get("scene");
 if (scene) {

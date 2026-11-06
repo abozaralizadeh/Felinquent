@@ -208,8 +208,8 @@ function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: num
     const w = h * (PROP_ASPECT[p.kind] ?? img.naturalWidth / img.naturalHeight);
     ctx.save();
     ctx.globalAlpha = p.alpha;
-    // A soft shadow while it stands on something.
-    if (Math.abs(p.rot) < 0.4) {
+    // A soft shadow while it stands on something (a toy on the ground, whichever way it has turned).
+    if (Math.abs(p.rot) < 0.4 || p.lying) {
       ctx.fillStyle = "rgba(0,0,0,0.12)";
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 0.5, w * 0.42, 2.5 * scale, 0, 0, Math.PI * 2);

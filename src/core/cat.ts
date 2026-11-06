@@ -9,7 +9,32 @@ import { DEFAULT_PERSONALITY, type Personality } from "./personality";
 import { ReflexDetector, type PointerSample, type ReflexEvent, type ReflexKind } from "./reflexes";
 import { seeded, type Rng } from "./rng";
 import { instinctFor } from "./species";
-import { DEFAULT_SETTINGS, type Rect, type Settings, type WorldSnapshot } from "./types";
+import { DEFAULT_SETTINGS, type Rect, type Settings, type WindowInfo, type WorldSnapshot } from "./types";
+
+/** How long a window list that looks like a desktop swipe is held before it is believed. */
+export const SWIPE_HOLD_MS = 1000;
+/** How long past its time to come over a sleeping animal naps on before it wakes and comes. */
+export const WAKE_TO_COME_MS = 60_000;
+
+/**
+ * Whether going from `before` to `after` looks like the whole desktop sliding away: most windows
+ * gone at once, or several windows moving sideways by the same amount in one read. Dragging moves one
+ * window; closing one or two leaves the rest.
+ */
+export function looksLikeSwipe(before: readonly WindowInfo[], after: readonly WindowInfo[]): boolean {
+  if (before.length === 0) return false;
+  const now = new Map(after.map((w) => [w.id, w]));
+  let gone = 0;
+  const shifts: number[] = [];
+  for (const w of before) {
+    const a = now.get(w.id);
+    if (!a) gone++;
+    else if (a.bounds.x !== w.bounds.x || a.bounds.y !== w.bounds.y) shifts.push(a.bounds.x - w.bounds.x);
+  }
+  if (gone >= Math.max(1, before.length * 0.5)) return true;
+  const first = shifts[0];
+  return first !== undefined && shifts.length >= 2 && shifts.length >= (before.length - gone) * 0.6 && Math.abs(first) > 120 && shifts.every((d) => Math.abs(d - first) < 8);
+}
 
 /** Everything about the windows and displays that changes where the animal can stand. */
 function shapeOf(world: WorldSnapshot): string {
@@ -67,6 +92,12 @@ export class Cat {
   private shownSpace: string | null = null;
   private messBySpace = new Map<string, MessState>();
   private desktopRng: Rng = seeded(4243);
+  /**
+   * The last window list it believed, and since when the list has looked like a desktop sliding
+   * away (see steadied()).
+   */
+  private steady: WorldSnapshot | null = null;
+  private shakySince: number | null = null;
 
   constructor(opts: CatOptions = {}) {
     const rng = opts.rng ?? seeded(1);
@@ -78,6 +109,7 @@ export class Cat {
     this.messRng = seeded(7919);
     this.mess = new Mess(this.messRng);
     this.mess.scale = this.executor.size.h / 90;
+    this.mess.toyKind = (opts.personality ?? DEFAULT_PERSONALITY).toy ?? "yarn";
     this.executor.props = () =>
       this.mess.props
         .filter((p) => p.state === "rest" && p.windowId !== null && p.alpha > 0.9 && !p.toy)
@@ -114,6 +146,7 @@ export class Cat {
     this.mind.setPersonality(p);
     this.executor.setInstinct(instinctFor(p.species));
     this.executor.glanceChance = 0.95 - 0.6 * p.aloofness;
+    this.mess.toyKind = p.toy ?? "yarn";
   }
 
   /** The animal is on another desktop than the one you're looking at: don't draw it. */
@@ -169,12 +202,13 @@ export class Cat {
 
   /** dtSec drives needs and decisions. execDtSec (default: the same) drives movement, so a demo can warp time. */
   async step(live: WorldSnapshot, dtSec: number, execDtSec: number = dtSec): Promise<StepResult> {
-    this.motion.update(live.windows, execDtSec);
     this.desktops(live);
+    const seen = this.steadied(live);
+    this.motion.update(seen.windows, execDtSec);
     // Away on its own desktop: it lives among that desktop's windows, and you and your cursor aren't there.
     const world: WorldSnapshot = this.homeWorld
       ? { ...live, windows: this.homeWorld.windows, frontApp: this.homeWorld.frontApp, cursor: { x: -100_000, y: -100_000 }, cursorSpeed: 0 }
-      : live;
+      : seen;
     // How the window under it moves, before it is carried to where the window is now: thrown off
     // by a yank, it leaves from where it was, not from the window's new spot.
     if (!this.homeWorld) this.executor.ride(this.motion.of(this.executor.windowId), execDtSec);
@@ -196,8 +230,31 @@ export class Cat {
     }
     if (!this.homeWorld) this.bumpWhileRunning();
     const catX = this.executor.body.hidden || this.homeWorld ? null : this.executor.body.x;
-    for (const ev of this.mess.step(execDtSec, live, chaos, catX, (id) => this.motion.of(id))) this.onMess(ev, live);
+    for (const ev of this.mess.step(execDtSec, seen, chaos, catX, (id) => this.motion.of(id))) this.onMess(ev, seen);
     return { mind: out, reflexes: [] };
+  }
+
+  /**
+   * Mid-swipe from one desktop to the next, macOS already lists the next desktop's windows (or
+   * slides them all along) while it still names the old desktop. Believed, the animal falls off a
+   * window that is still there, and takes the next desktop's windows for its own. So a list that
+   * looks like the desktop sliding away is held for up to a second: the desktop change shows up in
+   * that time, or the change was real (an app hid its windows) and is believed after all.
+   */
+  private steadied(live: WorldSnapshot): WorldSnapshot {
+    const prev = this.steady;
+    if (prev && live.space && prev.space?.id === live.space.id && looksLikeSwipe(prev.windows, live.windows)) {
+      this.shakySince ??= live.nowMs;
+      if (live.nowMs - this.shakySince < SWIPE_HOLD_MS) return { ...live, windows: prev.windows, frontApp: prev.frontApp };
+    }
+    this.shakySince = null;
+    this.steady = live;
+    return live;
+  }
+
+  /** You gave a treat (or otherwise asked for it) while it was on another desktop: it comes now. */
+  private callOver(now: number): void {
+    if (this.homeWorld) this.comeAtMs = now;
   }
 
   /**
@@ -224,7 +281,10 @@ export class Cat {
     }
     if (sp.id === this.home.id) {
       if (this.homeWorld) {
-        // Back on its desktop before it came over.
+        // Back on its desktop before it came over. The list may still be mid-swipe, so the windows it
+        // knows are the ones to hold on to for a moment (steadied()).
+        this.steady = { ...this.homeWorld, space: sp, nowMs: now };
+        this.shakySince = null;
         this.homeWorld = null;
         this.comeAtMs = null;
       }
@@ -238,12 +298,15 @@ export class Cat {
         this.home = { id: sp.id, index: sp.index };
         return;
       }
-      this.homeWorld = this.lastWorld;
+      // Its desktop's windows as they were before the swipe began, not a list from half way through.
+      this.homeWorld = this.steady && this.steady.space?.id === this.home.id ? this.steady : this.lastWorld;
       this.comeAtMs = null;
       this.mind.onDesktop(now, false);
     }
-    // When it comes over. Not while it sleeps, is held or is in the air.
-    if (this.mind.sleeping || this.executor.airborne || this.executor.held) {
+    // An app in full screen: macOS doesn't show the animal's window there, so it never moves in (it
+    // would be lost, even to a treat). It waits on its own desktop, and the wait starts when you
+    // come to a real one.
+    if (sp.app) {
       this.comeAtMs = null;
       return;
     }
@@ -251,10 +314,17 @@ export class Cat {
       const p = this.mind.traits;
       const r = this.desktopRng;
       // Mostly a few seconds to half a minute; now and then (an aloof one more often) it takes its time.
-      const slow = r.next() < 0.2 + 0.3 * p.aloofness;
-      this.comeAtMs = now + (slow ? r.range(40, 120) : r.range(5, 20)) * 1000 * (0.5 + 1.8 * p.aloofness) / (0.6 + p.neediness);
+      const slow = r.next() < 0.15 + 0.25 * p.aloofness;
+      this.comeAtMs = now + (slow ? r.range(25, 60) : r.range(4, 15)) * 1000 * (0.5 + 1.8 * p.aloofness) / (0.6 + p.neediness);
     }
     if (now < this.comeAtMs) return;
+    // Held or in the air: it comes as soon as it is back on its feet. Asleep: it sleeps on a little,
+    // then wakes up to the quiet and comes looking (a nap can be half an hour, too long to wait).
+    if (this.executor.airborne || this.executor.held) return;
+    if (this.mind.sleeping) {
+      if (now < this.comeAtMs + WAKE_TO_COME_MS) return;
+      this.mind.wake(now);
+    }
     const side: 1 | -1 = sp.index > this.home.index ? -1 : sp.index < this.home.index ? 1 : this.desktopRng.next() < 0.5 ? -1 : 1;
     this.home = { id: sp.id, index: sp.index };
     this.homeWorld = null;
@@ -347,6 +417,12 @@ export class Cat {
   }
 
   treat(world: WorldSnapshot): void {
+    // On another desktop, a treat calls it over first.
+    if (this.homeWorld) {
+      this.callOver(world.nowMs);
+      if (this.mind.sleeping) this.mind.wake(world.nowMs);
+      this.desktops(world);
+    }
     this.apply(this.mind.giveTreat(world));
   }
 }

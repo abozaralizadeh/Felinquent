@@ -1,3 +1,4 @@
+import type { ToyKind } from "./mess";
 import type { IntentName } from "./types";
 
 export interface Personality {
@@ -6,6 +7,8 @@ export interface Personality {
   species?: string;
   /** Lines the character says for an intent, instead of the stock cat lines. */
   voice?: Partial<Record<IntentName, string[]>>;
+  /** Its own toy, the one it brings out to play with. The yarn unless said. */
+  toy?: ToyKind;
   /** All traits go from 0 to 1. */
   laziness: number;
   neediness: number;

@@ -324,7 +324,47 @@ fn tune_ns_window(window: &WebviewWindow) {
         ns.setCollectionBehavior(
             B::CanJoinAllSpaces | B::Stationary | B::FullScreenAuxiliary | B::IgnoresCycle,
         );
+        // Off until it's tested live on a full-screen app's Space: FELINQUENT_PANEL=1 turns it on.
+        if std::env::var("FELINQUENT_PANEL").is_ok() {
+            make_panel(ns);
+        }
     }
+}
+
+/// Turns an overlay window into a non-activating panel. macOS only shows a panel like that on top
+/// of another app's full-screen Space; a plain window, even one that joins every Space, stays off
+/// those, so the cat could never come to a desktop that is a full-screen app. A click on a panel
+/// like this also never brings Felinquent to the front. The window object stays the same: its class
+/// is swapped for a subclass of NSPanel (made once, at run time), which adds no instance variables.
+#[cfg(target_os = "macos")]
+fn make_panel(ns: &objc2_app_kit::NSWindow) {
+    use objc2::runtime::{AnyClass, AnyObject, ClassBuilder};
+    use objc2_app_kit::NSWindowStyleMask;
+    let obj: &AnyObject = ns;
+    let Some(panel) = AnyClass::get(c"NSPanel") else { return };
+    let class = match AnyClass::get(c"FelinquentPanel") {
+        Some(c) => c,
+        None => match ClassBuilder::new(c"FelinquentPanel", panel) {
+            Some(b) => b.register(),
+            None => return,
+        },
+    };
+    if obj.class() != class {
+        // Only when the panel needs no more room than the window already has.
+        if class.instance_size() > obj.class().instance_size() {
+            logfile::write(&format!("overlay: not a panel (sizes {} > {})", class.instance_size(), obj.class().instance_size()));
+            return;
+        }
+        // SAFETY: the object is an NSWindow (its class a subclass of NSWindow without extra state we
+        // rely on), NSPanel is an NSWindow subclass, and the new class is no bigger than the old one.
+        unsafe { AnyObject::set_class(obj, class) };
+        logfile::write("overlay: the window is a panel now, so it shows on full-screen Spaces too");
+    }
+    ns.setStyleMask(ns.styleMask() | NSWindowStyleMask::NonactivatingPanel);
+    // A panel hides when its app isn't in front, and this app never is.
+    ns.setHidesOnDeactivate(false);
+    // A window joins the Spaces it may be on when it is put on screen, so put it on screen again.
+    ns.orderFrontRegardless();
 }
 
 /// Puts the window exactly over a display. Setting the position the normal way makes macOS
@@ -417,6 +457,52 @@ fn main() {
                 };
                 fit_to(&w, d);
                 println!("[overlay] window {} on display {:.0},{:.0} {:.0}x{:.0}", w.label(), d.x, d.y, d.w, d.h);
+            }
+
+            // FELINQUENT_SPACES_DEBUG=1 logs, every 3 s, how macOS sees each overlay window (which
+            // Space, covered or not), to check that the cat can show on every desktop.
+            #[cfg(target_os = "macos")]
+            if std::env::var("FELINQUENT_SPACES_DEBUG").is_ok() {
+                let handle = app.handle().clone();
+                let mut tick = 0u32;
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    tick += 1;
+                    let h = handle.clone();
+                    let step = tick;
+                    let _ = handle.run_on_main_thread(move || {
+                        use objc2::runtime::AnyObject;
+                        use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior as B, NSWindowOcclusionState};
+                        for (label, w) in h.webview_windows() {
+                            let Ok(ptr) = w.ns_window() else { continue };
+                            // SAFETY: Tauri hands us the live NSWindow; read-only getters on the main thread.
+                            let ns: &NSWindow = unsafe { &*(ptr as *mut NSWindow) };
+                            if std::env::var("FELINQUENT_SPACES_TRY").is_ok() {
+                                let what = match step {
+                                    2 => { ns.orderFrontRegardless(); "front again" }
+                                    3 => { ns.setLevel(25); ns.orderFrontRegardless(); "level 25" }
+                                    4 => { ns.setLevel(1000); ns.orderFrontRegardless(); "level 1000" }
+                                    5 => { ns.setCollectionBehavior(B::CanJoinAllSpaces | B::FullScreenAuxiliary | B::IgnoresCycle); ns.orderFrontRegardless(); "no stationary" }
+                                    6 => { ns.setCollectionBehavior(B::MoveToActiveSpace | B::FullScreenAuxiliary | B::IgnoresCycle); ns.orderFrontRegardless(); "move to active space" }
+                                    7 => { ns.orderOut(None); ns.orderFrontRegardless(); "out and in" }
+                                    _ => "",
+                                };
+                                if !what.is_empty() { logfile::write(&format!("spaces: try {what}")); }
+                            }
+                            let obj: &AnyObject = ns;
+                            logfile::write(&format!(
+                                "spaces: {label} class={} onActiveSpace={} visible={} occlusionVisible={} level={} behavior={:#x} style={:#x}",
+                                obj.class().name().to_string_lossy(),
+                                ns.isOnActiveSpace(),
+                                ns.isVisible(),
+                                ns.occlusionState().contains(NSWindowOcclusionState::Visible),
+                                ns.level(),
+                                ns.collectionBehavior().0,
+                                ns.styleMask().0,
+                            ));
+                        }
+                    });
+                });
             }
 
             // FELINQUENT_SELFTEST=1 plays the menu messages once, so the page's handlers can be checked without clicking.

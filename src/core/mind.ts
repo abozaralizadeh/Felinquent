@@ -678,6 +678,17 @@ export class Mind {
     } else this.note(now, "the human dragged my window around with me on it. i held on.");
   }
 
+  /** Woken from outside, not by a full battery: the room went quiet, or a treat. Up, and a new bout. */
+  wake(now: number): void {
+    if (!this.sleeping) return;
+    this.sleeping = false;
+    this.justWoke = true;
+    this.current = null;
+    if (this.bout?.kind === "rest") this.bout.untilMs = now;
+    this.lastDecisionMs = now - this.gapMs;
+    this.restUntilMs = -Infinity;
+  }
+
   /** It went to the desktop you're on (Spaces), or you left it behind on another one. */
   onDesktop(now: number, came: boolean): void {
     this.note(now, came ? "the human went to another desktop. i followed." : "the human went to another desktop without me");
