@@ -292,10 +292,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     ollama::menu_item(app, &model);
 
-    let mut tray = TrayIconBuilder::new().menu(&menu).tooltip("Felinquent");
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
-    }
+    // The tabby's head in colour (tools/build-icons.py), drawn 18 points tall in the menu bar.
+    let tray = TrayIconBuilder::new().menu(&menu).tooltip("Felinquent").icon(tauri::include_image!("icons/tray.png"));
     tray.on_menu_event(move |app, event| match event.id().as_ref() {
         "quit" => app.exit(0),
         "logs" => logfile::open_folder(),

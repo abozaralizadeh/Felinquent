@@ -79,11 +79,7 @@ def main() -> int:
         im = load(c, n)
         save(im.resize((round(im.width * 0.5), round(im.height * 0.5)), Image.LANCZOS), f"{c}-{n}.webp")
 
-    # Favicons from the app icon.
-    icon = Image.open(ROOT / "src-tauri/icons/icon.png").convert("RGBA")
-    icon.resize((32, 32), Image.LANCZOS).save(OUT / "favicon-32.png")
-    icon.resize((180, 180), Image.LANCZOS).save(OUT / "apple-touch-icon.png")
-    print("favicons: favicon-32.png, apple-touch-icon.png")
+    # The favicons and the header logo come from tools/build-icons.py, with the app icon.
     return 0
 
 

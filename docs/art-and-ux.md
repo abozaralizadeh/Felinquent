@@ -97,7 +97,8 @@ The character art is AI-assisted. Each character comes as sheets of nine poses o
 2. `patch-blink.py <dir>` rebuilds `blink.webp` as the sitting frame with only the eyes closed. It finds the eyes by comparing the two drawings and copies each closed eye over by the shift of the fur around it, so a blink never moves the body.
 3. `tween-all.sh` first lines up the sitting drawings (`align-base.py`): the faces, the wash and the ear scratch move sideways in their canvas until their feet, haunches and torso sit where the plain sit's do, so the body stays put while a paw moves. Then it adds two optical-flow in-betweens between drawings that follow each other (`tween-sprites.py`): the wash, the turn, the ear scratch, kneading, the hairball heave, a meow and the one-off sequences (sitting down, standing up, lying down, waking, stretching, sneezing). Where the two halves disagree the nearer pose wins, so there are no ghost limbs. A lick is a nod of one drawing (`nod-sprites.py`): the head tips forward round its base and the bend fades out down the neck.
 4. `rig-all.sh` builds the walk, trot and run from `stand.webp` with `rig-gait.py`. The four legs are cut out and moved like a cutout puppet: each swings about its hip, lifts while in the air and stays planted for a set part of the cycle (the duty factor). Walk: lateral sequence, each foot down two thirds of the time, 32 frames. Trot: diagonal pairs, 24 frames. Run: a half bound with two short flights, 20 frames. The body bobs twice a cycle and the tail sways. The rabbit and the squirrel move both hind feet together, so they hop instead (`hop-gait.py`): their drawn hop is placed on the ground, hind feet still while gathering and pushing off, front paws still while landing and swinging the hind feet through, an arc in the air, flow in-betweens between the drawings (a clean cut half way where two drawings are too far apart to blend). The walk is a small hop with a pause, the trot keeps hopping, the run bounds. The stride of each gait goes to `src/playground/gaits.ts`, so the player advances the cycle by distance walked and planted feet don't slide.
-5. `build-site-assets.py` packs frames for the website (`site/assets/`): Tabby's walk, grooming and sixteen poses as strips on one shared canvas, a sitting and a petted card for each character, a few single poses and the favicons. Run it again after the sprites change.
+5. `build-site-assets.py` packs frames for the website (`site/assets/`): Tabby's walk, grooming and sixteen poses as strips on one shared canvas, a sitting and a petted card for each character and a few single poses. Run it again after the sprites change.
+6. `build-icons.py` builds the app icon (`icon.icns`, `icon.png`, the Windows `icon.ico`), the menu bar icon (`tray.png`) and the website's favicon, header logo and home screen icon from two drawings of the tabby in `src-tauri/icons/art/`: a loaf, used from 64 px up, and the head alone, used where a whole body would turn into a blob (16 and 32 points, the menu bar, the favicon). Give it new drawings on flat green and it keys them like the sheets.
 
 **Frames per character.** Fourteen sheets, most of nine poses (base, walk, run, face, action, life, extra, groom, spin, seq, trans, react, play, scratch), a turn sheet (and for some a standing turn), and ten motion sheets (paw, look, lookstand, ledge, rest, joy, nose, voice, mood, feel; most also have a small pawfix sheet that redraws the tap and the swat sitting upright). About 600 files per character (602 or 603): the sheet poses, the mirrored far side of the turn, flow in-betweens for every chain of drawings, lick nods and the rigged gait frames. The drawn walk and run frames are cut but only the hoppers play them.
 
@@ -118,7 +119,7 @@ The logo and all text are made separately and are never part of the character ar
 
 ### 6.1 Menu bar
 
-- **Icon:** a tiny cat head as a template image (works in light and dark menu bars). Its eyes close while the cat sleeps.
+- **Icon:** the tabby's head in colour, the same drawing as the app icon's small sizes, 18 points tall. It reads on light and dark menu bars thanks to its brown outline. (A version whose eyes close while the cat sleeps is an idea, not built.)
 
 ```text
 Mrrlo is napping on Word            ← status line
@@ -194,7 +195,7 @@ Sounds follow the system volume and are always muted in meeting mode.
 
 - **Voice:** deadpan. The cat doesn't care. Lowercase thoughts.
 - **Look:** warm cream background, ink outline (like the fox concept), one accent color per coat.
-- **App icon:** the cat as a loaf silhouette.
+- **App icon:** the tabby lying in a loaf with a sly look, drawn in the same style as the characters, on a warm cream tile with a soft shadow (Apple's grid: an 824 px rounded tile on a 1024 canvas). At 16 and 32 points it shows the head alone.
 - **Taglines (draft):** *"Not useful. Just real."* · *"It doesn't care about your deadline."* · *"A cat for people who can't have a cat."*
 
 ## 9. Accessibility
