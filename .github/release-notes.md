@@ -10,7 +10,7 @@ It follows you to the new desktop for real now, even when it was napping, and Gi
 
 **Toys.** Tabby keeps the red yarn. Inky has a catnip fish, Pearl a jingle ball, Mochi a sock it stole, Bandit a ball of shiny foil, Biscuit a tennis ball, Chili a tiny squeaky bone, Clover a carrot and Hazel an acorn. The round ones roll, the others skid and flop over.
 
-**Smaller download.** About SIZE MB instead of 173. The drawings were packed in twice (once for Apple Silicon and once for Intel), now they're in there once.
+**Smaller download.** About 97 MB instead of 173. The drawings were packed in twice (once for Apple Silicon and once for Intel), now they're in there once.
 
 ## Updating
 
