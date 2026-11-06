@@ -16,7 +16,7 @@ The cat notices you now. It looks at your cursor, follows it and sometimes plays
 
 **Art.** Every move is drawn with its in-between frames now (sitting, loafing, perching on a window edge, howling, begging, digging...), so it moves a lot more like a real animal. Three new animals: Chili the chihuahua, Clover the rabbit and Hazel the squirrel. The rabbit and the squirrel hop. The app icon is the tabby now, drawn like the rest of them, and the menu bar shows its head.
 
-The download is bigger because of all the new drawings, about 130 MB.
+The download is bigger because of all the new drawings, about 170 MB (it was 75 MB).
 
 ## Updating
 
