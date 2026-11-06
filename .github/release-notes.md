@@ -2,6 +2,10 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
+The update question works on the first click now. Before, it could ignore clicks on Update now and you had to click a few times. The same fix goes for the questions that set up the local model. Coming from 0.1.2? Then you also get 0.1.3: the cat acts in calmer stretches, thinks in a bubble, and at normal and gremlin knocks things off your windows.
+
+## New in 0.1.3
+
 The cat stopped repeating itself. It now does things in little stretches (rest, explore, play, mischief) and takes its time between moves. With the local model on, it plans a few steps ahead and thinks out loud in a small bubble. No model yet? The app offers to set it up. At normal and gremlin it knocks things off your windows and they break (only drawn, your real windows are fine).
 
 ## The mess, in more detail
@@ -12,7 +16,7 @@ The thought bubble only talks about real stuff: you poked it, you've been in the
 
 ## Updating
 
-Already on 0.1.2? The app asks you within 12 hours, or pick **Check for updates…** in the menu now.
+Already on 0.1.2 or 0.1.3? The app asks you within 12 hours, or pick **Check for updates…** in the menu now. That question still has the old bug one last time, so if Update now doesn't react, click it again.
 
 Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned).
 
