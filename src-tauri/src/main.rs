@@ -66,6 +66,9 @@ struct Config {
     brain: String,
     ollama_url: String,
     ollama_model: String,
+    /// How long one model answer may take, in ms (FELINQUENT_LLM_TIMEOUT_MS, 8000 unless set; for
+    /// slow test machines and demo recordings).
+    llm_timeout_ms: u32,
 }
 
 /// What the page says is current, so the menu can tick it.
@@ -303,6 +306,7 @@ fn read_config() -> Config {
         brain: std::env::var("FELINQUENT_BRAIN").unwrap_or_else(|_| "auto".into()),
         ollama_url,
         ollama_model,
+        llm_timeout_ms: std::env::var("FELINQUENT_LLM_TIMEOUT_MS").ok().and_then(|v| v.parse().ok()).filter(|ms| (1000..=60000).contains(ms)).unwrap_or(8000),
     }
 }
 

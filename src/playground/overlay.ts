@@ -21,7 +21,7 @@ interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec:
 interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null }
 interface Layout { index: number; displays: Rect[]; dock_top: number }
 interface Pointer { x: number; y: number; down: boolean; right?: boolean }
-interface Config { demo: boolean; debug: boolean; brain: string; ollama_url: string; ollama_model: string }
+interface Config { demo: boolean; debug: boolean; brain: string; ollama_url: string; ollama_model: string; llm_timeout_ms?: number }
 
 /** What the master window tells the others, every frame. */
 interface CatState {
@@ -322,7 +322,7 @@ async function main(): Promise<void> {
       }
       // The menu may have turned the model off while we waited for Ollama.
       if (!useModel) return "rules (the local model is off in the menu)";
-      cat.setBrain(new LlmBrain(new OllamaClient(config.ollama_url, config.ollama_model), 8000));
+      cat.setBrain(new LlmBrain(new OllamaClient(config.ollama_url, config.ollama_model), config.llm_timeout_ms ?? 8000));
       cat.updateSettings({ brain: "llm", llmUrl: config.ollama_url, llmModel: config.ollama_model });
       return `llm ${config.ollama_model} with rules as the fallback`;
     } catch {
