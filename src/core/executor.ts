@@ -16,7 +16,9 @@ export type Anim =
   | "shy" | "beg" | "dig" | "sniff" | "tumble" | "sprawl" | "howl" | "giggle" | "startled"
   | "proud" | "curious" | "love" | "yawn" | "surprise" | "dazed" | "scratch" | "bounce" | "hang"
   // Watching something (the cursor): sitting or standing still, only the head turns to follow it.
-  | "watch" | "watch_stand";
+  | "watch" | "watch_stand"
+  // Licking its lips (after a treat, or just because), sitting.
+  | "lick_lips";
 
 /**
  * Something the animal does to the things around it (mess.ts): a paw on a mug, a nudge toward the
@@ -31,7 +33,14 @@ export type Fx =
   /** The toy ball comes out (it rolls in from the side if it isn't around). */
   | { fx: "toy_out" }
   /** A swipe at the toy ball. */
-  | { fx: "bat"; prop: string; strength: number };
+  | { fx: "bat"; prop: string; strength: number }
+  /** The toy picked up in the mouth, let go of, or buried where the animal is. */
+  | { fx: "pick_up"; prop: string }
+  | { fx: "drop_toy" }
+  | { fx: "bury" };
+
+/** What it does with its toy: bring it back to you, take it off somewhere, bury it, or give it a sniff and a nudge. */
+export type ToyTask = "fetch" | "carry" | "stash" | "nose";
 
 /** A thing standing on a window, as the executor sees it. */
 export interface PropSpot {
@@ -47,6 +56,9 @@ export interface ToySpot {
   y: number;
   windowId: string | null;
   moving: boolean;
+  /** In your hand: it can't be reached. In its own mouth: it has it. */
+  held?: boolean;
+  carried?: boolean;
 }
 
 /**
@@ -98,8 +110,10 @@ type Step =
   | { k: "beat"; beat: Beat }
   /** Playing with the toy ball: worked out when it comes up, from where the ball is then. */
   | { k: "toy"; bats: number; waited?: number }
-  /** Following the cursor around or playing with it, until the executor's clock reaches `until`. */
-  | { k: "cursor"; mode: "follow" | "play"; until: number }
+  /** Following the cursor around, playing with it, or chasing it flat out, until the executor's clock reaches `until`. */
+  | { k: "cursor"; mode: "follow" | "play" | "chase"; until: number }
+  /** A job with the toy, worked out a stage at a time from where the toy, the animal and the cursor are then. */
+  | { k: "toytask"; mode: ToyTask; stage: "get" | "bring" | "away" | "bury"; waited?: number; legs?: number; dest?: { id: string; x: number } }
   | { k: "hide" };
 
 /**
@@ -152,7 +166,24 @@ const DO_ANIM: Partial<Record<IntentName, Anim>> = {
   roll: "belly", bounce: "bounce", sniff: "sniff", dig: "dig", howl: "howl", scratch: "scratch", beg: "beg",
   spook: "puffed", sprawl: "sprawl", tumble: "tumble", shy: "shy", react: "idle_sit",
   knock_off: "push_toy", claw: "scratch", hunt: "pounce",
+  fetch: "watch_stand", carry_toy: "watch_stand", stash_toy: "watch_stand", nose_toy: "sniff", chase_cursor: "pounce",
+  invite_play: "play_bow", yawn: "yawn", look_around: "look",
 };
+
+/**
+ * Where the mouth is in each pose, as a share of the animal's box: forward from the middle (in the way
+ * it faces) and up from the feet. A carried toy hangs there. Poses not listed use the standing one.
+ */
+const MOUTH: Partial<Record<Anim, [number, number]>> = {
+  idle_sit: [0.2, 0.6], watch: [0.2, 0.6], look: [0.2, 0.62], beg: [0.18, 0.66], meow: [0.2, 0.6], proud: [0.2, 0.62],
+  curious: [0.2, 0.6], happy: [0.2, 0.6], love: [0.2, 0.6], blink: [0.2, 0.6], stare: [0.2, 0.6], groom: [0.2, 0.6],
+  sniff: [0.42, 0.16], dig: [0.4, 0.22], pounce: [0.4, 0.28], play_bow: [0.4, 0.3], push_toy: [0.38, 0.3],
+  loaf: [0.34, 0.32], sleep: [0.3, 0.22], sprawl: [0.36, 0.2], sulk: [0.2, 0.55],
+  jump: [0.38, 0.5], leap: [0.4, 0.45], fall: [0.36, 0.5], land: [0.4, 0.34], dangle: [0.2, 0.5],
+};
+const MOUTH_STAND: [number, number] = [0.38, 0.5];
+/** The toy jobs that keep the toy in the mouth when they start. */
+const CARRY_INTENTS: ReadonlySet<IntentName> = new Set<IntentName>(["fetch", "carry_toy", "stash_toy"]);
 
 interface JumpState {
   t: number;
@@ -237,6 +268,8 @@ export class Executor {
   private slipped = false;
   /** The toy ball, from the Cat (mess.ts). */
   toyAt: (() => ToySpot | null) | null = null;
+  /** The toy it has in its mouth (a prop id), or null. */
+  carrying: string | null = null;
   /** Seconds since the executor started: deadlines for following the cursor. */
   private clock = 0;
   /** An effect due part way into the current step. */
@@ -280,6 +313,20 @@ export class Executor {
   }
   get blocking(): boolean {
     return this.blockingWindow !== null;
+  }
+
+  /** Where its mouth is now (a carried toy hangs there). */
+  mouth(): { x: number; y: number } {
+    const b = this.body;
+    const [fx, fy] = MOUTH[b.anim] ?? MOUTH_STAND;
+    return { x: b.x + b.facing * this.size.w * fx, y: b.y - this.size.h * fy };
+  }
+
+  /** Lets go of the toy in its mouth, if it has one. */
+  private letGoOfToy(): void {
+    if (!this.carrying) return;
+    this.carrying = null;
+    this.emitFx({ fx: "drop_toy" });
   }
 
   hitRect(): Rect {
@@ -542,9 +589,21 @@ export class Executor {
       // Its own ball: out it comes (rolling in if it was put away), then it plays with it.
       return [...steps, { k: "do", anim: "look", sec: 0.8, fx: { fx: "toy_out" } }, { k: "toy", bats: Math.floor(this.rng.range(2, 6)) }];
     }
+    if (intent.intent === "fetch" || intent.intent === "carry_toy" || intent.intent === "stash_toy" || intent.intent === "nose_toy") {
+      const mode: ToyTask = intent.intent === "fetch" ? "fetch" : intent.intent === "carry_toy" ? "carry" : intent.intent === "stash_toy" ? "stash" : "nose";
+      const t = this.toyAt?.();
+      const face: 1 | -1 = t && t.x < this.body.x ? -1 : 1;
+      // It has it already (it carried it here): straight on with the job.
+      if (t?.carried && this.carrying === t.id) return [...steps, { k: "toytask", mode, stage: mode === "fetch" ? "bring" : mode === "stash" ? "bury" : "away" }];
+      return [...steps, { k: "do", anim: "watch", sec: 0.6, face }, { k: "toytask", mode, stage: "get" }];
+    }
+    if (intent.intent === "chase_cursor") {
+      return [...steps, { k: "do", anim: "pounce", sec: 0.7, face: "cursor" }, { k: "cursor", mode: "chase", until: this.clock + Math.max(8, intent.stay_sec) }];
+    }
     if ((intent.intent === "follow" && intent.target === "cursor") || intent.intent === "play_cursor") {
       const mode = intent.intent === "follow" ? "follow" : "play";
-      return [...steps, { k: "do", anim: "watch", sec: 0.8, face: "cursor" }, { k: "cursor", mode, until: this.clock + Math.max(8, intent.stay_sec) }];
+      const open: Step[] = intent.opener ? [{ k: "do", anim: intent.opener.anim, sec: intent.opener.sec, face: "cursor" }] : [];
+      return [...steps, ...open, { k: "do", anim: "watch", sec: 0.8, face: "cursor" }, { k: "cursor", mode, until: this.clock + Math.max(8, intent.stay_sec) }];
     }
     if (intent.intent === "claw" && cur && !intent.script) return [...steps, ...this.clawSteps()];
     if (intent.intent === "hunt" && cur && !intent.script) return [...steps, ...this.huntSteps(cur)];
@@ -676,15 +735,18 @@ export class Executor {
    * Following the cursor around (and pestering you about it), or playing with it like a toy. Worked
    * out again after every short leg, from where the cursor is then, until the time is up.
    */
-  private cursorRound(mode: "follow" | "play", until: number): Step[] {
+  private cursorRound(mode: "follow" | "play" | "chase", until: number): Step[] {
     const w = this.world;
     const b = this.body;
     const cur = this.currentPlatform();
     if (!w || !cur || this.clock >= until) {
+      if (mode === "chase") return [{ k: "do", anim: "watch_stand", sec: 1, face: "cursor" }, { k: "do", anim: "proud", sec: 1.8 }, { k: "do", anim: "groom", sec: 2.5 }];
       return mode === "follow" ? [{ k: "do", anim: "watch", sec: 1.5, face: "cursor" }, { k: "do", anim: "idle_sit", sec: 1 }] : [{ k: "do", anim: "watch", sec: 1, face: "cursor" }, { k: "do", anim: "groom", sec: 2.5 }];
     }
-    // A cursor that sits still is no fun: it loses interest.
+    // A cursor that sits still is no fun: it loses interest (a chaser waits a moment longer for it to run again).
     if (mode === "play" && this.cursorStill > 4) return [{ k: "do", anim: "look", sec: 1.2, face: "cursor" }, { k: "do", anim: "groom", sec: 2.5 }];
+    if (mode === "chase" && this.cursorStill > 3) return [{ k: "do", anim: "watch_stand", sec: 1.2, face: "cursor" }, { k: "do", anim: "proud", sec: 1.6 }, { k: "do", anim: "groom", sec: 2.5 }];
+    if (mode === "chase") return this.chaseLeg(w, cur, until);
     const again: Step = { k: "cursor", mode, until };
     const goal = this.spotUnder(w.cursor);
     const toward: 1 | -1 = w.cursor.x >= b.x ? 1 : -1;
@@ -725,6 +787,169 @@ export class Executor {
     // Stays on its feet between goes, eyes on it.
     steps.push({ k: "do", anim: "watch_stand", sec: this.rng.range(0.5, 1.3), face: "cursor" }, again);
     return steps;
+  }
+
+  /**
+   * Chasing the cursor flat out: it runs at it in short legs (so it swerves when you do), jumps at it
+   * when it hangs just above, and swats when it catches up. Worked out again after every leg.
+   */
+  private chaseLeg(w: WorldSnapshot, cur: Platform, until: number): Step[] {
+    const b = this.body;
+    const again: Step = { k: "cursor", mode: "chase", until };
+    const goal = this.spotUnder(w.cursor);
+    const toward: 1 | -1 = w.cursor.x >= b.x ? 1 : -1;
+    if (goal.id !== cur.id) {
+      const plan = planRoute(this.platforms, cur.id, b.x, goal.id, goal.x, this.limits);
+      if (!plan || !plan.reached || plan.steps.length === 0) return [{ k: "do", anim: "watch_stand", sec: 0.8, face: "cursor" }, again];
+      return [...this.routeSteps("run", plan.steps), again];
+    }
+    const far = Math.abs(goal.x - b.x);
+    if (far > 60 * this.sizeScale) {
+      const stop = goal.x - Math.sign(goal.x - b.x) * 30 * this.sizeScale;
+      const x = b.x + Math.sign(stop - b.x) * Math.min(Math.abs(stop - b.x), 260);
+      return [{ k: "walk", x, speed: far > 140 ? SPEED.run : SPEED.walk }, again];
+    }
+    const up = b.y - this.size.h * 0.7 - w.cursor.y;
+    if (up > 30 && up < 260 * this.sizeScale) return [{ k: "leap", dx: Math.max(-90, Math.min(90, w.cursor.x - b.x)), h: Math.min(280, up + 40), anim: "leap", face: toward }, again];
+    return [{ k: "do", anim: "swat", sec: 0.6, face: "cursor" }, { k: "do", anim: "watch_stand", sec: 0.3, face: "cursor" }, again];
+  }
+
+  /**
+   * One stage of a job with the toy. get: go to it (watching it while it rolls) and pick it up, or for
+   * a sniff, nose it about. bring: carry it back to under the cursor, drop it at your feet and ask for
+   * another throw. away: carry it off to a spot of its own, far from you, and lie down with it. bury:
+   * carry it a little way and dig it in.
+   */
+  private toyTask(st: Extract<Step, { k: "toytask" }>): Step[] {
+    const b = this.body;
+    const w = this.world;
+    const t = this.toyAt?.() ?? null;
+    const cur = this.currentPlatform();
+    const sit: Step[] = [{ k: "do", anim: "look", sec: 1.2 }, { k: "do", anim: "idle_sit", sec: 1.5 }];
+    if (!w || !cur) return sit;
+    if (st.stage === "get") {
+      if (!t || t.held) return t?.held ? [{ k: "do", anim: "watch", sec: 1.5, face: "cursor" }, { k: "do", anim: "idle_sit", sec: 1 }] : sit;
+      if (t.carried && this.carrying === t.id) return [{ ...st, stage: st.mode === "fetch" ? "bring" : st.mode === "stash" ? "bury" : "away" }];
+      const toward: 1 | -1 = t.x >= b.x ? 1 : -1;
+      // Still rolling: eyes on it, on its feet, until it stops (or nearly).
+      if (t.moving && (st.waited ?? 0) < 24) return [{ k: "do", anim: "watch_stand", sec: 0.3, face: toward }, { ...st, waited: (st.waited ?? 0) + 1 }];
+      const plat = this.toyPlatform(t);
+      if (!plat) return [{ k: "do", anim: "watch", sec: 1.5, face: toward }, { k: "do", anim: "idle_sit", sec: 1 }];
+      // Right up to it, nose over it (a sniff stands a bit further back).
+      const back = (st.mode === "nose" ? 0.75 : 0.42) * this.size.w;
+      const side: 1 | -1 = Math.abs(t.x - b.x) < back ? (-toward as 1 | -1) : toward;
+      const standX = Math.max(plat.x1 + 2, Math.min(plat.x2 - 2, t.x - side * back));
+      const steps: Step[] = [];
+      const fast = st.mode === "fetch" ? "run" : "walk";
+      if (plat.id !== cur.id) {
+        const plan = planRoute(this.platforms, cur.id, b.x, plat.id, standX, this.limits);
+        if (!plan || !plan.reached) return [{ k: "do", anim: "watch", sec: 2, face: toward }, { k: "do", anim: "sulk", sec: 2 }];
+        steps.push(...this.routeSteps(Math.abs(t.x - b.x) > 260 ? fast : "walk", plan.steps));
+        // It may have rolled on meanwhile: look again once there.
+        return [...steps, { ...st, waited: 0 }];
+      }
+      if (Math.abs(standX - b.x) > 8) {
+        const far = Math.abs(standX - b.x);
+        steps.push({ k: "walk", x: standX, speed: far > 240 ? SPEED[fast] : st.mode === "nose" ? SPEED.sneak : SPEED.walk });
+        // A long way: look again once there, it may have moved.
+        if (far > 120) return [...steps, { ...st, waited: 0 }];
+      }
+      const face = (t.x >= standX ? 1 : -1) as 1 | -1;
+      if (st.mode === "nose") {
+        return [
+          ...steps,
+          { k: "do", anim: "sniff", sec: 1.6, face },
+          { k: "do", anim: "sniff", sec: 0.7, face, fx: { fx: "bat", prop: t.id, strength: 0.3 }, fxAt: 0.4 },
+          { k: "do", anim: "watch", sec: 1.4, face },
+          { k: "walk", x: Math.max(plat.x1 + 2, Math.min(plat.x2 - 2, b.x + face * 40)), speed: SPEED.sneak },
+          { k: "do", anim: "sniff", sec: 1.2, face },
+          { k: "do", anim: "loaf", sec: 4 },
+        ];
+      }
+      return [
+        ...steps,
+        { k: "do", anim: "sniff", sec: 0.8, face, fx: { fx: "pick_up", prop: t.id }, fxAt: 0.45 },
+        { k: "do", anim: "watch_stand", sec: 0.5, face },
+        { ...st, stage: st.mode === "fetch" ? "bring" : st.mode === "stash" ? "bury" : "away" },
+      ];
+    }
+    // From here on it should have the toy in its mouth. Dropped (or taken away): the job is over.
+    if (!this.carrying) return sit;
+    if (st.stage === "bring") {
+      const goal = this.spotUnder(w.cursor);
+      const legs = (st.legs ?? 0) + 1;
+      const gap = 70 * this.sizeScale;
+      const toward: 1 | -1 = w.cursor.x >= b.x ? 1 : -1;
+      const drop: Step[] = [
+        { k: "do", anim: "idle_sit", sec: 0.5, face: "cursor", fx: { fx: "drop_toy" }, fxAt: 0.25 },
+        { k: "do", anim: "beg", sec: 1.8, face: "cursor" },
+        { k: "do", anim: "watch", sec: 3, face: "cursor" },
+      ];
+      // Too far, or it can't get to you: it brings it as far as it can and drops it there.
+      if (legs > 14) return drop;
+      if (goal.id !== cur.id) {
+        const plan = planRoute(this.platforms, cur.id, b.x, goal.id, goal.x - toward * gap, this.limits);
+        if (!plan || !plan.reached || plan.steps.length === 0) return drop;
+        return [...this.routeSteps(Math.abs(goal.x - b.x) > 300 ? "run" : "walk", plan.steps), { ...st, legs }];
+      }
+      const far = Math.abs(goal.x - b.x);
+      if (far > gap + 30) {
+        const stop = goal.x - Math.sign(goal.x - b.x) * gap;
+        const x = b.x + Math.sign(stop - b.x) * Math.min(Math.abs(stop - b.x), 320);
+        return [{ k: "walk", x, speed: far > 300 ? SPEED.run : SPEED.walk }, { ...st, legs }];
+      }
+      return drop;
+    }
+    if (st.stage === "away") {
+      // Somewhere of its own: the ledge farthest from you it can get to, picked once.
+      let dest = st.dest;
+      if (!dest) {
+        const ledges = this.platforms.filter((q) => q.x2 - q.x1 > 140);
+        const scored = ledges
+          .map((q) => {
+            const x = this.rng.range(q.x1 + 40, q.x2 - 40);
+            return { q, x, d: Math.hypot(x - w.cursor.x, q.y - w.cursor.y) + this.rng.range(0, 200) };
+          })
+          .sort((a, c) => c.d - a.d);
+        for (const c of scored.slice(0, 4)) {
+          const plan = planRoute(this.platforms, cur.id, b.x, c.q.id, c.x, this.limits);
+          if (plan?.reached) {
+            dest = { id: c.q.id, x: c.x };
+            break;
+          }
+        }
+        dest ??= { id: cur.id, x: Math.max(cur.x1 + 20, Math.min(cur.x2 - 20, b.x + (w.cursor.x >= b.x ? -1 : 1) * 200)) };
+      }
+      const legs = (st.legs ?? 0) + 1;
+      const there = dest.id === cur.id && Math.abs(dest.x - b.x) < 12;
+      if (!there && legs <= 6) {
+        const plan = planRoute(this.platforms, cur.id, b.x, dest.id, dest.x, this.limits);
+        if (plan?.reached && plan.steps.length > 0) return [...this.routeSteps("walk", plan.steps), { ...st, dest, legs }];
+      }
+      const away: 1 | -1 = w.cursor.x >= b.x ? -1 : 1;
+      return [
+        { k: "do", anim: "look", sec: 0.8, face: (-away) as 1 | -1 },
+        { k: "do", anim: "idle_sit", sec: 0.5, face: away, fx: { fx: "drop_toy" }, fxAt: 0.25 },
+        { k: "do", anim: "loaf", sec: this.rng.range(4, 7), face: away },
+        { k: "do", anim: "groom", sec: 2.5 },
+        { k: "do", anim: "loaf", sec: this.rng.range(3, 6) },
+      ];
+    }
+    // bury: a few steps away from you, then dig it in and pat it down.
+    if (!st.dest) {
+      const away: 1 | -1 = w.cursor.x >= b.x ? -1 : 1;
+      let x = b.x + away * this.rng.range(80, 180);
+      if (x < cur.x1 + 20 || x > cur.x2 - 20) x = b.x - away * this.rng.range(60, 140);
+      x = Math.max(cur.x1 + 20, Math.min(cur.x2 - 20, x));
+      return [{ k: "walk", x, speed: SPEED.walk }, { ...st, dest: { id: cur.id, x } }];
+    }
+    return [
+      { k: "do", anim: "sniff", sec: 1.2 },
+      { k: "do", anim: "dig", sec: 2.4, fx: { fx: "bury" }, fxAt: 1.4 },
+      { k: "do", anim: "dig", sec: 1.2 },
+      { k: "do", anim: "sniff", sec: 1 },
+      { k: "do", anim: "proud", sec: 2, face: "cursor" },
+    ];
   }
 
   /** Claws into the title bar: marks, a look at you, more marks a step on. */
@@ -843,6 +1068,7 @@ export class Executor {
       this.pending = intent;
       return;
     }
+    if (!CARRY_INTENTS.has(intent.intent)) this.letGoOfToy();
     if (this.body.hidden && intent.intent !== "leave") {
       const dock = this.platforms.find((p) => p.id === "dock");
       if (dock) {
@@ -903,6 +1129,7 @@ export class Executor {
 
   /** Stop what it is doing now (a respect mode, or a reflex). */
   interrupt(): void {
+    this.letGoOfToy();
     this.vel = 0;
     this.queue = [];
     this.current = null;
@@ -916,6 +1143,7 @@ export class Executor {
   }
 
   pickUp(x: number, y: number): void {
+    // Picked up by the scruff: whatever was in its mouth drops (interrupt() lets go of it).
     this.interrupt();
     this.landHold = 0;
     this.hanging = null;
@@ -991,6 +1219,7 @@ export class Executor {
 
   /** Off the window, with the speed the window gave it. */
   private fling(vx: number, vy: number): void {
+    this.letGoOfToy();
     this.slideU = null;
     this.brace = 0;
     this.fxLater = null;
@@ -1039,6 +1268,8 @@ export class Executor {
 
   private emitFx(fx: Fx): void {
     const b = this.body;
+    if (fx.fx === "pick_up") this.carrying = fx.prop;
+    else if (fx.fx === "bury" || fx.fx === "drop_toy") this.carrying = null;
     this.outbox.push({ type: "fx", fx, x: b.x, y: b.y, dir: b.facing, windowId: this.ridingWindow });
   }
 
@@ -1217,9 +1448,11 @@ export class Executor {
         return;
       }
       // Steps worked out only now, from where the ball or the cursor is (each expansion starts with a plain step).
-      for (let i = 0; i < 4 && this.current && (this.current.k === "toy" || this.current.k === "cursor"); i++) {
+      for (let i = 0; i < 4 && this.current && (this.current.k === "toy" || this.current.k === "cursor" || this.current.k === "toytask"); i++) {
         const c: Step = this.current;
-        this.queue.unshift(...(c.k === "toy" ? this.toyRound(c.bats, c.waited) : c.k === "cursor" ? this.cursorRound(c.mode, c.until) : []));
+        this.queue.unshift(
+          ...(c.k === "toy" ? this.toyRound(c.bats, c.waited) : c.k === "cursor" ? this.cursorRound(c.mode, c.until) : c.k === "toytask" ? this.toyTask(c) : []),
+        );
         this.current = this.queue.shift() ?? null;
       }
       if (!this.current) return;
@@ -1348,6 +1581,10 @@ export class Executor {
    * round if it went behind. It looks away again when the cursor leaves or stops for a while. Not
    * while it is ignoring you on purpose. True while it is looking.
    */
+  /** How long the cursor has been behind it while it watches, and how long until it turns round. */
+  private behindSec = 0;
+  private behindLimit = 2.2;
+
   private lookAtCursor(dt: number, base: Anim, ignoring = false): boolean {
     const w = this.world;
     const b = this.body;
@@ -1373,8 +1610,16 @@ export class Executor {
         }
       }
       b.anim = watching ? base : "watch";
-      // It turns round when the cursor goes well behind it (the drawings only look back over the shoulder).
-      if (Math.abs(dx) > 40 && Math.sign(dx) !== b.facing) b.facing = dx > 0 ? 1 : -1;
+      // Behind it, the head goes round over the shoulder first (the drawings have that look now). It
+      // turns its body round when the thing stays behind for a while or goes far behind.
+      if (Math.abs(dx) > 40 && Math.sign(dx) !== b.facing) {
+        this.behindSec += dt;
+        if (this.behindSec > this.behindLimit || Math.abs(dx) > 320 * this.sizeScale) {
+          b.facing = dx > 0 ? 1 : -1;
+          this.behindSec = 0;
+          this.behindLimit = this.rng.range(1.5, 3.5);
+        }
+      } else this.behindSec = 0;
       return true;
     }
     if (near && lively && this.glanceCool <= 0) {

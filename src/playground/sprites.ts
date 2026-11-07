@@ -49,18 +49,28 @@ const VOICE = ["howl1", "howl2", "howl3", "bark1", "bark2", "giggle1", "giggle2"
 const MOOD = ["cross", "angry1", "angry2", "hiss1", "hiss2", "puff1", "puff2", "jumpback"] as const;
 /** Sitting: annoyed (and a tail thump), flustered, peeking through a paw, sitting pretty (paws up and down), a headbutt and a cheek rub, smug. */
 const FEEL = ["annoyed1", "annoyed2", "fluster1", "shy1", "beg1", "beg2", "headbutt1", "headbutt2", "proud2"] as const;
+/**
+ * The head in the other directions (7 Nov 2026), sitting (sq_, sb_) and standing (tq_, tb_): turned
+ * three quarters toward you looking down, level and up; back over the shoulder down, level, up and
+ * high; and a head tilt, ahead and at you. With the look sheets that is every way a head goes.
+ */
+const GAZE = ["sq_down", "sq_level", "sq_up", "sb_down", "sb_level", "sb_up", "sb_high", "sg_tilt", "sg_tiltyou"] as const;
+const GAZESTAND = ["tq_down", "tq_level", "tq_up", "tb_down", "tb_level", "tb_up", "tb_high", "tg_tilt", "tg_tiltyou"] as const;
+/** Licking with the tongue drawn moving: a paw at the mouth, the tip out, flat on the paw, curled back, going in; the chest; the lips. */
+const LICK = ["lick1", "lick2", "lick3", "lick4", "lick5", "chest1", "chest2", "lips1", "lips2"] as const;
 
 type Drawn =
   | (typeof BASE)[number] | (typeof WALK)[number] | (typeof RUN)[number] | (typeof FACE)[number] | (typeof ACTION)[number] | (typeof LIFE)[number]
   | (typeof EXTRA)[number] | (typeof GROOM)[number] | (typeof SPIN)[number] | (typeof SEQ)[number] | (typeof TRANS)[number] | (typeof REACT)[number]
   | (typeof PLAY)[number] | (typeof SCRATCH)[number] | (typeof TURN)[number] | (typeof PAW)[number] | (typeof LOOK)[number] | (typeof LOOKSTAND)[number]
-  | (typeof LEDGE)[number] | (typeof RESTING)[number] | (typeof JOYFUL)[number] | (typeof NOSE)[number] | (typeof VOICE)[number] | (typeof MOOD)[number] | (typeof FEEL)[number];
+  | (typeof LEDGE)[number] | (typeof RESTING)[number] | (typeof JOYFUL)[number] | (typeof NOSE)[number] | (typeof VOICE)[number] | (typeof MOOD)[number] | (typeof FEEL)[number]
+  | (typeof GAZE)[number] | (typeof GAZESTAND)[number] | (typeof LICK)[number];
 /**
  * Frames made from the drawings: `groom1t1` and `groom1t2` sit between groom1 and the frame after it,
  * another letter is a second link out of the same drawing (`groom5u1` leads back to groom2), and
  * `groom2n1` to `groom2n5` are groom2 nodding down and back up (a lick).
  */
-type Made = `${Drawn}${"t" | "u" | "v" | "w" | "x" | "d" | "l" | "f" | "m" | "n" | "p" | "g" | "h" | "k" | "c"}${1 | 2 | 3 | 4 | 5}`;
+type Made = `${Drawn}${"t" | "u" | "v" | "w" | "x" | "d" | "l" | "f" | "m" | "n" | "p" | "g" | "h" | "k" | "c" | "q" | "b" | "y"}${1 | 2 | 3 | 4 | 5}`;
 
 /**
  * Gait cycles rigged from the standing drawing (tools/rig-gait.py): a walk in lateral sequence, a trot
@@ -72,6 +82,8 @@ const GW = gait("gw", 32);
 const GT = gait("gt", 24);
 const GR = gait("gr", 20);
 const GAITISH = /^(g[wtr]\d|stand$|stand2$)/;
+/** The head-direction drawings and their in-betweens (a swap between two directions cross-fades fast). */
+const GAZE_KEY = /^(s[gqb]_|t[gqb]_)/;
 
 export type SpriteKey = Drawn | Made | GaitKey;
 
@@ -106,6 +118,16 @@ const sameTurn = (a: SpriteKey, b: SpriteKey): boolean => TURN_SETS.some((set) =
 const KNEAD = [...dense(["knead_a", "knead_b"], 3), "knead_a"] as SpriteKey[];
 const RETCH = [...dense(["retch1", "retch2"], 2), "retch1"] as SpriteKey[];
 const MEOW = link("sit", "meow", "m");
+/** The tongue: into the cycle from the paw at the mouth, one stroke (tip, flat on the paw, curled, in), and back. The chest and the lips the same way. */
+const LICK_IN = link("groom2", "lick1", "y");
+const LICK_LOOP = [...dense(["lick1", "lick2", "lick3", "lick4", "lick5"], 2), "lick1"] as SpriteKey[];
+const LICK_OUT = link("lick1", "groom2", "y");
+const CHEST_IN = link("groom7", "chest1", "y");
+const CHEST_LOOP = [...dense(["chest1", "chest2"], 2), "chest1"] as SpriteKey[];
+const CHEST_OUT = link("chest1", "groom7", "y");
+const LIPS_IN = link("sit", "lips1", "y");
+const LIPS_LOOP = [...dense(["lips1", "lips2"], 2), "lips1"] as SpriteKey[];
+const LIPS_OUT = link("lips1", "sit", "y");
 
 /** Every frame made from the drawings (tools/tween-all.sh makes them). */
 const MADE: SpriteKey[] = [
@@ -129,6 +151,11 @@ const MADE: SpriteKey[] = [
   ...link("sg_high", "chatter1", "c"), ...link("sit", "meow2", "w"),
   ...link("stand", "cross", "x"), ...link("cross", "angry1"), ...dense(["angry1", "angry2"], 2), ...link("cross", "hiss1", "u"), ...dense(["hiss1", "hiss2"], 2), ...dense(["puff1", "puff2"], 2),
   ...dense(["annoyed1", "annoyed2"], 2), ...link("flustered", "fluster1"), ...link("shy", "shy1"), ...link("beg", "beg1"), ...dense(["beg1", "beg2"], 2), ...dense(["headbutt1", "headbutt2"], 2), ...link("proud", "proud2"),
+  ...chain(["sq_down", "sq_level", "sq_up"]), ...chain(["sb_down", "sb_level", "sb_up", "sb_high"]), ...link("sit", "sq_level", "q"), ...link("sit", "sb_level", "b"),
+  ...link("sg_ahead", "sg_tilt", "y"), ...link("sq_level", "sg_tiltyou", "y"),
+  ...chain(["tq_down", "tq_level", "tq_up"]), ...chain(["tb_down", "tb_level", "tb_up", "tb_high"]), ...link("stand", "tq_level", "q"), ...link("stand", "tb_level", "b"),
+  ...link("tg_ahead", "tg_tilt", "y"), ...link("tq_level", "tg_tiltyou", "y"),
+  ...LICK_IN, ...LICK_LOOP, ...LICK_OUT, ...CHEST_IN, ...CHEST_LOOP, ...CHEST_OUT, ...LIPS_IN, ...LIPS_LOOP, ...LIPS_OUT,
 ];
 
 /**
@@ -146,7 +173,7 @@ const RETIRED = new Set<SpriteKey>([
 export const SPRITE_KEYS: SpriteKey[] = [
   ...new Set<SpriteKey>([
     ...BASE, ...WALK, ...RUN, ...FACE, ...ACTION, ...LIFE, ...EXTRA, ...GROOM, ...SPIN, ...SEQ, ...TRANS, ...REACT, ...PLAY, ...SCRATCH, ...TURN, ...PAW,
-    ...LOOK, ...LOOKSTAND, ...LEDGE, ...RESTING, ...JOYFUL, ...NOSE, ...VOICE, ...MOOD, ...FEEL, ...MADE, ...GW, ...GT, ...GR,
+    ...LOOK, ...LOOKSTAND, ...LEDGE, ...RESTING, ...JOYFUL, ...NOSE, ...VOICE, ...MOOD, ...FEEL, ...GAZE, ...GAZESTAND, ...LICK, ...MADE, ...GW, ...GT, ...GR,
   ]),
 ].filter((k) => !RETIRED.has(k));
 
@@ -433,11 +460,14 @@ function sitting(t: number): Shot {
     // tilt of the head, smug).
     const r = hash(look.k * 5.3 + 2);
     if (r < 0.12) return still("yawn");
-    if (r < 0.32) return play(GLANCE_UP, look.into) ?? still("sit");
-    if (r < 0.42) return play(GLANCE_HIGH, look.into) ?? still("sit");
-    if (r < 0.56) return play(GLANCE_DOWN, look.into) ?? still("sit");
-    if (r < 0.7) return play(GLANCE_YOU, look.into) ?? still("sit");
-    return still(r < 0.88 ? "curious" : "proud");
+    if (r < 0.24) return play(GLANCE_UP, look.into) ?? still("sit");
+    if (r < 0.3) return play(GLANCE_HIGH, look.into) ?? still("sit");
+    if (r < 0.4) return play(GLANCE_DOWN, look.into) ?? still("sit");
+    if (r < 0.5) return play(GLANCE_YOU, look.into) ?? still("sit");
+    if (r < 0.6) return play(GLANCE_BACK, look.into) ?? still("sit");
+    if (r < 0.64) return play(TILT, look.into) ?? still("sit");
+    if (r < 0.68) return play(LIP_LICK, look.into) ?? still("sit");
+    return still(r < 0.86 ? "curious" : "proud");
   }
   // An ear turns towards a sound about every half minute.
   const ear = eventAt(t, 16, lengthOf(EAR_TWITCH), 6, 0.5);
@@ -527,6 +557,7 @@ export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, 
     case "curious": return { key: "curious", group: "curious", head: HEAD_SIT, motion: REST };
     case "love": return { key: cycle(["love", "joy"] as const, t, 0.7), group: "sit", head: HEAD_SIT, motion: M({ breath: 0.035, breathHz: 5 }), fade: 0.4 };
     case "yawn": return { key: "yawn", group: "sit", head: HEAD_SIT, motion: M({ breath: 0.04, breathHz: 1.6 }) };
+    case "lick_lips": return { key: "lips1", group: "lick_lips", head: HEAD_SIT, motion: REST };
     case "surprise": return { key: "surprise", group: "sit", head: HEAD_SIT, motion: M({ wobble: 0.01, wobbleHz: 20, breath: 0.03 }) };
     case "dazed": return { key: "dazed", group: "sit", head: HEAD_SIT, motion: M({ wobble: 0.05, wobbleHz: 4, breath: 0.02 }) };
     case "scratch": return { key: "scratch1", group: "scratch", head: HEAD_SIT, motion: M({ breath: 0.015 }) };
@@ -541,6 +572,20 @@ export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, 
 export const LICK_HZ = 1.4;
 /** Strokes a second of the ear scratch: the scratch reflex runs at 4 to 8 a second, about 5.6 on average. */
 export const SCRATCH_HZ = 5.6;
+
+/**
+ * Licks with the tongue drawn moving (the lick sheet): from the paw at the mouth into the tongue
+ * cycle, `n` strokes (now and then a short pause between two), and back to the paw. The chest the same.
+ */
+function tongue(segs: Seg[], part: "paw" | "chest", n: number, hz: number, r: () => number): void {
+  const [into, loop, out, rest] = part === "paw" ? [LICK_IN, LICK_LOOP, LICK_OUT, "lick1"] : [CHEST_IN, CHEST_LOOP, CHEST_OUT, "chest1"];
+  segs.push(move(into, 0.18));
+  for (let i = 0; i < n; i++) {
+    segs.push(move(loop, (1 / hz) * (0.85 + 0.3 * r()), true));
+    if (i < n - 1 && r() < 0.2) segs.push(hold(rest as SpriteKey, 0.2 + 0.4 * r()));
+  }
+  segs.push(move(out, 0.18));
+}
 
 /** Licks with one drawing nodding, `n` of them, now and then a short pause between two. */
 function licks(segs: Seg[], key: SpriteKey, n: number, hz: number, r: () => number): void {
@@ -579,20 +624,20 @@ export function groomBout(id: string, r: () => number, first: boolean): Seg[] {
   const segs: Seg[] = [];
   if (!first) segs.push(move(link("groom9", "groom1"), 0.5));
   segs.push(move(link("groom1", "groom2"), 0.45));
-  licks(segs, "groom2", between(r, ...w.paw), hz, r);
+  tongue(segs, "paw", between(r, ...w.paw), hz, r);
   const wipes = between(r, ...w.face);
   for (let i = 0; i < wipes; i++) {
     // The paw goes over the ear, behind it and down the cheek.
     segs.push(move(link("groom2", "groom3"), 0.35), hold("groom3", 0.12), move(link("groom3", "groom4"), 0.35), hold("groom4", 0.15), move(link("groom4", "groom5"), 0.4), hold("groom5", 0.1));
     if (i < wipes - 1) {
       segs.push(move(link("groom5", "groom2", "u"), 0.35));
-      licks(segs, "groom2", between(r, 1, 3), hz, r);
+      tongue(segs, "paw", between(r, 1, 3), hz, r);
     }
   }
   segs.push(wipes > 0 ? move(link("groom5", "groom6"), 0.3) : move(link("groom2", "groom6", "u"), 0.4));
   licks(segs, "groom6", between(r, 1, 3), hz * 1.5, r);
   segs.push(move(link("groom6", "groom7"), 0.45));
-  licks(segs, "groom7", between(r, 2, 6), hz, r);
+  tongue(segs, "chest", between(r, 2, 6), hz, r);
   segs.push(move(link("groom7", "groom8"), 0.5));
   licks(segs, "groom8", between(r, 3, 8), hz, r);
   segs.push(move(link("groom8", "groom9"), 0.5), hold("groom9", 0.9 + 0.8 * r()));
@@ -720,31 +765,71 @@ const glance = (to: number, stay: number): Seg[] => {
 const GLANCE_UP = glance(2, 1.7);
 const GLANCE_HIGH = glance(3, 1.3);
 const GLANCE_DOWN = glance(0, 1.6);
+/** A look back over the shoulder at something behind, and round again. */
+const GLANCE_BACK: Seg[] = [move(link("sit", "sb_level", "b"), 0.3, false, 1), hold("sb_level", 0.9), move(chain(["sb_level", "sb_up"]), 0.3, false, 1), hold("sb_up", 0.6), move(rev(chain(["sb_level", "sb_up"])), 0.3, false, 1), move(rev(link("sit", "sb_level", "b")), 0.3, false, 1), hold("sit", 0.3)];
+/** A tilt of the head at something, held, and back. */
+const TILT: Seg[] = [move(link("sit", "sg_ahead", "g"), 0.2, false, 1), ...visit(link("sg_ahead", "sg_tilt", "y"), 0.3, 1.4, 0.3, 1), move(rev(link("sit", "sg_ahead", "g")), 0.2, false, 1), hold("sit", 0.3)];
+/** Licking its lips: two or three quick licks round the mouth. */
+const LIP_LICK: Seg[] = [move(LIPS_IN, 0.2), move(LIPS_LOOP, 0.42, true), move(LIPS_LOOP, 0.4, true), hold("lips1", 0.15), move(LIPS_LOOP, 0.45, true), move(LIPS_OUT, 0.25), hold("sit", 0.4)];
+export const LIP_LICK_SEC = lengthOf(LIP_LICK);
 const GLANCE_YOU: Seg[] = [move(link("sit", "sg_ahead", "g"), 0.2, false, 1), ...visit(link("sg_ahead", "sg_you", "u"), 0.35, 1.7), move(rev(link("sit", "sg_ahead", "g")), 0.2, false, 1), hold("sit", 0.2)];
 const EAR_TWITCH: Seg[] = [move(link("sit", "sg_ahead", "g"), 0.15, false, 1), ...visit(link("sg_ahead", "sg_ear", "v"), 0.1, 0.25, 0.15, 1), move(rev(link("sit", "sg_ahead", "g")), 0.15, false, 1)];
 
 /**
- * Watching something: the head goes where the thing is, the body stays. The head follows smoothly
- * but not every little move (a dead band), and something behind the animal gets a look over the
- * shoulder at you (turning round to it is the walker's job).
+ * Watching something: the head goes where the thing is, the body stays. Three directions, each a
+ * chain of drawings from looking down to looking up: in profile the way it faces (sg_/tg_, down to
+ * straight up), three quarters toward you (sq_/tq_, for something right on it or over its head), and
+ * back over the shoulder (sb_/tb_). Up and down glide along a chain; from one direction to the next
+ * the head first comes level, then the drawing swaps (a quick cross-fade, like a head turning fast).
+ * The head follows smoothly but not every little move (a dead band), and when the thing stops for a
+ * moment it may tilt its head at it.
  */
 interface Gaze {
+  yaw: number;
   u: number;
-  you: number;
   t: number;
   since: number;
+  /** When it last swapped direction (a swap holds a moment before the next one). */
+  swapAt: number;
+  /** The target as it was, and since when it has not moved. */
+  goal: { yaw: number; u: number };
+  stillAt: number;
+  tilt: number;
 }
 const gazes = new Map<string, Gaze>();
-/** Where the head should point for something `dx` ahead (in the way it faces) and `dy` above the head. */
-export function gazeTarget(dx: number, dy: number): { u: number; you: boolean } {
-  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
-  if (deg > 125 || deg < -110) return { u: 1, you: true };
+/** Directions: 0 in profile, 1 three quarters toward you, 2 over the shoulder. How far up each chain goes. */
+const PITCH_TOP = [4, 2, 3] as const;
+const GAZE_DIRS = {
+  sit: [GAZE_SIT, chain(["sq_down", "sq_level", "sq_up"]), chain(["sb_down", "sb_level", "sb_up", "sb_high"])],
+  stand: [GAZE_STAND, chain(["tq_down", "tq_level", "tq_up"]), chain(["tb_down", "tb_level", "tb_up", "tb_high"])],
+} as const;
+const TILTS = {
+  sit: [link("sg_ahead", "sg_tilt", "y"), link("sq_level", "sg_tiltyou", "y")],
+  stand: [link("tg_ahead", "tg_tilt", "y"), link("tq_level", "tg_tiltyou", "y")],
+} as const;
+/** Up or down from level, in degrees, as a place on a chain (1 is level): down to 0, up to `top`. */
+const pitchOf = (deg: number, top: number): number => {
   const e = Math.max(-35, Math.min(95, deg));
-  return { u: e < 0 ? 1 + e / 35 : Math.min(4, 1 + e / 30), you: false };
+  return e < 0 ? Math.max(0, 1 + e / 35) : Math.min(top, 1 + e / 30);
+};
+/**
+ * Where the head should point for something `dx` ahead (in the way it faces) and `dy` above the head:
+ * which way (0 in profile, 1 toward you, 2 over the shoulder) and how far up (1 is level).
+ */
+export function gazeTarget(dx: number, dy: number): { yaw: number; u: number } {
+  // Right on it (a hand on its head): it looks at you.
+  if (Math.hypot(dx, dy) < 60) return { yaw: 1, u: 1 };
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  if (deg >= -70 && deg <= 105) return { yaw: 0, u: pitchOf(deg, 4) };
+  // Over its head and a little behind, or under it and a little behind: the head turns toward you.
+  if (deg > 105 && deg < 140) return { yaw: 1, u: 2 };
+  if (deg < -70 && deg > -115) return { yaw: 1, u: 0 };
+  // Behind: how far up or down from straight back.
+  return { yaw: 2, u: pitchOf(deg > 0 ? 180 - deg : -180 - deg, 3) };
 }
-function gazeShot(slot: string, standing: boolean, since: number, t: number, target: { u: number; you: boolean }): Shot {
+export function gazeShot(slot: string, standing: boolean, since: number, t: number, target: { yaw: number; u: number }, tilty = 0.5): Shot {
   let g = gazes.get(slot);
-  if (!g || g.since !== since) gazes.set(slot, (g = { u: 1, you: 0, t, since }));
+  if (!g || g.since !== since) gazes.set(slot, (g = { yaw: 0, u: 1, t, since, swapAt: -9, goal: { ...target }, stillAt: t, tilt: 0 }));
   const dt = Math.max(0, Math.min(0.1, t - g.t));
   g.t = t;
   const toward = (v: number, goal: number, rate: number): number => {
@@ -752,26 +837,54 @@ function gazeShot(slot: string, standing: boolean, since: number, t: number, tar
     if (Math.abs(d) < 0.02) return goal;
     return v + Math.sign(d) * Math.min(Math.abs(d), Math.max(Math.abs(d) * rate * dt, 1.2 * dt));
   };
-  if (target.you) {
-    // Round to ahead first, then over the shoulder.
-    g.u = toward(g.u, 1, 7);
-    if (Math.abs(g.u - 1) < 0.05) g.you = toward(g.you, 1, 6);
-  } else {
-    g.you = toward(g.you, 0, 7);
-    // A small move of the thing is not followed: the head moves when it is a little way off.
-    if (g.you === 0 && Math.abs(target.u - g.u) > 0.18) g.u = toward(g.u, target.u, 5);
+  // Has the thing stopped? (For the head tilt.)
+  if (target.yaw !== g.goal.yaw || Math.abs(target.u - g.goal.u) > 0.08) {
+    g.goal = { ...target };
+    g.stillAt = t;
   }
-  if (g.you > 0) return along(link(standing ? "tg_ahead" : "sg_ahead", standing ? "tg_you" : "sg_you", "u"), g.you, 1);
-  return along(standing ? GAZE_STAND : GAZE_SIT, g.u / 4, 1);
+  const still = t - g.stillAt;
+  const kind = standing ? "stand" : "sit";
+  if (target.yaw !== g.yaw) {
+    g.tilt = toward(g.tilt, 0, 9);
+    // Level first, then a swap to the next direction round (never straight from profile to behind).
+    if (g.tilt === 0) {
+      g.u = toward(g.u, 1, 8);
+      if (Math.abs(g.u - 1) < 0.05 && t - g.swapAt > 0.13) {
+        g.yaw += Math.sign(target.yaw - g.yaw);
+        g.u = 1;
+        g.swapAt = t;
+      }
+    }
+  } else {
+    // A small move of the thing is not followed: the head moves when it is a little way off.
+    if (g.tilt === 0 && Math.abs(target.u - g.u) > 0.18) g.u = toward(g.u, Math.min(PITCH_TOP[g.yaw] ?? 1, target.u), 5);
+    // Stopped about level in front of it or at you: now and then a tilt of the head, held, then back.
+    const level = Math.abs(g.u - 1) < 0.25 && g.yaw < 2;
+    const tilting = level && still > 0.9 && still < 3.2 && hash(Math.floor(g.stillAt * 3) + g.yaw) < tilty;
+    g.tilt = toward(g.tilt, tilting ? 1 : 0, tilting ? 4 : 6);
+  }
+  const yaw = Math.max(0, Math.min(2, g.yaw));
+  if (g.tilt > 0 && yaw < 2) {
+    if (Math.abs(g.u - 1) > 0.02) g.u = toward(g.u, 1, 8);
+    return along(TILTS[kind][yaw] as readonly SpriteKey[], g.tilt, 1);
+  }
+  return along(GAZE_DIRS[kind][yaw] as readonly SpriteKey[], g.u / (PITCH_TOP[yaw] ?? 1), 1);
 }
+/** A dog cocks its head at a sound or a stopped hand far more than a cat does. */
+const TILTY: Record<string, number> = { biscuit: 0.8, chili: 0.75, mochi: 0.5, bandit: 0.45, clover: 0.3, hazel: 0.4 };
 /** Looking round with nothing in particular to follow: up, higher, ahead, over to you and back. */
 const LOOKING: Seg[] = [
   move(link("sit", "sg_ahead", "g"), 0.25, false, 1), move(gazePath(GAZE_SIT, 2), 0.4, false, 1), hold("sg_up", 1.3), move(GAZE_SIT.slice(6, 10), 0.3, false, 1), hold("sg_high", 1.1),
   move(rev(GAZE_SIT.slice(3, 10)), 0.6, false, 1), hold("sg_ahead", 0.5), ...visit(link("sg_ahead", "sg_you", "u"), 0.35, 1.1, 0.35, 1), hold("sg_ahead", 0.4),
+  // Round over the shoulder: three quarters, behind, up behind, and back the same way.
+  hold("sq_level", 0.16), hold("sb_level", 1.0), move(chain(["sb_level", "sb_up"]), 0.35, false, 1), hold("sb_up", 0.9),
+  move(rev(chain(["sb_level", "sb_up"])), 0.35, false, 1), hold("sb_level", 0.3), hold("sq_level", 0.16), hold("sg_ahead", 0.5),
 ];
 const LOOKING_STAND: Seg[] = [
   move(link("stand", "tg_ahead", "g"), 0.25, false, 1), move(gazePath(GAZE_STAND, 2), 0.4, false, 1), hold("tg_up", 1.3), move(rev(gazePath(GAZE_STAND, 2)), 0.4, false, 1), hold("tg_ahead", 0.6),
   move(gazePath(GAZE_STAND, 0), 0.4, false, 1), hold("tg_down", 1.1), move(rev(gazePath(GAZE_STAND, 0)), 0.4, false, 1), ...visit(link("tg_ahead", "tg_you", "u"), 0.35, 1.0, 0.35, 1),
+  hold("tq_level", 0.16), hold("tb_level", 1.1), move(chain(["tb_level", "tb_up"]), 0.35, false, 1), hold("tb_up", 0.8), move(rev(chain(["tb_level", "tb_up"])), 0.35, false, 1),
+  hold("tb_level", 0.3), hold("tq_level", 0.16), hold("tg_ahead", 0.5),
 ];
 
 /** The loaf: blinking, looking up, looking back over the shoulder, getting drowsy. */
@@ -882,6 +995,8 @@ export function poseShot(anim: Anim, id: string, e: number): Shot | null {
       return looped([], [hold("curious", 1.8), hold("sg_ahead", 0.3), ...visit(link("sg_ahead", "sg_ear", "v"), 0.12, 0.35, 0.15, 1), hold("sg_ahead", 0.3)], e);
     case "look":
       return looped([], LOOKING, e);
+    case "lick_lips":
+      return looped([], LIP_LICK, e);
     case "belly":
       return looped([move(link("belly", "belly_l"), 0.4)], [move(link("belly_l", "belly_r"), 0.45), hold("belly_r", 0.35), move(link("belly_r", "belly_l"), 0.45), hold("belly_l", 0.35)], e);
     case "play_bow":
@@ -954,7 +1069,7 @@ function sequenceShot(anim: Anim, plan: SpritePlan, prev: string, e: number): Sh
 }
 const MOVING = new Set(["walk", "trot", "run"]);
 /** Poses that sit: after a walk the animal sits down first, and before a walk it stands up. */
-const SITTING = new Set(["sit", "look", "watch", "chatter", "howl", "bark", "giggle", "annoyed", "flustered", "shy", "beg", "proud", "curious"]);
+const SITTING = new Set(["sit", "look", "watch", "chatter", "howl", "bark", "giggle", "annoyed", "flustered", "shy", "beg", "proud", "curious", "lick_lips"]);
 const SIT_DOWN_SEC = lengthOf(SIT_DOWN);
 
 export interface SpriteDraw {
@@ -1033,7 +1148,7 @@ function frameOf(set: SpriteSet, key: SpriteKey): HTMLImageElement {
   const from = /^(.+)[a-z]\d$/.exec(key)?.[1] as SpriteKey | undefined;
   const near = from ? set.img[from] : undefined;
   if (near && near.naturalWidth > 0) return near;
-  return set.img[/^(g[wtr]\d|tg_|turn_s|stand|walk|run|trot)/.test(key) ? "stand" : "sit"];
+  return set.img[/^(g[wtr]\d|t[gqb]_|turn_s|stand|walk|run|trot)/.test(key) ? "stand" : "sit"];
 }
 
 const strideOf = (set: SpriteSet, g: "walk" | "trot" | "run"): number => GAIT_STRIDE[set.id]?.[g] ?? 90;
@@ -1209,7 +1324,7 @@ export function drawSprite(
       const look = frameOf(set, plan.key);
       const hx = x + drawDir * plan.head.x * look.naturalWidth * K * scale;
       const hy = y - plan.head.y * look.naturalHeight * K * scale;
-      follow = gazeShot(slot, anim === "watch_stand", poseAt, t, gazeTarget((d.cursor.x - hx) * drawDir, hy - d.cursor.y));
+      follow = gazeShot(slot, anim === "watch_stand", poseAt, t, gazeTarget((d.cursor.x - hx) * drawDir, hy - d.cursor.y), TILTY[set.id] ?? 0.35);
     }
     shot = sequenceShot(anim, plan, sh.prev, e) ?? follow ?? poseShot(anim, set.id, e - settle) ?? { key: plan.key, next: plan.next ?? null, mix: plan.mix ?? 0 };
   }
@@ -1231,7 +1346,9 @@ export function drawSprite(
       // Out of a walk (or into one) is quick: a moving animal changes pose fast, and two different
       // bodies overlapping for long look like a double exposure.
       const gaitSide = GAITISH.test(shot.key) || GAITISH.test(sh.key);
-      fadeFrom(shot.key === "blink" || sh.key === "blink" ? 0.06 : gaitSide ? 0.12 : g.turn ? 0.1 : (plan.fade ?? 0.24));
+      // A head turning from one direction to another is quick: a slow fade shows two heads.
+      const headTurn = GAZE_KEY.test(shot.key) && GAZE_KEY.test(sh.key);
+      fadeFrom(shot.key === "blink" || sh.key === "blink" ? 0.06 : headTurn ? 0.08 : gaitSide ? 0.12 : g.turn ? 0.1 : (plan.fade ?? 0.24));
     }
   }
   sh.key = shot.key;

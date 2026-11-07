@@ -10,7 +10,7 @@ It walks along the tops of your windows, naps on the Dock, sits on the thing you
 
 Turn the chaos level up and it gets worse. Mugs, plants and glasses show up on your windows and it pushes them off, slowly, while looking at you. They break into pieces on the floor. It claws title bars, chases flies, and at gremlin it runs laps across your windows and lands hard enough to crack one. None of it is real: the mess is drawn on the cat's own see-through layer, your windows are never touched, and Panic clears it all.
 
-Move your cursor close and it looks at it. Sometimes it follows you around and pesters you, or decides the cursor is prey and pounces on it. Each animal has its own toy to chase: a red yarn ball, a catnip fish, a stolen sock, a carrot, an acorn and so on. Drag the window it's sitting on and it rides along; fling it and the animal (and the mug next to it) goes flying. Switch to another desktop and it stays behind, then wanders over a bit later from the side you came from, full-screen apps included (a treat from the menu calls it over right away).
+Move your cursor close and it looks at it, its head following it all the way round, up, over its shoulder, and a tilt of the head when you stop. Sometimes it follows you around and pesters you, or decides the cursor is prey and pounces on it. At gremlin, move the cursor fast near it and it chases it across your windows. Each animal has its own toy: a red yarn ball, a catnip fish, a stolen sock, a tennis ball, a carrot, an acorn and so on. Grab the toy with the mouse and throw it (or pick "Throw its toy" in the menu) and the animal decides what to do about it: the puppy fetches it and drops it at your feet, the fox runs off with it, the squirrel buries it, a cat might just bat it about or ignore it. Drag the window it's sitting on and it rides along; fling it and the animal (and the mug next to it) goes flying. Switch to another desktop and it stays behind, then wanders over a bit later from the side you came from, full-screen apps included (a treat from the menu calls it over right away).
 
 It also makes up its own tricks. When it wakes from a nap it sometimes remixes something it knows into a new little routine, tries it out, and the first time it shows you, the bubble names it ("new trick: the needy snub"). It notices what you pet it for and what you shoo it for, gets bored of doing the same thing, and is curious about what it hasn't done in a while, so it doesn't settle into a loop.
 
@@ -34,7 +34,7 @@ Or skip that step and paste this in Terminal. It downloads the same app, checks 
 curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash
 ```
 
-After that it lives in the menu bar. Pick a character, set the chaos level, hide it, shoo it for an hour, turn the local model on or off, make it start at login. A tick shows what's on. From 0.1.2 it checks GitHub for a new version twice a day and asks before it updates itself. More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
+After that it lives in the menu bar. Pick a character, set the chaos level, give it a treat, throw its toy, hide it, shoo it for an hour, turn the local model on or off, make it start at login. A tick shows what's on. From 0.1.2 it checks GitHub for a new version twice a day and asks before it updates itself. More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
 
 ## What it will and won't do
 
@@ -54,7 +54,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. Drag the pretend windows (slowly, then fast), hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Try the Meeting and Panic switches, the chaos level, the desktop arrows, its ball, and "Make up a trick".
+Open http://localhost:5173. Drag the pretend windows (slowly, then fast), hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Drag its toy and throw it, or press Throw toy. Try the Meeting and Panic switches, the chaos level, the desktop arrows, its ball, and "Make up a trick".
 
 To build the Mac app from source instead of downloading it (needs Rust):
 

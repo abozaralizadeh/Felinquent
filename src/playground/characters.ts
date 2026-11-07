@@ -52,6 +52,14 @@ if (q.has("film") && q.has("anim")) {
   const flip = q.has("flip") ? Number(q.get("flip")) : Infinity;
   const zoom = Number(q.get("zoom") ?? "2");
   const cols = Number(q.get("cols") ?? "6");
+  // ?orbit=<degrees a second> moves a cursor round the animal (for watch and watch_stand): ahead,
+  // up, overhead, behind, down. It starts straight ahead, 160 px out.
+  const orbit = q.has("orbit") ? Number(q.get("orbit")) : null;
+  const cursorAt = (ft: number): { x: number; y: number } | undefined => {
+    if (orbit === null) return undefined;
+    const a = (Math.max(0, ft - at) * orbit * Math.PI) / 180;
+    return { x: 160 * Math.cos(a), y: -45 - 160 * Math.sin(a) };
+  };
   const cellW = 130 * zoom;
   const cellH = 115 * zoom;
   canvas.width = cols * cellW;
@@ -63,7 +71,7 @@ if (q.has("film") && q.has("anim")) {
       const ft = f / 60;
       const body: CatBody = { x: 0, y: 0, vx: 0, vy: 0, facing: ft >= flip ? -1 : 1, platformId: "dock", anim: ft < at ? from : anim, hidden: false };
       if (ft + 1e-6 < start + kept * every) {
-        drawCat(off, body, { scale: 1, t: ft, character: c.id, slot: "film" });
+        drawCat(off, body, { scale: 1, t: ft, character: c.id, slot: "film", cursor: cursorAt(ft) });
         continue;
       }
       const cx = (kept % cols) * cellW;
@@ -81,7 +89,15 @@ if (q.has("film") && q.has("anim")) {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(-65, ly + 14, 130, 60);
       }
-      drawCat(ctx, body, { scale: 1, t: ft, character: c.id, slot: "film" });
+      drawCat(ctx, body, { scale: 1, t: ft, character: c.id, slot: "film", cursor: cursorAt(ft) });
+      const cur = cursorAt(ft);
+      if (cur) {
+        ctx.fillStyle = "#c0392b";
+        ctx.beginPath();
+        // Drawn closer in than it is, so it stays inside the cell.
+        ctx.arc(cur.x * 0.35, -45 + (cur.y + 45) * 0.35, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
       ctx.fillStyle = "#7a6656";
       ctx.fillText(`${ft.toFixed(2)} s`, cx + 6, cy + 16);

@@ -203,6 +203,20 @@ async fn set_click_through(window: WebviewWindow, on: bool) {
     let _ = window.set_ignore_cursor_events(on);
 }
 
+/// The page has drawn the desktop it moved to after the switch `turn`: show the windows again.
+#[tauri::command]
+async fn overlay_reveal(app: AppHandle, turn: u64) {
+    #[cfg(target_os = "macos")]
+    {
+        if std::env::var_os("FELINQUENT_SPACES_DEBUG").is_some() {
+            logfile::write(&format!("spaces: the page drew the new desktop ({turn}), the overlay shows again"));
+        }
+        reveal(&app, turn);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, turn);
+}
+
 /// The local model's address and name. Local only: the page and the model setup refuse anything that is not localhost.
 fn ollama_target() -> (String, String) {
     (
@@ -279,6 +293,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 
     let version = MenuItem::with_id(app, "version", format!("Felinquent {}", app.package_info().version), false, None::<&str>)?;
     let treat = MenuItem::with_id(app, "treat", "Give a treat", true, None::<&str>)?;
+    // Drops its toy at the cursor (it comes out of hiding if it was buried). You can also drag it.
+    let toy = MenuItem::with_id(app, "toy", "Throw its toy", true, None::<&str>)?;
     let panic = check("panic", "Panic: hide the cat (Cmd+Opt+Shift+P)")?;
     let shoo = check("shoo", "Shoo for 1 hour")?;
     let model = check("model", "Use the local model (needs Ollama)")?;
@@ -295,7 +311,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version];
     #[cfg(target_os = "macos")]
     items.push(&update);
-    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &character, &chaos, &panic, &shoo, &line2, &model]);
+    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &character, &chaos, &panic, &shoo, &line2, &model]);
     #[cfg(target_os = "macos")]
     items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
@@ -359,8 +375,13 @@ fn follows_spaces() -> bool {
 
 /// Watches which Space each display shows and puts the overlay windows in front on every switch,
 /// which moves them to that Space (they're MoveToActiveSpace). A switch shows up within 150 ms.
+/// The windows come over still showing the last picture the page drew, the animal where it was on
+/// the old desktop, until the page catches up (Abozar saw it there for a moment, then gone, 7 Nov
+/// 2026). So they come over see-through, and the page shows them again once it has drawn the new
+/// desktop (overlay_reveal), or after 1.2 s whatever happens.
 #[cfg(target_os = "macos")]
 fn follow_spaces(app: &AppHandle) {
+    use std::sync::atomic::Ordering;
     let handle = app.clone();
     std::thread::spawn(move || {
         let mut last = sensors::current_spaces();
@@ -371,19 +392,53 @@ fn follow_spaces(app: &AppHandle) {
                 continue;
             }
             last = now;
+            let turn = SWITCHES.fetch_add(1, Ordering::SeqCst) + 1;
             let h = handle.clone();
             let _ = handle.run_on_main_thread(move || {
                 for (_, w) in h.webview_windows() {
                     if let Ok(ptr) = w.ns_window() {
                         // SAFETY: Tauri hands us the live NSWindow; we're on the main thread.
                         let ns: &objc2_app_kit::NSWindow = unsafe { &*(ptr as *mut objc2_app_kit::NSWindow) };
+                        ns.setAlphaValue(0.0);
                         ns.orderFrontRegardless();
                     }
                 }
+                let _ = h.emit("space-switch", turn);
                 if std::env::var_os("FELINQUENT_SPACES_DEBUG").is_some() {
-                    logfile::write("spaces: switched, the overlay follows");
+                    logfile::write(&format!("spaces: switched ({turn}), the overlay follows, hidden until the page has drawn"));
                 }
             });
+            let h = handle.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(1200));
+                if SWITCHES.load(Ordering::SeqCst) == turn && REVEALED.load(Ordering::SeqCst) < turn {
+                    logfile::write("spaces: the page didn't answer in time, the overlay shows again anyway");
+                    reveal(&h, turn);
+                }
+            });
+        }
+    });
+}
+
+/// How many Space switches there have been, and the last one the overlay was shown again after.
+#[cfg(target_os = "macos")]
+static SWITCHES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(target_os = "macos")]
+static REVEALED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Makes the overlay windows visible again after the switch `turn`.
+#[cfg(target_os = "macos")]
+fn reveal(app: &AppHandle, turn: u64) {
+    use std::sync::atomic::Ordering;
+    REVEALED.fetch_max(turn, Ordering::SeqCst);
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        for (_, w) in h.webview_windows() {
+            if let Ok(ptr) = w.ns_window() {
+                // SAFETY: Tauri hands us the live NSWindow; we're on the main thread.
+                let ns: &objc2_app_kit::NSWindow = unsafe { &*(ptr as *mut objc2_app_kit::NSWindow) };
+                ns.setAlphaValue(1.0);
+            }
         }
     });
 }
@@ -571,7 +626,7 @@ fn main() {
             if std::env::var("FELINQUENT_SELFTEST").is_ok() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    for (secs, msg) in [(12, "character:mochi"), (3, "treat"), (3, "panic"), (4, "panic"), (3, "chaos:chill"), (3, "model"), (3, "model"), (3, "character:biscuit"), (3, "shoo")] {
+                    for (secs, msg) in [(12, "character:mochi"), (3, "treat"), (3, "toy"), (3, "panic"), (4, "panic"), (3, "chaos:chill"), (3, "model"), (3, "model"), (3, "character:biscuit"), (3, "shoo")] {
                         std::thread::sleep(std::time::Duration::from_secs(secs));
                         control(&handle, msg);
                     }
@@ -604,6 +659,7 @@ fn main() {
             read_layout,
             read_pointer,
             set_click_through,
+            overlay_reveal,
             read_config,
             load_state,
             save_state,

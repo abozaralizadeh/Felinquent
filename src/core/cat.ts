@@ -3,8 +3,9 @@ import { Mess, type MessEvent, type MessState } from "./mess";
 import { WindowMotion } from "./motion";
 import { Governor } from "./governor";
 import { InMemoryMemory, type Memory } from "./memory";
-import { Mind, type MindEvent } from "./mind";
+import { Mind, toyName, type MindEvent } from "./mind";
 import { RulesBrain, type Brain } from "./brain";
+import type { ToyView } from "./rules";
 import { DEFAULT_PERSONALITY, type Personality } from "./personality";
 import { ReflexDetector, type PointerSample, type ReflexEvent, type ReflexKind } from "./reflexes";
 import { seeded, type Rng } from "./rng";
@@ -52,6 +53,12 @@ export interface CatOptions {
   rng?: Rng;
   log?: (message: string, fields?: Record<string, unknown>) => void;
   minDecisionGapMs?: number;
+  /**
+   * Don't wait for the brain: while the local model thinks (a second or more), the animal goes on
+   * moving and its plan starts when the answer comes. The overlay and the playground use it; the
+   * simulations wait, so a seeded run stays the same.
+   */
+  asyncMind?: boolean;
 }
 
 export interface StepResult {
@@ -98,6 +105,14 @@ export class Cat {
    */
   private steady: WorldSnapshot | null = null;
   private shakySince: number | null = null;
+  /** The brain's tick while the model thinks (asyncMind), what it decided meanwhile, and the time it missed. */
+  private readonly asyncMind: boolean;
+  private thinking: Promise<void> | null = null;
+  private thought: MindEvent[] = [];
+  private missedSec = 0;
+  /** When you last threw the toy or put it down, and the pointer as it was last time (for grabbing the toy). */
+  private toyThrownMs: number | null = null;
+  private lastPointer: { t: number; down: boolean } | null = null;
 
   constructor(opts: CatOptions = {}) {
     const rng = opts.rng ?? seeded(1);
@@ -116,8 +131,11 @@ export class Cat {
         .map((p) => ({ id: p.id, windowId: p.windowId as string, x: p.x }));
     this.executor.toyAt = () => {
       const t = this.mess.toy;
-      return t ? { id: t.id, x: t.x, y: t.y, windowId: t.windowId, moving: t.state === "fall" || Math.abs(t.vx) > 25 } : null;
+      return t
+        ? { id: t.id, x: t.x, y: t.y, windowId: t.windowId, moving: t.state === "fall" || Math.abs(t.vx) > 25, held: t.state === "held", carried: t.state === "carried" }
+        : null;
     };
+    this.asyncMind = opts.asyncMind ?? false;
     this.executor.glanceChance = 0.95 - 0.6 * (opts.personality ?? DEFAULT_PERSONALITY).aloofness;
     this.memory = opts.memory ?? new InMemoryMemory();
     this.mind = new Mind({
@@ -132,10 +150,26 @@ export class Cat {
       catDoing: () => this.executor.body.anim,
       propWindows: () => this.mess.windowsWithProps(),
       things: () => this.mess.thingsOnWindows(),
+      toy: () => this.toyView(),
       log: opts.log,
       minDecisionGapMs: opts.minDecisionGapMs,
     });
     this.reflexes = new ReflexDetector(() => this.executor.hitRect());
+  }
+
+  /** Its toy as the brain sees it: where, and lying, rolling, in your hand, in its mouth or buried. */
+  toyView(): ToyView | null {
+    const t = this.mess.toy ?? this.mess.stashedToy;
+    if (!t) return null;
+    const now = this.lastWorld?.nowMs ?? 0;
+    const state: ToyView["state"] =
+      t.state === "held" ? "held" : t.state === "carried" ? "carried" : t.state === "stashed" ? "buried" : t.state === "fall" || Math.abs(t.vx) > 25 ? "rolling" : "lying";
+    return { kind: t.kind, x: t.x, y: t.y, state, thrownSecAgo: this.toyThrownMs === null ? Infinity : Math.max(0, (now - this.toyThrownMs) / 1000) };
+  }
+
+  /** Is the brain waiting for the local model right now? */
+  get pondering(): boolean {
+    return this.thinking !== null;
   }
 
   get settings(): Settings {
@@ -214,7 +248,7 @@ export class Cat {
     if (!this.homeWorld) this.executor.ride(this.motion.of(this.executor.windowId), execDtSec);
     this.syncWorld(world);
     const moving = this.executor.phase === "moving" || this.executor.airborne;
-    const mind = await this.mind.tick(world, dtSec, moving, this.executor.held);
+    const mind = await this.think(world, dtSec, moving);
     this.apply(mind);
     const out: MindEvent[] = [...mind];
     const chaos = this.settings.chaos;
@@ -228,10 +262,52 @@ export class Cat {
       }
       this.onExec(ev, world);
     }
+    // The toy in its mouth goes where its mouth goes; one it no longer holds drops.
+    const carried = this.mess.props.find((p) => p.state === "carried");
+    if (carried && this.executor.carrying === carried.id && !this.homeWorld) {
+      const m = this.executor.mouth();
+      this.mess.carryAt(m.x, m.y, this.executor.body.facing);
+    } else if (carried) this.mess.dropCarried(this.executor.body.facing);
     if (!this.homeWorld) this.bumpWhileRunning();
     const catX = this.executor.body.hidden || this.homeWorld ? null : this.executor.body.x;
     for (const ev of this.mess.step(execDtSec, seen, chaos, catX, (id) => this.motion.of(id))) this.onMess(ev, seen);
     return { mind: out, reflexes: [] };
+  }
+
+  /**
+   * One tick of the brain. Waited for, unless asyncMind: then a tick that has to wait for the local
+   * model goes on by itself, and what it decides is handed over on a later frame. The animal keeps
+   * moving meanwhile (the model used to freeze it for up to 8 s, seen in Abozar's log on 7 Nov 2026).
+   */
+  private async think(world: WorldSnapshot, dtSec: number, moving: boolean): Promise<MindEvent[]> {
+    if (!this.asyncMind) return this.mind.tick(world, dtSec, moving, this.executor.held);
+    if (this.thinking) {
+      this.missedSec += dtSec;
+      return [];
+    }
+    const out = this.thought.splice(0);
+    let settled = false;
+    let got: MindEvent[] = [];
+    const task = this.mind.tick(world, dtSec + this.missedSec, moving, this.executor.held).then(
+      (ev) => {
+        settled = true;
+        got = ev;
+      },
+      (err: unknown) => {
+        settled = true;
+        this.mind.note(world.nowMs, "my head went blank for a moment");
+        void err;
+      },
+    );
+    this.missedSec = 0;
+    // A tick with no model call settles in a few microtasks: then it counts for this frame.
+    for (let i = 0; i < 25 && !settled; i++) await Promise.resolve();
+    if (settled) return [...out, ...got];
+    this.thinking = task.then(() => {
+      this.thought.push(...got);
+      this.thinking = null;
+    });
+    return out;
   }
 
   /**
@@ -347,6 +423,20 @@ export class Cat {
       else if (f.fx === "pounce_fly") this.mess.pounceFly();
       else if (f.fx === "toy_out") this.mess.bringToy(ev.x, now);
       else if (f.fx === "bat") this.mess.bat(f.prop, ev.dir, f.strength);
+      else if (f.fx === "pick_up") {
+        // Gone by the time its mouth got there (you took it, or it rolled off): nothing in its mouth.
+        if (!this.mess.carry(f.prop)) this.executor.carrying = null;
+      } else if (f.fx === "drop_toy") {
+        const kind = this.mess.props.find((p) => p.state === "carried")?.kind;
+        this.mess.dropCarried(ev.dir);
+        const doing = this.executor.intent?.intent;
+        if (kind && doing === "fetch") this.mind.note(now, `i brought my ${toyName(kind)} back to you. throw it again.`);
+        else if (kind && doing === "carry_toy") this.mind.note(now, `i took my ${toyName(kind)} away to a spot of my own`);
+      } else if (f.fx === "bury") {
+        const kind = (this.mess.props.find((p) => p.state === "carried") ?? this.mess.toy)?.kind;
+        this.mess.bury();
+        if (kind) this.mind.note(now, `i buried my ${toyName(kind)} where you can't find it`);
+      }
     } else if (ev.type === "impact") {
       // Only a gremlin comes down hard enough to crack a window.
       // Not every landing, or the screen would be all cracks: one now and then.
@@ -384,6 +474,20 @@ export class Cat {
     else if (ev.type === "cracked") this.mind.note(now, "i landed so hard a window cracked");
     else if (ev.type === "fly") this.mind.note(now, ev.caught ? "i caught a fly" : "a fly got away from me");
     else if (ev.type === "flung") this.mind.note(now, `the human moved a window so hard the ${ev.kind} flew off it`);
+    else if (ev.type === "toy") {
+      // On another desktop, a toy thrown here calls it over, like a treat.
+      if (this.homeWorld) {
+        this.callOver(now);
+        if (this.mind.sleeping) this.mind.wake(now);
+      }
+      this.mind.onToy(world, ev);
+    }
+  }
+
+  /** "Throw its toy" (the menu): it drops out of your hand at the cursor, out of hiding if it was buried. */
+  throwToy(world: WorldSnapshot): void {
+    if (this.executor.carrying) this.executor.carrying = null;
+    if (this.mess.toss(world.cursor.x, world.cursor.y, world.nowMs)) this.toyThrownMs = world.nowMs;
   }
 
   /** A reflex happened (from the pointer or from a menu button). Runs the Mind's reaction and starts any intent. */
@@ -395,6 +499,29 @@ export class Cat {
 
   /** Feed one pointer sample. Returns what the cat reacted to. */
   pointer(sample: PointerSample, world: WorldSnapshot): ReflexEvent[] {
+    // The toy first: you can pick it up (out of its mouth too), carry it about and throw it, even
+    // while the animal is on another desktop.
+    const last = this.lastPointer;
+    this.lastPointer = { t: sample.t, down: sample.down };
+    if (this.mess.holding) {
+      if (sample.down) this.mess.holdAt(sample.x, sample.y, last ? Math.max(0, (sample.t - last.t) / 1000) : 0);
+      else if (this.mess.letGo()) {
+        this.toyThrownMs = world.nowMs;
+        this.mind.note(world.nowMs, "the human picked up my toy");
+      }
+      return [];
+    }
+    if (sample.down && last && !last.down) {
+      const t = this.mess.toyUnder(sample.x, sample.y);
+      if (t) {
+        if (t.state === "carried") {
+          this.executor.carrying = null;
+          this.mind.note(world.nowMs, `the human took my ${toyName(t.kind)} out of my mouth`);
+        }
+        this.mess.grab(t.id, sample.x, sample.y);
+        return [];
+      }
+    }
     // On another desktop: nothing here to pet or pick up.
     if (this.homeWorld) return [];
     const events = this.reflexes.feed(sample);
@@ -414,6 +541,13 @@ export class Cat {
       }
     }
     return events;
+  }
+
+  /** The toy's box on screen while it can be grabbed (the overlay lets clicks through everywhere else). */
+  get toyRect(): Rect | null {
+    const t = this.mess.toy;
+    if (!t || t.alpha < 0.5) return null;
+    return this.mess.toyBox(t);
   }
 
   treat(world: WorldSnapshot): void {

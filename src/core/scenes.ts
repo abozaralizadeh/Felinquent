@@ -87,6 +87,14 @@ export function rawScene(intent: IntentName, staySec: number, rng: Rng): Beat[] 
       return [doing("play_bow", 0.9), go("stroll", rng.range(120, 220), "run", "tumble"), doing("giggle", 1.8), doing("happy", 1.2)];
     case "shy":
       return [doing("shy", rng.range(2, 3.2)), doing("curious", 0.9), doing("shy", 1.4), doing("blink", 1.2)];
+    case "invite_play":
+      // Come over, bow with the bottom up, spring back and bow again: "chase me".
+      return [go("cursor", 420, "run"), doing("play_bow", 1.2, "cursor"), leap("away", 55, 35, "bounce"), doing("play_bow", 1, "cursor"), doing("happy", 1, "cursor"), doing("watch_stand", 1.2, "cursor")];
+    case "yawn":
+      return [doing("yawn", 1.8), doing("blink", 1.2), doing("idle_sit", 1)];
+    case "look_around":
+      // Sitting up and taking in the room: up, along, at you, down (sprites.ts plays the look).
+      return [doing("look", Math.max(6, Math.min(12, staySec)))];
     default:
       return null;
   }

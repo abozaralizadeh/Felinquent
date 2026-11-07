@@ -22,6 +22,8 @@ interface Situation {
   props?: boolean;
   /** It has made up a few tricks (tricks.ts). */
   tricks?: boolean;
+  /** Its toy lies on the Dock a little way off, just thrown by you. */
+  toy?: boolean;
 }
 
 const book = new TrickBook();
@@ -77,6 +79,14 @@ const SITUATIONS: Partial<Record<IntentName, Situation>> = {
   claw: { needs: { attention: 0.8, energy: 0.9 } },
   hunt: { needs: { energy: 0.9, curiosity: 0.9 } },
   trick: { needs: { energy: 0.8 }, tricks: true },
+  fetch: { needs: { energy: 0.9, trust: 70 }, toy: true },
+  carry_toy: { needs: { energy: 0.8 }, toy: true },
+  stash_toy: { needs: { energy: 0.6 }, toy: true },
+  nose_toy: { needs: { energy: 0.5 }, toy: true },
+  chase_cursor: { world: { cursorSpeed: 900 }, needs: { energy: 0.9, mood: "playful" } },
+  invite_play: { needs: { energy: 0.9, attention: 0.8, mood: "playful" } },
+  yawn: { needs: { energy: 0.3 } },
+  look_around: {},
 };
 
 function build(s: Situation) {
@@ -97,6 +107,7 @@ function build(s: Situation) {
     rng: seeded(1),
     propWindows: s.props ? [(world.windows[0] as { id: string }).id] : [],
     tricks: s.tricks ? book : undefined,
+    toy: s.toy ? { kind: "tennis", x: 700, y: world.dockTop, state: "lying", thrownSecAgo: 3 } : null,
   };
   return { settings, world, needs, ctx };
 }
@@ -117,6 +128,7 @@ describe("every behavior can be chosen and runs to the end", () => {
         const w = world.windows[0]!;
         ex.props = () => [{ id: "p1", windowId: w.id, x: w.bounds.x + w.bounds.w * 0.6 }];
       }
+      if (situation.toy) ex.toyAt = () => ({ id: "toy1", x: 700, y: world.dockTop, windowId: null, moving: false });
       const t = book.get(option!.trick);
       const script = t ? book.script(t).beats : undefined;
       ex.start({ intent: name, target: option!.targets[0]!, approach: "run", stay_sec: 3, mood: "content", script, trick: t?.id });

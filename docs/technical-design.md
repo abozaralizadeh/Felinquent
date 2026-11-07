@@ -119,7 +119,9 @@ All sensors live behind a `Sensors` trait, so the Windows port and the playgroun
 - When the current intent finishes **and the animal has rested**. The rest counts from the end of the action: the chaos level sets a range (chill 25 to 60 s, normal 8 to 22 s, gremlin 3 to 8 s), times the animal's own gap (cat 8 to 20 s base, dog 4 to 10, fox 6 to 14, raccoon 6 to 15), times its laziness, and 1.4 times longer after a lively act (zoomies, chasing, a reaction). Waking up and the end of a respect mode skip the rest. Decisions are also at least 20 s apart for the LLM.
 - On events, debounced 2 s: app switch, you come back from idle, a reflex ends (pet, shoo, drop), a new window, a meeting ends, the first input of the morning.
 - **Never while asleep.** The rules decide when to wake (energy recovered, being called, time).
-- Hard cap: ≤ 1 LLM call per 15 s and ≤ 60 per hour. A typical awake hour uses ~20-40 calls.
+- Hard cap: ≤ 1 LLM call per 15 s and ≤ 60 per hour. A typical awake hour uses ~20-40 calls. A toy you threw that comes to rest is the one exception to the 15 s gap: the animal is told at once (`Mind.onToy`) and plans a bout from the toy reactions only.
+- **The animal never waits for the model.** The Mac app and the playground run the mind with `asyncMind`: a tick that has to wait for the local model goes on by itself while frames keep coming, and its decision is handed over on a later frame (the model used to freeze the animation for up to 8 s). An epoch counter drops a plan that comes back after something newer happened (a reflex, a treat, a toy, a desktop switch). Tests and simulations still wait, so a seeded run stays the same.
+- **The chase is a reflex.** At normal and gremlin a fast cursor close by can start `chase_cursor` at once, without the model (`Mind.impulse`: gremlin about 0.35 a second with a 40 s cooldown, normal 0.05 with 240 s). The model can also pick it from the menu.
 
 ### 6.2 Flow
 
@@ -188,6 +190,21 @@ Run it with `npm run eval -- --brain ollama --mode plan --n 30`. It prints the t
   "options": ["sit_on", "cross", "meow", "groom", "nap"]
 }
 ```
+
+**Plan requests also get the screen, in words** (`screenView` in `summary.ts`), from the animal's point of view, so a small model can act on it like a pet would:
+
+```jsonc
+"screen": {
+  "size": "1440x900, plus 1 more display",
+  "me": "on the Dock, on the left of the screen",
+  "pointer": "a little way off to my left (321 px), moving",   // still, creeping, moving, darting about fast
+  "pointer_on": "the Code window they are using",               // or "me", "the Dock", "the empty desktop"
+  "toy": "my tennis ball is lying a little way off to my right (they threw it 2 s ago)",
+  "near_me": ["Code window right next to me (they are using it)", "Safari window a little way off to my right"]
+}
+```
+
+App names only, never titles. The bout it is most likely to plan lists each move with a few words of what it means (`MOVE_MEANING`); the others list just the names. A whole plan request is about 950 tokens, inside `num_ctx` 2048 with room for the answer.
 
 ### 6.4 Intent (output, JSON schema built per request)
 
@@ -268,6 +285,10 @@ It runs twice: once to filter `options`, once to validate the chosen intent. It 
 | `react` | RF-05, RF-10 | 0 | the script's length | Reflex only. Never offered to the brain. Respect modes still win |
 | `play_cursor` | B-48 | 1 | 10 to 40 s | Cursor within 450 px and moving, energy > 0.4. Rounds of watch, crouch, pounce or leap or swipe at the cursor |
 | `trick` | B-49 | 1 | the trick's length (≤ 40 s of beats) | One per bout kind on the menu (the best that kind scores now). Mischief tricks never at chill, play and mischief tricks need energy > 0.45. The trick's beats are checked when it's made and again when it's loaded from disk. Only overlay poses and moves |
+| `fetch`, `carry_toy`, `stash_toy`, `nose_toy` | B-50 to B-53 | 0 | ≤ 60 s | Only when its toy is out and lying still, target `toy`. Much likelier for a few seconds after you threw it. The toy is drawn on the overlay; carrying it is the executor's `toytask` steps (get, bring, away, bury) |
+| `chase_cursor` | B-54 | 1 | 8 to 30 s | Normal or gremlin, cursor faster than 150 px/s within 1400 px, energy > 0.45. Also a reflex at gremlin (see 6.1). Short legs toward the cursor across the windows, a leap when it's above, a swat when close |
+| `invite_play` | B-55 | 1 | ≤ 20 s | Energy > 0.5, cursor within 1000 px |
+| `yawn`, `look_around` | B-56, B-57 | 0 | ≤ 20 s | none |
 | `leave` | respect modes | 0 | n/a | Always allowed |
 
 **Other rules:**

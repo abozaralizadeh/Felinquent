@@ -33,7 +33,8 @@ These are rules in the code and in CI, not settings.
 | Window list (app name, position, size) | Where to walk and sit | No, live only | No |
 | Window titles (**opt-in**) | Picking the "important" window | Kept in memory briefly. Not in logs by default. Memory stores app names, not titles, unless you allow it | Only to the brain: on your Mac, or the endpoint you set |
 | Frontmost app | Following you | App name in memory events (30 days) | No |
-| Cursor position, and whether the primary mouse button is down | Watching, petting, laser, picking the cat up | No | No |
+| Cursor position, and whether the primary mouse button is down | Watching, petting, laser, picking the cat up, grabbing and throwing its toy | No | No |
+| The screen in words for the model: where the animal is, where your cursor is from it and how fast it moves, what the cursor is over (an app name), where its toy is, which windows are near it (app names) | So the model can react like a pet to what it sees | No, built for each request | Only to the brain, on your Mac (titles never, unless you turned on smart targeting, and then only in "windows") |
 | Seconds since the last key or mouse input | Asleep, away or typing *level* | No (only a level like `typing_fast`) | No |
 | **Which keys you press** | Not needed | **Never read** | No |
 | CPU use per app | The warmest window | No | No |

@@ -89,6 +89,8 @@ const cat = new Cat({
   memory,
   personality: DEFAULT_PERSONALITY,
   log: (m, f) => log(`${m} ${f ? JSON.stringify(f) : ""}`),
+  // A local model takes a while; the animal keeps moving while it thinks.
+  asyncMind: true,
 });
 let activeBrain: Brain = cat.rules;
 
@@ -160,6 +162,9 @@ function focusWindow(id: string): void {
 }
 
 function startDrag(e: PointerEvent, id: string): void {
+  // Its toy lying on the title bar: you pick up the toy, not the window.
+  const at = stagePoint(e);
+  if (cat.mess.toyUnder(at.x, at.y)) return;
   e.preventDefault();
   focusWindow(id);
   const start = { x: e.clientX, y: e.clientY };
@@ -500,6 +505,15 @@ $("treat").addEventListener("click", () => {
   cat.treat(buildWorld());
   log("you gave a treat");
 });
+/** Drops its toy a little way off, as if you threw it there (you can also drag the toy with the mouse). */
+function throwToy(): void {
+  const w = buildWorld();
+  const b = cat.executor.body;
+  const side = b.x > w.screen.w / 2 ? -1 : 1;
+  cat.throwToy({ ...w, cursor: { x: Math.max(60, Math.min(w.screen.w - 60, b.x + side * (220 + Math.random() * 200))), y: 90 } });
+  log("you threw its toy");
+}
+$("throwtoy").addEventListener("click", throwToy);
 $("addwin").addEventListener("click", addWindow);
 preloadProps();
 // Mischief on demand, to see it without waiting for the cat to feel like it.
@@ -627,7 +641,7 @@ else requestAnimationFrame(frame);
 /**
  * ?scene=knock|shatter|claw|hunt|zoom sets up a bit of gremlin mischief a second after loading, to
  * look at it (or record it) without waiting for the cat to feel like it. ?scene=ball brings out its
- * own toy (each animal has its own; ?character=<id> picks the animal), ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
+ * own toy (each animal has its own; ?character=<id> picks the animal), ?scene=fetch throws it for the animal to react to, ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
  */
 const scene = new URLSearchParams(location.search).get("scene");
 if (scene) {
@@ -654,6 +668,13 @@ if (scene) {
     else if (scene === "hunt") doNow("hunt", "here");
     else if (scene === "zoom") doNow("zoomies", "here");
     else if (scene === "ball") doNow("knock_toy", "here");
+    else if (scene === "fetch") {
+      // ?do=fetch|carry_toy|stash_toy|nose_toy skips the animal's own choice.
+      throwToy();
+      const pick = new URLSearchParams(location.search).get("do");
+      if (pick === "fetch" || pick === "carry_toy" || pick === "stash_toy" || pick === "nose_toy")
+        setTimeout(() => start({ intent: pick, target: "toy", approach: pick === "fetch" ? "run" : "walk", stay_sec: 20, mood: "playful" }), 1200);
+    }
     else if (scene === "trick") {
       const seed = Number(new URLSearchParams(location.search).get("seed") ?? "0");
       for (let i = 0; i <= seed; i++) cat.mind.dream(state.simNow + i, true);

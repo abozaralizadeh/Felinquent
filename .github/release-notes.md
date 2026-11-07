@@ -2,15 +2,15 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-It shows up on full-screen apps now. Switch to one and it walks over like on any other desktop. When a full-screen app plays a video or shows slides, it goes outside and comes back once that stops.
+You can throw it its toy now! Grab the toy with the mouse (or pick "Throw its toy" in the menu) and fling it. Your animal sees where it lands and decides what to do: the puppy brings it back to you, the squirrel buries its acorn. Its head follows your pointer all the way round, the tongue really moves when it washes, and at gremlin it sometimes runs after your pointer.
 
-## More about 0.1.7
+## More about 0.1.8
 
-Until now macOS kept the cat off apps in full screen, so if you work in full screen it was mostly just gone (and in 0.1.5 it could even get stuck there where you couldn't see it). Now its window follows you to whatever is on screen, full-screen apps too, on every display. Clicking it also never pulls Felinquent to the front any more.
+After a swipe to another desktop you don't see the cat flash in its old spot any more. The local model doesn't freeze it while it thinks, and it now gets the screen in words: where your pointer is from the animal's side, where the toy is, which apps are near (names only, never titles). Nothing looks at your screen.
 
-It still backs off for videos and presentations. It doesn't look at what's on screen: macOS says when something is keeping the display awake (a playing video, a slideshow), and that's enough.
+Every animal got 27 new drawings: the head three quarters toward you, looking back over its shoulder, a head tilt, and a tongue that moves. That makes the download about SIZE MB.
 
-New in 0.1.6 too, if you skipped it: each animal has its own toy, a treat calls it over from another desktop, and the download is 97 MB instead of 173.
+New in 0.1.7 too, if you skipped it: it shows up on full-screen apps, and goes outside while one plays a video or shows slides.
 
 ## Updating
 

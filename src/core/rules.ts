@@ -6,6 +6,17 @@ import type { Rng } from "./rng";
 import type { TrickBook } from "./tricks";
 import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, WindowInfo, WorldSnapshot } from "./types";
 
+/** The animal's toy, as the brain sees it (mess.ts). */
+export interface ToyView {
+  kind: string;
+  x: number;
+  y: number;
+  /** lying: still, where the animal can get it; rolling; held: in your hand; carried: in its mouth; buried: it buried it. */
+  state: "lying" | "rolling" | "held" | "carried" | "buried";
+  /** Seconds since you threw it or put it down (Infinity: you didn't). */
+  thrownSecAgo: number;
+}
+
 export interface RulesContext {
   world: WorldSnapshot;
   needs: Needs;
@@ -26,9 +37,11 @@ export interface RulesContext {
   chaos?: ChaosLevel;
   /** Windows with a thing standing on top (mess.ts), which can be knocked off. */
   propWindows?: string[];
+  /** Its toy, if it is out (or buried). */
+  toy?: ToyView | null;
 }
 
-const ACTIVE: IntentName[] = ["play_cursor", "follow", "knock_off", "claw", "hunt", "wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
+const ACTIVE: IntentName[] = ["chase_cursor", "fetch", "carry_toy", "invite_play", "play_cursor", "follow", "knock_off", "claw", "hunt", "wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
 /** How much each chaos level changes napping and active behaviors. */
 // A gremlin used to cut every action to 40% of its length, which read as "very fast" on the real
 // screen (Abozar, 6 Nov 2026). It does more things, not each thing in a hurry.
@@ -117,7 +130,24 @@ export function candidates(ctx: RulesContext): Option[] {
   add("box", 0.9, fresh);
   if (n.trust > 40 && a < 0.5 && e > 0.4) add("gift", 0.25, ["here"]);
   if (a > 0.85) add("hairball", 0.7, ["here"]);
-  if (e > 0.5 && n.mood === "playful") add("knock_toy", 0.4 * (p.chaos + 0.3), ["here"]);
+  // Its toy. Just thrown by you, it's the most interesting thing in the world (for a dog, anyway:
+  // how much each animal cares, and what it does with it, comes from its instinct weights).
+  const toy = ctx.toy;
+  const thrown = toy && toy.thrownSecAgo < 45 ? 1 - toy.thrownSecAgo / 90 : 0;
+  const playful = e > 0.5 && n.mood === "playful" ? 0.4 * (p.chaos + 0.3) : 0;
+  add("knock_toy", playful + (toy && toy.state === "lying" ? 1.6 * thrown * e : 0), ["here"]);
+  if (toy && toy.state === "lying") {
+    const near = dist(ctx.catPos, toy) < 700 ? 1 : 0.6;
+    add("fetch", (0.06 + 2.4 * thrown) * (0.4 + e) * near * (0.6 + n.trust / 250), ["toy"]);
+    add("carry_toy", (0.08 + 1.3 * thrown) * near, ["toy"]);
+    add("stash_toy", (0.05 + 1 * thrown) * near, ["toy"]);
+    add("nose_toy", (0.08 + 1 * thrown) * near * (0.5 + c), ["toy"]);
+  }
+  // A play bow at you: "chase me". Mostly dogs.
+  if (catDist < 1000 && e > 0.5) add("invite_play", (0.08 + 0.35 * a) * (n.mood === "playful" ? 1.6 : 1) * aloof, ["cursor"]);
+  // Running after the cursor while it moves: a gremlin does it a lot, a normal animal now and then.
+  const chase = { chill: 0, normal: 0.12, gremlin: 0.9 }[ctx.chaos ?? "normal"];
+  if (w.cursorSpeed > 150 && e > 0.45 && catDist < 1400) add("chase_cursor", chase * (0.5 + p.chaos) * e * (n.mood === "playful" ? 1.5 : 1), ["cursor"]);
   const zoomHour = w.hour >= 2 && w.hour < 4 && e > 0.6;
   add("zoomies", zoomHour ? 1.2 : ctx.justWoke && e > 0.9 ? 0.8 : 0.02, ["here"]);
   if (focused) add("nudge_window", a * 0.8 * p.chaos, [focused.id]);
@@ -133,6 +163,8 @@ export function candidates(ctx: RulesContext): Option[] {
   add("knead", 0.1 + 0.8 * sleepy, ["here"]);
   add("chatter", 0.08 + 0.25 * c, ["here"]);
   add("sneeze", 0.05, ["here"]);
+  add("yawn", 0.04 + 0.35 * sleepy, ["here"]);
+  add("look_around", 0.08 + 0.25 * c, ["here"]);
 
   // Animal things. How much each animal likes them comes from its instinct weights.
   const night = w.hour >= 22 || w.hour < 5;
@@ -204,7 +236,7 @@ export function defaultStay(intent: IntentName, chaos: ChaosLevel, rng: Rng): nu
 }
 
 export function defaultApproach(intent: IntentName, mood: Mood, rng: Rng): Approach {
-  if (intent === "zoomies") return "run";
+  if (intent === "zoomies" || intent === "chase_cursor" || intent === "fetch") return "run";
   if (intent === "sit_on" || intent === "sit_on_video" || intent === "cross") return mood === "smug" || mood === "grumpy" ? "saunter" : "walk";
   if (intent === "swat" || intent === "knock_toy" || intent === "stalk" || intent === "knock_off") return "sneak";
   return rng.pick(["walk", "walk", "saunter"] as const);
@@ -236,6 +268,12 @@ const MOOD_THOUGHTS: Partial<Record<IntentName, string[]>> = {
   play_cursor: ["the little arrow is mine.", "it moved. it has to be stopped."],
   follow: ["where are we going. i'm coming too."],
   knock_toy: ["the ball started it."],
+  fetch: ["again. throw it again.", "got it. you're welcome."],
+  carry_toy: ["mine. i'm taking it somewhere you can't see.", "this is mine now."],
+  stash_toy: ["buried. for later. don't look.", "you saw nothing."],
+  nose_toy: ["is it alive. checking.", "it smells like you."],
+  chase_cursor: ["it ran. so i ran.", "come back here, arrow."],
+  invite_play: ["you. me. chase. now.", "bottom up means play. everyone knows that."],
 };
 
 /** Turns one option into a ready intent (used by the rules brain and the fake LLM). */

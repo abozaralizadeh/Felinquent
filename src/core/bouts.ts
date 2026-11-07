@@ -24,11 +24,11 @@ export const BOUT_MEANING: Record<BoutKind, string> = {
 
 /** The actions that belong to each bout. */
 export const BOUT_INTENTS: Record<BoutKind, readonly IntentName[]> = {
-  rest: ["nap", "nap_warm", "cozy", "knead", "groom", "sprawl", "perch", "watch", "slow_blink", "stare", "ignore", "box", "scratch", "sneeze", "trick"],
-  explore: ["wander", "tour", "peek", "sniff", "perch", "cross", "chatter", "dig", "spook", "scratch", "watch", "box", "trick"],
-  play: ["chase_tail", "bounce", "tumble", "roll", "stalk", "swat", "zoomies", "spook", "knock_toy", "hunt", "play_cursor", "trick"],
-  social: ["follow", "headbutt", "meow", "beg", "slow_blink", "sit_on", "keyboard_walk", "block_dock", "cross", "gift", "howl", "roll", "trick"],
-  mischief: ["knock_off", "claw", "sit_on", "sit_on_video", "keyboard_walk", "block_dock", "zoomies", "hairball", "knock_toy", "nudge_window", "swat", "trick"],
+  rest: ["nap", "nap_warm", "cozy", "knead", "groom", "sprawl", "perch", "watch", "slow_blink", "stare", "ignore", "box", "scratch", "sneeze", "yawn", "look_around", "trick"],
+  explore: ["wander", "tour", "peek", "sniff", "perch", "cross", "chatter", "dig", "spook", "scratch", "watch", "box", "look_around", "nose_toy", "stash_toy", "trick"],
+  play: ["chase_tail", "bounce", "tumble", "roll", "stalk", "swat", "zoomies", "spook", "knock_toy", "hunt", "play_cursor", "chase_cursor", "fetch", "carry_toy", "nose_toy", "stash_toy", "invite_play", "trick"],
+  social: ["follow", "headbutt", "meow", "beg", "slow_blink", "sit_on", "keyboard_walk", "block_dock", "cross", "gift", "howl", "roll", "shy", "invite_play", "fetch", "trick"],
+  mischief: ["knock_off", "claw", "sit_on", "sit_on_video", "keyboard_walk", "block_dock", "zoomies", "hairball", "knock_toy", "nudge_window", "swat", "chase_cursor", "carry_toy", "trick"],
 };
 
 /** How long a bout lasts at the normal level, in seconds. */

@@ -22,6 +22,8 @@
 | ID | Behavior | What happens | Triggered by | Annoy | Brain | Perm | Phase |
 |---|---|---|---|---|---|---|---|
 | B-01 | Nap | Loafs, curls up or sprawls, with a slow breathing loop | Low energy, nothing better to do (the default) | 0 | Rule | none | MVP |
+| B-56 | Yawn | A big yawn, a slow blink, then it sits on | Getting tired | 0 | Rule | none | MVP |
+| B-57 | Look around | Sits and looks all round the room: up, ahead, at you, back over its shoulder | Curiosity, nothing better to do | 0 | Rule | none | MVP |
 | B-02 | Wander & perch | Walks along window tops, jumps between windows, sits on a ledge with its legs dangling | Curiosity, just woke up | 0 | Rule (LLM may pick the target) | none | MVP |
 | B-03 | Groom | Washes from the head down, in long bouts: licks a paw, wipes it over the ear and cheek a few times, then the nose, the chest and a hind leg, and ends with a content blink. It stays on one part for a while and never jumps back and forth | Idle filler; right after being petted or dropped ("I meant to do that") | 0 | Rule | none | MVP |
 | B-04 | Watch the cursor | Its head follows your cursor | Cursor moving nearby while it's awake | 0 | Rule | none | MVP |
@@ -55,6 +57,8 @@
 | B-17 | Keyboard walk | "Walks on the keyboard": fake gibberish (`jjjjjkkkk;;;`) appears near your text and fades in 3 s. **Nothing is actually typed** | Fast typing plus attention need | 2 | LLM | AX optional (caret position) | v1 |
 | B-18 | Sit in front of the video | Sits over the video you're watching | A video app or title plus attention need | 2 | LLM | SR | v1 |
 | B-48 | Play with the cursor | Treats your cursor as prey: watches it, crouches and wiggles, then pounces, leaps up at it or swipes, a few rounds, then washes as if nothing happened | Cursor moving close by, energy, playful | 1 | Rule | none | MVP |
+| B-54 | Chase the cursor | Runs at your cursor and keeps after it while it moves: short dashes across the windows, leaps when it's above, swats when it catches up. Ends with a proud look and a wash when you stop moving it or after 8 to 30 s. At gremlin a fast cursor close by sets it off at once, no model needed (about one chase in 40 s at most); at normal now and then; never at chill | A fast cursor close by, energy, chaos | 1 | Rule and LLM | none | MVP |
+| B-55 | Invite you to play | Runs up to your cursor, does a play bow ("chase me!"), springs away, bows again and hops for joy | Attention need and energy, playful | 1 | Rule | none | MVP |
 | B-19 | Breakfast demand | Meows at your first activity of the day until you give it a treat | First input in the morning | 1 | LLM | none | Later |
 
 ## Mischief (annoyance 1-3, limited by chaos level)
@@ -86,9 +90,10 @@ All the breakage is drawn on the cat's own overlay, on top of your windows. Noth
 | RF-04 | Laser | Fast cursor wiggle near the cat | Crouches, wiggles its butt, pounces | MVP |
 | RF-05 | Poke | Single click on the animal | A little scene, not one pose. It depends on the animal and on how many pokes it has had in the last 15 s (see RF-10). Replaces the old "call" click | MVP |
 | RF-10 | Reaction scene | Set off by RF-05 | A scripted list of beats (look, react, leave): ears and eyes first, then the reaction, then the exit. Level 0 is curious or playful, 1 is warning or all out play, 2 is hiss and flee (dog: roll over, tumble), 3 is rage and a long sulk (dog: worn out, puppy eyes; fox: plays dead). Never the same twice in a row. Poked while asleep it wakes in the mood of its kind. A cross reaction keeps it sulky for 20 s to 3 min | MVP |
-| RF-11 | Glance | Your cursor comes within about 260 px and moves | Sitting or loafing, it looks at the cursor and its head follows it, turning round if the cursor goes behind it. A needy animal does it nearly always, an aloof one about a third of the time | MVP |
+| RF-11 | Glance | Your cursor comes within about 260 px and moves | Sitting or loafing, it looks at the cursor and its head follows it everywhere: ahead, up, overhead, three quarters toward you, and back over its shoulder when the cursor goes behind it. It only turns its body round when the cursor stays behind for a couple of seconds or goes far behind. When the cursor stops in front of it, it may tilt its head (a dog more often). A needy animal does it nearly always, an aloof one about a third of the time | MVP |
+| RF-13 | Grab its toy | Mouse down on its toy | The toy is in your hand (out of its mouth too, if it was carrying it) and swings as you move. Let go and it flies on with the speed of your hand, bounces off the screen edges, falls and rolls. The animal's own reflexes don't see that click | MVP |
 | RF-12 | Ride a moving window | You drag the window it stands on | It rides along in real time (the Mac app reads the windows every frame while one moves). Dragged fast it crouches and holds on, then gives you a cross look. Flung and stopped dead, or yanked down hard, it is thrown off: it flies, lands startled, glares at you and washes. Things standing on the window (mugs, plants, its ball, broken pieces) slide when jerked and fly off the same way, but let go much sooner than the animal does | MVP |
-| RF-06 | Treat | Menu → Give treat | Shake sound, and it comes running. A Royal personality may walk slowly on purpose | v1 |
+| RF-06 | Treat | Menu → Give treat | Shake sound, it licks its lips, and it comes running. A Royal personality may walk slowly on purpose | v1 |
 
 ## Desktops
 
@@ -104,6 +109,17 @@ The animal lives on one desktop (a Space on the Mac). Switch to another and it s
 - **Checked before it's kept.** Each new trick is played in the real executor on a pretend screen. It must finish within 40 s, end on its feet and on the screen, show at least three poses, and not be a near copy of a scene or a trick it knows. Only poses every character has are allowed; a trick can't click, type or touch another app.
 - **Variety by design.** The library is a grid: calm to wild, alone to at you, polite to rude (18 cells, two tricks each, 36 at most). A new trick only pushes out a worse one from the same cell, worse meaning you reacted badly to it or it was shown a lot and nobody cared.
 - **Learned like any action.** A pet or treat right after a trick counts for it, a shoo against it (see Freshness).
+
+## Its toy
+
+Every animal has a toy of its own (ADR-042). You can grab it with the mouse, carry it about and throw it, or drop it at the cursor with "Throw its toy" in the menu bar menu (a buried toy comes out of hiding). When a toy you threw comes to rest, the animal is told where it landed and the model picks what to do about it, from these and the old ones (bat it about, have a wash and ignore it). You can take it back out of its mouth too.
+
+| ID | Behavior | What happens | Triggered by | Annoy | Brain | Perm | Phase |
+|---|---|---|---|---|---|---|---|
+| B-50 | Fetch | Runs to the toy, sniffs, picks it up in its mouth and brings it back to your cursor, drops it there, begs and waits for the next throw. Dogs love it | You threw the toy, trust | 0 | LLM | none | MVP |
+| B-51 | Carry it off | Picks the toy up and takes it to the spot farthest from you that it can get to, drops it, lies down by it and washes | You threw the toy (a fox or a raccoon especially) | 0 | LLM | none | MVP |
+| B-52 | Bury it | Picks it up, walks off a little way, digs and buries it, then looks proud. It's gone until you throw it again from the menu | You threw the toy (the squirrel especially) | 0 | LLM | none | MVP |
+| B-53 | Give it a sniff | Walks over, sniffs it, gives it a nudge with a paw, then lies down next to it | You threw the toy (the rabbit especially) | 0 | LLM | none | MVP |
 
 ## Freshness (what it learns and what bores it)
 

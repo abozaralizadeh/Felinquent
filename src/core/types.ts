@@ -1,4 +1,4 @@
-import type { Beat } from "./executor";
+import type { Anim, Beat } from "./executor";
 
 export type Mood = "content" | "curious" | "playful" | "sleepy" | "grumpy" | "sulky" | "smug";
 export type ChaosLevel = "chill" | "normal" | "gremlin";
@@ -124,11 +124,22 @@ export type IntentName =
   | "play_cursor"
   /** One of its own made-up tricks (tricks.ts). Which one is in Intent.trick. */
   | "trick"
+  /** Its toy (mess.ts): bring it back to you, take it off somewhere, bury it, give it a sniff and a nudge. */
+  | "fetch"
+  | "carry_toy"
+  | "stash_toy"
+  | "nose_toy"
+  /** Run at the cursor and keep after it while it moves (mostly a gremlin). */
+  | "chase_cursor"
+  /** A play bow at you: "chase me". */
+  | "invite_play"
+  | "yawn"
+  | "look_around"
   | "leave";
 
 export interface Intent {
   intent: IntentName;
-  /** "here", "cursor", "dock", "corner" or a window id. */
+  /** "here", "cursor", "dock", "corner", "toy" or a window id. */
   target: string;
   approach: Approach;
   stay_sec: number;
@@ -136,6 +147,8 @@ export interface Intent {
   thought?: string;
   /** A scripted scene (a reaction to a click). Without it the executor builds the moves from the intent. */
   script?: Beat[];
+  /** A pose held before the moves, facing you (licking its lips after a treat). */
+  opener?: { anim: Anim; sec: number };
   /** For "trick": which of its tricks (an id from tricks.ts). */
   trick?: string;
 }

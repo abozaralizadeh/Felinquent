@@ -46,7 +46,7 @@ const CAT: Instinct = {
   drain: 1,
   restore: 1,
   // Aloof and a little cruel: ignores you, swats, knocks things off, sits on your work, naps a lot.
-  weights: { knock_off: 2.6, claw: 1.6, hunt: 1.8, ignore: 2.5, swat: 2.2, knock_toy: 2.5, nudge_window: 1.8, sit_on: 1.6, sit_on_video: 1.5, block_dock: 1.6, stare: 2, groom: 1.6, nap: 1.4, cozy: 1.4, stalk: 1.5, sulk: 1.4, headbutt: 0.5, meow: 0.7, follow: 0.4, zoomies: 0.7, wander: 0.8, scratch: 3, spook: 3, sprawl: 2.5, roll: 1, sniff: 0.5, tumble: 0.5, shy: 0.7, bounce: 0.5, beg: 0, dig: 0.2, howl: 0.15 },
+  weights: { knock_off: 2.6, claw: 1.6, hunt: 1.8, ignore: 2.5, swat: 2.2, knock_toy: 2.5, nudge_window: 1.8, sit_on: 1.6, sit_on_video: 1.5, block_dock: 1.6, stare: 2, groom: 1.6, nap: 1.4, cozy: 1.4, stalk: 1.5, sulk: 1.4, headbutt: 0.5, meow: 0.7, follow: 0.4, zoomies: 0.7, wander: 0.8, scratch: 3, spook: 3, sprawl: 2.5, roll: 1, sniff: 0.5, tumble: 0.5, shy: 0.7, bounce: 0.5, beg: 0, dig: 0.2, howl: 0.15, fetch: 0.3, carry_toy: 0.8, stash_toy: 0.1, nose_toy: 0.9, chase_cursor: 1.6, invite_play: 0.25, yawn: 1.4, look_around: 1.2 },
   comes: 0.3,
   bite: 0.14,
   idle: ["blink", "groom", "stare", "loaf", "stretch", "idle_sit", "yawn", "curious", "scratch", "proud", "look"],
@@ -64,7 +64,7 @@ const DOG: Instinct = {
   drain: 0.6,
   restore: 1.5,
   // Thrilled about everything: follows you, runs about, jumps, barks, hardly ever naps, never sulks for long.
-  weights: { knock_off: 0.4, claw: 0.5, hunt: 0.6, follow: 3, zoomies: 3, watch: 2, headbutt: 2.2, meow: 2, chase_tail: 2.5, wander: 1.7, chatter: 1.4, gift: 1.5, nap: 0.35, cozy: 0.5, nap_warm: 0.4, ignore: 0.1, sulk: 0.4, stalk: 0.5, swat: 0.4, knock_toy: 0.8, perch: 0.5, groom: 0.5, stare: 0.3, block_dock: 0.5, roll: 2.5, bounce: 3, sniff: 3, dig: 2.5, howl: 1.4, scratch: 0.8, beg: 3.5, spook: 0.4, sprawl: 1.5, tumble: 2.5, shy: 0.4 },
+  weights: { knock_off: 0.4, claw: 0.5, hunt: 0.6, follow: 3, zoomies: 3, watch: 2, headbutt: 2.2, meow: 2, chase_tail: 2.5, wander: 1.7, chatter: 1.4, gift: 1.5, nap: 0.35, cozy: 0.5, nap_warm: 0.4, ignore: 0.1, sulk: 0.4, stalk: 0.5, swat: 0.4, knock_toy: 0.8, perch: 0.5, groom: 0.5, stare: 0.3, block_dock: 0.5, roll: 2.5, bounce: 3, sniff: 3, dig: 2.5, howl: 1.4, scratch: 0.8, beg: 3.5, spook: 0.4, sprawl: 1.5, tumble: 2.5, shy: 0.4, fetch: 4, carry_toy: 1.2, stash_toy: 0.9, nose_toy: 0.5, chase_cursor: 2.2, invite_play: 3, yawn: 0.8, look_around: 1 },
   comes: 1.6,
   bite: 0,
   idle: ["look", "happy", "bark", "stretch", "chase_tail", "curious", "sniff", "yawn", "proud", "play_bow"],
@@ -82,7 +82,7 @@ const FOX: Instinct = {
   drain: 0.75,
   restore: 1.25,
   // Curious and sneaky: stalks, pounces, peeks around corners, explores everything.
-  weights: { knock_off: 1.2, claw: 0.8, hunt: 2.4, stalk: 2.6, peek: 2.6, tour: 2.2, gift: 2, wander: 1.6, watch: 1.6, zoomies: 1.6, chase_tail: 1.4, sit_on: 1.3, perch: 1.3, knock_toy: 1.2, nap: 0.7, cozy: 0.8, ignore: 0.8, follow: 0.9, roll: 1.5, bounce: 2, sniff: 2.2, dig: 1.8, howl: 1.5, scratch: 0.6, beg: 0.3, spook: 1.5, sprawl: 1, tumble: 2, shy: 1.5 },
+  weights: { knock_off: 1.2, claw: 0.8, hunt: 2.4, stalk: 2.6, peek: 2.6, tour: 2.2, gift: 2, wander: 1.6, watch: 1.6, zoomies: 1.6, chase_tail: 1.4, sit_on: 1.3, perch: 1.3, knock_toy: 1.2, nap: 0.7, cozy: 0.8, ignore: 0.8, follow: 0.9, roll: 1.5, bounce: 2, sniff: 2.2, dig: 1.8, howl: 1.5, scratch: 0.6, beg: 0.3, spook: 1.5, sprawl: 1, tumble: 2, shy: 1.5, fetch: 0.9, carry_toy: 3, stash_toy: 2.2, nose_toy: 1, chase_cursor: 1.6, invite_play: 1.6, yawn: 1, look_around: 1.6 },
   comes: 0.55,
   bite: 0.04,
   idle: ["look", "peek", "stare", "chase_tail", "stretch", "blink", "curious", "sniff", "proud", "giggle", "yawn"],
@@ -100,7 +100,7 @@ const RACCOON: Instinct = {
   drain: 0.8,
   restore: 1.2,
   // A thief and a tinkerer: takes things, knocks stuff over, walks across the keyboard, raids the dock.
-  weights: { knock_off: 3, claw: 1.4, hunt: 0.8, knock_toy: 3, gift: 3, nudge_window: 2.5, keyboard_walk: 2.6, block_dock: 1.8, peek: 1.6, tour: 1.6, sit_on: 1.5, zoomies: 1.5, chatter: 1.8, knead: 1.3, nap: 0.8, headbutt: 0.7, follow: 0.7, ignore: 1.2, roll: 0.8, bounce: 1.2, sniff: 2.5, dig: 2, howl: 0.2, scratch: 1, beg: 1.2, spook: 0.6, sprawl: 1, tumble: 1.5, shy: 0.5 },
+  weights: { knock_off: 3, claw: 1.4, hunt: 0.8, knock_toy: 3, gift: 3, nudge_window: 2.5, keyboard_walk: 2.6, block_dock: 1.8, peek: 1.6, tour: 1.6, sit_on: 1.5, zoomies: 1.5, chatter: 1.8, knead: 1.3, nap: 0.8, headbutt: 0.7, follow: 0.7, ignore: 1.2, roll: 0.8, bounce: 1.2, sniff: 2.5, dig: 2, howl: 0.2, scratch: 1, beg: 1.2, spook: 0.6, sprawl: 1, tumble: 1.5, shy: 0.5, fetch: 0.3, carry_toy: 3.2, stash_toy: 1.4, nose_toy: 1.2, chase_cursor: 1, invite_play: 0.6, yawn: 1, look_around: 1.2 },
   comes: 0.5,
   bite: 0.06,
   idle: ["groom", "look", "chatter", "knead", "stare", "idle_sit", "sniff", "curious", "scratch", "proud", "giggle"],
@@ -121,7 +121,7 @@ const CHIHUAHUA: Instinct = {
   gap: 0.55,
   drain: 0.75,
   restore: 1.3,
-  weights: { follow: 3.2, beg: 3.2, howl: 3, meow: 2.5, spook: 3, shy: 1.8, watch: 2, stare: 1.5, headbutt: 1.6, zoomies: 2, bounce: 1.5, chase_tail: 1.5, sniff: 2, dig: 1.2, cozy: 1.6, nap_warm: 1.8, nap: 0.6, sulk: 0.8, ignore: 0.4, knock_off: 0.4, claw: 0.4, hunt: 0.6, stalk: 0.5, swat: 0.3, sprawl: 0.8, roll: 1.5, tumble: 1.2, scratch: 1.2, groom: 0.5, gift: 1, perch: 0.5, sit_on: 1.2, knock_toy: 0.8, block_dock: 0.6 },
+  weights: { follow: 3.2, beg: 3.2, howl: 3, meow: 2.5, spook: 3, shy: 1.8, watch: 2, stare: 1.5, headbutt: 1.6, zoomies: 2, bounce: 1.5, chase_tail: 1.5, sniff: 2, dig: 1.2, cozy: 1.6, nap_warm: 1.8, nap: 0.6, sulk: 0.8, ignore: 0.4, knock_off: 0.4, claw: 0.4, hunt: 0.6, stalk: 0.5, swat: 0.3, sprawl: 0.8, roll: 1.5, tumble: 1.2, scratch: 1.2, groom: 0.5, gift: 1, perch: 0.5, sit_on: 1.2, knock_toy: 0.8, block_dock: 0.6, fetch: 2.6, carry_toy: 1.4, stash_toy: 1.8, nose_toy: 0.6, chase_cursor: 2.4, invite_play: 2.2, yawn: 1.2, look_around: 1.4 },
   comes: 1.4,
   bite: 0.03,
   idle: ["look", "bark", "curious", "sniff", "stare", "yawn", "surprise", "idle_sit", "startled", "shy"],
@@ -140,7 +140,7 @@ const RABBIT: Instinct = {
   restore: 1.1,
   // Quiet and wary: sniffs everything, digs, spooks at nothing, flops over when happy and does binkies
   // (bounce) when it thinks nobody is looking. Doesn't hunt, doesn't call out.
-  weights: { bounce: 3, dig: 3, sniff: 3, spook: 3, sprawl: 2.2, roll: 1.8, cozy: 1.6, nap: 1.2, groom: 1.8, peek: 1.8, box: 1.6, shy: 2, zoomies: 1.6, beg: 1.2, headbutt: 1, ignore: 1.6, sulk: 1.4, scratch: 1.2, tumble: 1, sit_on: 1, follow: 0.7, stare: 0.8, perch: 0.6, knock_toy: 0.5, keyboard_walk: 0.5, gift: 0.4, chase_tail: 0.3, knock_off: 0.3, swat: 0.2, claw: 0.2, meow: 0.2, hunt: 0.1, stalk: 0.1, chatter: 0.1, howl: 0.05, hairball: 0 },
+  weights: { bounce: 3, dig: 3, sniff: 3, spook: 3, sprawl: 2.2, roll: 1.8, cozy: 1.6, nap: 1.2, groom: 1.8, peek: 1.8, box: 1.6, shy: 2, zoomies: 1.6, beg: 1.2, headbutt: 1, ignore: 1.6, sulk: 1.4, scratch: 1.2, tumble: 1, sit_on: 1, follow: 0.7, stare: 0.8, perch: 0.6, knock_toy: 0.5, keyboard_walk: 0.5, gift: 0.4, chase_tail: 0.3, knock_off: 0.3, swat: 0.2, claw: 0.2, meow: 0.2, hunt: 0.1, stalk: 0.1, chatter: 0.1, howl: 0.05, hairball: 0, fetch: 0.05, carry_toy: 1, stash_toy: 0.3, nose_toy: 3, chase_cursor: 0.4, invite_play: 0.3, yawn: 1.2, look_around: 1.6 },
   comes: 0.35,
   bite: 0.05,
   idle: ["sniff", "groom", "loaf", "look", "curious", "blink", "idle_sit", "scratch", "yawn", "stare"],
@@ -158,7 +158,7 @@ const SQUIRREL: Instinct = {
   drain: 0.7,
   restore: 1.3,
   // Never still: chatters and scolds, peeks, digs to hide things, climbs up high, has zoomies.
-  weights: { chatter: 3.2, peek: 2.8, dig: 3, zoomies: 3, tour: 2.4, perch: 2.4, gift: 2.4, wander: 1.8, hunt: 2, stalk: 1.6, sniff: 2.2, spook: 2, bounce: 1.8, knock_toy: 1.8, knock_off: 1.6, keyboard_walk: 1.6, chase_tail: 1.4, groom: 1.4, tumble: 1.5, scratch: 1.2, beg: 1.2, sit_on: 1.2, nudge_window: 1.2, claw: 1, ignore: 1, block_dock: 1, sprawl: 1, roll: 0.8, shy: 0.8, cozy: 0.7, nap: 0.6, follow: 0.6, sulk: 0.6, swat: 0.6, headbutt: 0.4, meow: 0.3, howl: 0.2 },
+  weights: { chatter: 3.2, peek: 2.8, dig: 3, zoomies: 3, tour: 2.4, perch: 2.4, gift: 2.4, wander: 1.8, hunt: 2, stalk: 1.6, sniff: 2.2, spook: 2, bounce: 1.8, knock_toy: 1.8, knock_off: 1.6, keyboard_walk: 1.6, chase_tail: 1.4, groom: 1.4, tumble: 1.5, scratch: 1.2, beg: 1.2, sit_on: 1.2, nudge_window: 1.2, claw: 1, ignore: 1, block_dock: 1, sprawl: 1, roll: 0.8, shy: 0.8, cozy: 0.7, nap: 0.6, follow: 0.6, sulk: 0.6, swat: 0.6, headbutt: 0.4, meow: 0.3, howl: 0.2, fetch: 0.15, carry_toy: 1.8, stash_toy: 4, nose_toy: 1, chase_cursor: 1.4, invite_play: 0.3, yawn: 0.7, look_around: 2 },
   comes: 0.45,
   bite: 0.06,
   idle: ["chatter", "look", "peek", "sniff", "groom", "curious", "stare", "idle_sit", "scratch", "proud"],

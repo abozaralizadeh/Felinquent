@@ -187,8 +187,10 @@ function drawChip(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   ctx.stroke();
 }
 
-function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: number): void {
+/** front: only what is in your hand or the animal's mouth (drawn over the animal); otherwise the rest. */
+function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: number, front = false): void {
   for (const p of snap.props) {
+    if (!!p.front !== front) continue;
     if (p.trail && p.trail.length > 1) {
       // The yarn unwinds behind it.
       ctx.save();
@@ -209,7 +211,7 @@ function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: num
     ctx.save();
     ctx.globalAlpha = p.alpha;
     // A soft shadow while it stands on something (a toy on the ground, whichever way it has turned).
-    if (Math.abs(p.rot) < 0.4 || p.lying) {
+    if (!p.front && (Math.abs(p.rot) < 0.4 || p.lying)) {
       ctx.fillStyle = "rgba(0,0,0,0.12)";
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 0.5, w * 0.42, 2.5 * scale, 0, 0, Math.PI * 2);
@@ -363,6 +365,7 @@ export function drawMessBehind(ctx: CanvasRenderingContext2D, snap: MessSnapshot
 /** What flies through the air: drawn after the animal. */
 export function drawMessFront(ctx: CanvasRenderingContext2D, snap: MessSnapshot | null, scale: number): void {
   if (!snap) return;
+  drawProps(ctx, snap, scale, true);
   drawShards(ctx, snap, scale);
   drawStrips(ctx, snap);
   drawFly(ctx, snap, scale);

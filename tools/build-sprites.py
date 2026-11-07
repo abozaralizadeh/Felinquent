@@ -28,7 +28,7 @@ if len(sys.argv) > 3:
 # Sheets drawn after 6 Nov 2026 (and every sheet of the three animals added then) may have loose bits
 # around a drawing (a sneeze puff, dizzy stars, motion lines, a dream bubble): those are dropped.
 NEW_IDS = {"chili", "clover", "hazel"}
-NEW_SHEETS = {"paw", "pawfix", "look", "lookstand", "ledge", "rest", "joy", "nose", "voice", "mood", "feel"}
+NEW_SHEETS = {"paw", "pawfix", "look", "lookstand", "ledge", "rest", "joy", "nose", "voice", "mood", "feel", "gazesit", "gazestand", "lick"}
 
 BASE = ["sit", "walk_a", "walk_b", "sleep", "groom", "jump", "crouch", "loaf", "wave"]
 SHEETS = {
@@ -63,11 +63,20 @@ SHEETS = {
     "mood": ["cross", "angry1", "angry2", "hiss1", "hiss2", "puff1", "puff2", "-", "jumpback"],
     # Feelings, sitting.
     "feel": ["annoyed1", "annoyed2", "fluster1", "shy1", "beg1", "beg2", "headbutt1", "headbutt2", "proud2"],
+    # The head in every direction (7 Nov 2026), sitting (sq_, sb_) and standing (tq_, tb_): turned three
+    # quarters toward you looking down, level and up; looking back over the shoulder down, level, up and
+    # high; and a head tilt, ahead and at you. With the look sheets that is every angle a head goes to.
+    "gazesit": ["sq_down", "sq_level", "sq_up", "sb_down", "sb_level", "sb_up", "sb_high", "sg_tilt", "sg_tiltyou"],
+    "gazestand": ["tq_down", "tq_level", "tq_up", "tb_down", "tb_level", "tb_up", "tb_high", "tg_tilt", "tg_tiltyou"],
+    # Licking with the tongue drawn moving (7 Nov 2026): a paw at the mouth with no tongue, the tip, the
+    # flat tongue on the paw, curled back, going in; the chest lick out and up; and licking the lips.
+    "lick": ["lick1", "lick2", "lick3", "lick4", "lick5", "chest1", "chest2", "lips1", "lips2"],
 }
 # Sizes come from a frame that matches a drawing we already have: the scratch sheet's two plain
 # sits, and the content sit that ends a wash (without this a groom started by shrinking a little).
 PICK = {"scratch": ("sit", "7,9"), "groom": ("sit", "9"), "paw": ("sit", "1,9"), "pawfix": ("paw3", "1"),
-        "look": ("sit", "2"), "lookstand": ("stand", "2"), "voice": ("sit", "3,4"), "mood": ("stand", "1"), "feel": ("sit", "1,2")}
+        "look": ("sit", "2"), "lookstand": ("stand", "2"), "voice": ("sit", "3,4"), "mood": ("stand", "1"), "feel": ("sit", "1,2"),
+        "gazesit": ("sit", "2"), "gazestand": ("stand", "2"), "lick": ("sit", "8,9")}
 
 # Sheets that hold standing and sitting drawings are cut in passes: grid order, "-" skips a frame,
 # standing frames sized by a standing view (to match "stand"), sitting and lying frames by a sitting

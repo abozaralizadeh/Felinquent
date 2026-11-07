@@ -296,6 +296,8 @@ export class LlmBrain implements Brain {
       recent: ctx.rules.recent,
       busyForMin: ctx.busyForMin,
       things: ctx.things ?? [],
+      catPos: ctx.rules.catPos,
+      toy: ctx.rules.toy ?? null,
     });
     const req: LlmRequest = {
       system: buildPlanPrompt(ctx.personality, ctx.rules.needs.trust),
@@ -415,12 +417,13 @@ export class FakeLlmClient implements LlmClient {
     else if (this.latencyMs > 0) await new Promise((r) => setTimeout(r, this.latencyMs));
     if (this.mode === "error") throw new Error("fake LLM is down");
     if (this.mode === "garbage") return "meow meow I am a cat {not json";
-    const summary = JSON.parse(req.user) as { options: string[]; cat: { mood: Mood }; windows: { id: string; focused?: boolean }[]; bouts?: Record<string, { options: string[] }>; suggested?: string };
+    const summary = JSON.parse(req.user) as { options: string[]; cat: { mood: Mood }; windows: { id: string; focused?: boolean }[]; bouts?: Record<string, { options: string[] | Record<string, string> }>; suggested?: string };
     if (summary.bouts) {
       // A plan: the suggested bout and its first two options.
       if (this.mode === "off_menu") return JSON.stringify({ bout: "rest", steps: [{ intent: "format_disk", target: "here" }], mood: "smug", thought: "x" });
       const bout = summary.suggested ?? Object.keys(summary.bouts)[0] ?? "rest";
-      const opts = summary.bouts[bout]?.options ?? [];
+      const listed = summary.bouts[bout]?.options ?? [];
+      const opts = Array.isArray(listed) ? listed : Object.keys(listed);
       const json = JSON.stringify({ bout, steps: opts.slice(0, 2).map((intent) => ({ intent, target: "here", approach: "walk", stay_sec: 30 })), mood: summary.cat.mood, thought: "you typed all morning. i noticed." });
       return this.mode === "chatty" ? `Sure! Here is my plan:\n${json}\nHope that helps.` : json;
     }

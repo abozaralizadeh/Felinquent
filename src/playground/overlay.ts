@@ -31,6 +31,9 @@ interface CatState {
   block: Rect | null;
   cursor: { x: number; y: number };
   held: boolean;
+  /** Its toy, where you can grab it, and whether you are holding it (clicks there are ours). */
+  toy: Rect | null;
+  toyHeld: boolean;
   t: number;
   character: string;
   /** The mess (mess.ts) and the window shapes it needs to hide marks behind front windows. No titles, no app names. */
@@ -134,7 +137,8 @@ async function main(): Promise<void> {
 
   function applyHit(st: CatState): void {
     // A cat that isn't there (it left, or it's on another desktop) catches no clicks.
-    void setThrough(st.body.hidden || !(inside(st.hit, st.cursor, 8) || st.held));
+    const onToy = st.toyHeld || (st.toy !== null && inside(st.toy, st.cursor, 4));
+    void setThrough(!onToy && (st.body.hidden || !(inside(st.hit, st.cursor, 8) || st.held)));
   }
 
   // ---- A window on another display: draw what the master says. -------------------------
@@ -158,6 +162,12 @@ async function main(): Promise<void> {
   let lastSensorsAt = -1000;
   let sensorsBusy = false;
   let windowCount = 0;
+  /** Bumped by every read of the windows and the desktop, so a frame knows which read it drew. */
+  let worldSeq = 0;
+  /** Bumped when the Mac says the desktop changed: a slower read started before that is out of date. */
+  let switchSeq = 0;
+  /** After a desktop switch the windows are see-through until a frame has drawn a read this new. */
+  let revealAfter: { turn: number; seq: number } | null = null;
 
   // Keep windows that are really on a display. Toolbar slivers are not places to sit.
   function toWindows(list: NativeWin[]): WindowInfo[] {
@@ -179,9 +189,13 @@ async function main(): Promise<void> {
   async function pollSensors(): Promise<void> {
     if (sensorsBusy) return;
     sensorsBusy = true;
+    const asked = switchSeq;
     try {
       const s = await invoke<NativeSensors>("read_sensors");
-      const windows = toWindows(s.windows);
+      // The desktop changed while this was being read: its windows and desktop are the old ones.
+      const stale = asked !== switchSeq;
+      const windows = stale ? world.windows : toWindows(s.windows);
+      if (!stale) worldSeq++;
       windowCount = windows.length;
       world = {
         ...world,
@@ -194,7 +208,7 @@ async function main(): Promise<void> {
         // A full-screen app keeping the display awake is a video or a presentation: it goes outside
         // (respect mode RM-02). A full-screen app you just work in is fine.
         fullscreen: !!s.space?.app && !!s.display_awake,
-        space: spaceOf(s.space),
+        space: stale ? world.space : spaceOf(s.space),
       };
     } finally {
       lastSensorsAt = performance.now();
@@ -204,11 +218,26 @@ async function main(): Promise<void> {
 
   /** Only the windows (and the desktop), every frame while one is being dragged, so what stands on it rides along in real time. */
   async function pollWindows(): Promise<void> {
+    const asked = switchSeq;
     const s = await invoke<NativeWindows>("read_windows");
+    if (asked !== switchSeq) return;
     const windows = toWindows(s.windows);
     windowCount = windows.length;
+    worldSeq++;
     world = { ...world, windows, frontApp: windows[0]?.app ?? "", space: spaceOf(s.space) };
   }
+
+  // The Mac moved the windows to another desktop and made them see-through (main.rs follow_spaces):
+  // read the new desktop now, and show the windows again once a frame has drawn it, so the animal
+  // never shows for a moment where it was on the old desktop.
+  void tauri?.event.listen<number>("space-switch", (e) => {
+    switchSeq++;
+    const turn = e.payload;
+    const ready = (): void => {
+      revealAfter = { turn, seq: worldSeq };
+    };
+    void pollWindows().then(ready, ready);
+  });
 
   // What the user chose and what the cat remembers survive a restart (local files only).
   let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number } = {};
@@ -231,6 +260,8 @@ async function main(): Promise<void> {
     personality: character.personality,
     memory,
     log: (message, fields) => say(`${message} ${JSON.stringify(fields ?? {})}`),
+    // The local model can take a few seconds; the animal keeps moving while it thinks.
+    asyncMind: true,
   });
   // Whether to ask the local model at all. The menu turns it off and on.
   let useModel = saved.model ?? true;
@@ -343,6 +374,9 @@ async function main(): Promise<void> {
       world = { ...world, shooedUntilMs: 0 };
       cat.treat(world);
       say("treat");
+    } else if (msg === "toy") {
+      cat.throwToy(world);
+      say("toy thrown");
     } else if (msg === "forget") {
       memory.forgetAll();
       memoryJson = memory.exportJson();
@@ -383,6 +417,7 @@ async function main(): Promise<void> {
     say(`demo: sit_on ${target.id} (${target.app}) at ${JSON.stringify(target.bounds)}`);
   }
 
+  let drawnSeq = 0;
   async function frame(): Promise<void> {
     const now = performance.now();
     const dt = Math.min(0.1, (now - lastT) / 1000);
@@ -400,6 +435,7 @@ async function main(): Promise<void> {
       cursor = { x: p.x, y: p.y };
       down = p.down;
       world = { ...world, nowMs: Date.now(), cursor, cursorSpeed };
+      drawnSeq = worldSeq;
       if (!placed) {
         cat.place(world, 200);
         placed = true;
@@ -428,6 +464,8 @@ async function main(): Promise<void> {
         block: cat.blockingRect,
         cursor,
         held: cat.executor.held,
+        toy: cat.toyRect,
+        toyHeld: cat.mess.holding,
         t: now / 1000,
         character: character.id,
         mess: cat.mess.snapshot(),
@@ -437,6 +475,10 @@ async function main(): Promise<void> {
       render(st);
       applyHit(st);
       if (others.length > 0) void tauri?.event.emit("cat-state", st);
+      if (revealAfter && drawnSeq >= revealAfter.seq) {
+        void invoke("overlay_reveal", { turn: revealAfter.turn }).catch(() => {});
+        revealAfter = null;
+      }
       if (now - lastLog > 3000) {
         const fps = (frames * 1000) / (now - lastLog);
         lastLog = now;

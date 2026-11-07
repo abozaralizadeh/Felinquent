@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHARACTERS } from "../src/core/characters";
 import { GAIT_STRIDE } from "../src/playground/gaits";
-import { gazeTarget, groomShot, LICK_HZ, lengthOf, pawShot, planFor, poseShot, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
+import { gazeShot, gazeTarget, groomShot, LICK_HZ, lengthOf, pawShot, planFor, poseShot, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
 import { TURN_SEC, type Anim } from "../src/core/executor";
 import { SCRATCH_SEC } from "../src/core/scenes";
 
@@ -117,13 +117,39 @@ describe("sprite art", () => {
     for (const a of ["loaf", "perch", "peek", "sprawl", "idle_sit"] as Anim[]) expect(clock(a), a).toBeGreaterThanOrEqual(5);
   });
 
-  it("watching follows the cursor with the head: down, ahead, up, overhead, and over the shoulder when it is behind", () => {
+  it("watching follows the cursor with the head: down, ahead, up, overhead, toward you, and over the shoulder when it is behind", () => {
     expect(gazeTarget(100, -60).u).toBeLessThan(0.6);
     expect(Math.abs(gazeTarget(100, 0).u - 1)).toBeLessThan(0.01);
     expect(gazeTarget(100, 60).u).toBeGreaterThan(1.8);
     expect(gazeTarget(5, 200).u).toBeGreaterThan(3.5);
-    expect(gazeTarget(-200, 10).you).toBe(true);
-    expect(gazeTarget(100, 10).you).toBe(false);
+    expect(gazeTarget(100, 10).yaw).toBe(0);
+    // Behind it: over the shoulder, level, up or down.
+    expect(gazeTarget(-200, 10).yaw).toBe(2);
+    expect(Math.abs(gazeTarget(-200, 0).u - 1)).toBeLessThan(0.01);
+    expect(gazeTarget(-200, 150).u).toBeGreaterThan(2);
+    expect(gazeTarget(-200, -120).u).toBeLessThan(0.5);
+    // Over its head and a bit behind, or right on it: the head turns toward you.
+    expect(gazeTarget(-60, 200).yaw).toBe(1);
+    expect(gazeTarget(10, 20)).toEqual({ yaw: 1, u: 1 });
+  });
+
+  it("the head goes round to behind through three quarters, never straight from profile", () => {
+    // Watching, the cursor jumps from ahead to behind: profile, three quarters, behind; then back.
+    const dirs: number[] = [];
+    const dirOf = (k: string): number => (/^sq_/.test(k) ? 1 : /^sb_/.test(k) ? 2 : /^sg_/.test(k) ? 0 : -1);
+    for (let i = 0; i < 240; i++) {
+      const t = i / 60;
+      const target = i < 30 || i >= 150 ? gazeTarget(200, 0) : gazeTarget(-200, 0);
+      const d = dirOf(gazeShot("test-turn", false, 0, t, target).key);
+      if (d >= 0 && dirs[dirs.length - 1] !== d) dirs.push(d);
+    }
+    expect(dirs).toEqual([0, 1, 2, 1, 0]);
+  });
+
+  it("a cursor that stops in front of a puppy gets a tilt of the head", () => {
+    const keys = new Set<string>();
+    for (let i = 0; i < 300; i++) keys.add(gazeShot(`test-tilt-${i < 0 ? 0 : 1}`, false, 0, i / 60, gazeTarget(200, 0), 1).key);
+    expect([...keys].some((k) => k.startsWith("sg_tilt") || k.startsWith("sg_aheady"))).toBe(true);
   });
 
   it("walking and spinning are real cycles, not one frame", () => {
@@ -135,7 +161,7 @@ describe("sprite art", () => {
 });
 
 /** The body region a groom frame shows (1 to 9: the drawing it was made from), or 0. */
-const region = (k: string): number => Number(/^groom(\d)/.exec(k)?.[1] ?? 0);
+const region = (k: string): number => (/^(lick|groom2y)/.test(k) ? 2 : /^(chest|groom7y)/.test(k) ? 7 : Number(/^groom(\d)/.exec(k)?.[1] ?? 0));
 
 /** The regions a wash goes through, in order, each with how long it stayed there. */
 function regions(id: string, seed: number, sec: number): { r: number; sec: number }[] {
@@ -174,16 +200,17 @@ describe("washing", () => {
       }
   });
 
-  it("licks at about the rate cats do", () => {
-    // Count the deepest point of each nod while licking the paw, over the first ten seconds.
+  it("licks at about the rate cats do, with the tongue moving", () => {
+    // Count each stroke (the tongue flat on the paw or up the chest, or the deepest point of a nod), over the first ten seconds.
     for (const seed of seeds) {
       let licks = 0;
       let lickSec = 0;
       let was = "";
       for (let e = 0; e < 10; e += 0.01) {
         const s = groomShot("tabby", e, seed);
-        if (/^groom[2678]n/.test(s.key) || /^groom[2678]n/.test(s.next ?? "")) lickSec += 0.01;
-        const deep = s.key === "groom2n3" || s.key === "groom7n3" || s.key === "groom8n3" || s.key === "groom6n3";
+        const licking = (k: string): boolean => /^groom[68]n/.test(k) || /^(lick|chest)\d/.test(k);
+        if (licking(s.key) || licking(s.next ?? "")) lickSec += 0.01;
+        const deep = s.key === "lick3" || s.key === "chest2" || s.key === "groom8n3" || s.key === "groom6n3";
         if (deep && was !== s.key) licks++;
         was = s.key;
       }

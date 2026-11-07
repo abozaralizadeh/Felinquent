@@ -16,7 +16,7 @@ for dir in "${dirs[@]}"; do
   id=$(basename "$dir")
   # Everything this script makes, so a shorter chain leaves nothing stale behind.
   rm -f "$dir"*[0-9]t[0-9].webp "$dir"groom[0-9][un][0-9].webp "$dir"{stand,sit,sit2,sitting_down,knead_a,knead_b,lowering,loaf2,drowsy,curl,waking,wake,presneeze}[tvdlfmp][0-9].webp "$dir"paw[0-9][up][0-9].webp
-  rm -f "$dir"{sit,stand}[ghkwx][0-9].webp "$dir"{sg_,tg_,perch_,peek,loaf,sprawl,roll,belly,bow_,hop_,sniff,dig,stalk,howl,bark,giggle,chatter,cross,angry,hiss,puff,annoyed,fluster,shy,beg,headbutt,proud}*[tuvwxgchk][0-9].webp
+  rm -f "$dir"{sit,stand}[ghkwxqby][0-9].webp "$dir"groom[27]y[0-9].webp "$dir"{sg_,tg_,sq_,sb_,tq_,tb_,lick,chest,lips,perch_,peek,loaf,sprawl,roll,belly,bow_,hop_,sniff,dig,stalk,howl,bark,giggle,chatter,cross,angry,hiss,puff,annoyed,fluster,shy,beg,headbutt,proud}*[tuvwxgchky][0-9].webp
 
   # First line up the sitting drawings on their feet and haunches, so the body does not slide while
   # a paw moves (washing, the ear scratch, the faces seen from the side like the sit). The faces drawn
@@ -35,6 +35,11 @@ for dir in "${dirs[@]}"; do
   # feelings (sitting); looking and getting cross (standing); the loaf, the perch and the peek.
   $A "$dir" sit sg_down sg_ahead sg_up sg_high sg_top sg_you sg_ear howl1 howl2 howl3 bark1 bark2 chatter1 meow2 annoyed1 annoyed2 proud2 --min-iou 0.6
   $A "$dir" stand tg_down tg_ahead tg_up tg_high tg_top tg_you tg_freeze cross angry1 angry2 --min-iou 0.6
+  # The head in every direction (three quarters toward you, over the shoulder, the tilts) and the
+  # licks with a moving tongue: the same sitting or standing body with only the head (and a paw) moving.
+  $A "$dir" sit sq_down sq_level sq_up sb_down sb_level sb_up sb_high sg_tilt sg_tiltyou --min-iou 0.6
+  $A "$dir" stand tq_down tq_level tq_up tb_down tb_level tb_up tb_high tg_tilt tg_tiltyou --min-iou 0.6
+  $A "$dir" sit lick1 lick2 lick3 lick4 lick5 chest1 chest2 lips1 lips2 --min-iou 0.55
   $A "$dir" angry1 hiss1 hiss2 --min-iou 0.5
   $A "$dir" loaf loaf_blink loaf_up loaf_back loaf_drowse --min-iou 0.6
   $A "$dir" perch_fwd perch_back perch_down perch_doze perch_kick perch_you --min-iou 0.6
@@ -97,6 +102,33 @@ for dir in "${dirs[@]}"; do
   $T "$dir" 2 once tg_down tg_ahead tg_up tg_high tg_top
   $T "$dir" 2 once tg_ahead tg_you --tag u
   $T "$dir" 2 once tg_ahead tg_freeze --tag v
+  # The other directions: three quarters toward you and over the shoulder, each down to up as a chain
+  # (going from one direction to another swaps drawings, like a turnaround: flow can't turn a head that
+  # far), from the plain pose into each, and the head tilts.
+  $T "$dir" 2 once sq_down sq_level sq_up
+  $T "$dir" 2 once sb_down sb_level sb_up sb_high
+  $T "$dir" 2 once sit sq_level --tag q
+  $T "$dir" 2 once sit sb_level --tag b
+  $T "$dir" 2 once sg_ahead sg_tilt --tag y
+  $T "$dir" 2 once sq_level sg_tiltyou --tag y
+  $T "$dir" 2 once tq_down tq_level tq_up
+  $T "$dir" 2 once tb_down tb_level tb_up tb_high
+  $T "$dir" 2 once stand tq_level --tag q
+  $T "$dir" 2 once stand tb_level --tag b
+  $T "$dir" 2 once tg_ahead tg_tilt --tag y
+  $T "$dir" 2 once tq_level tg_tiltyou --tag y
+
+  # Licking with the tongue: from the paw raised to the mouth into the tongue cycle (tip, flat on the
+  # paw, curled back, in) and round; the chest lick in and out; licking the lips after a treat.
+  $T "$dir" 2 once groom2 lick1 --tag y
+  $T "$dir" 2 loop lick1 lick2 lick3 lick4 lick5
+  $T "$dir" 2 once lick1 groom2 --tag y
+  $T "$dir" 2 once groom7 chest1 --tag y
+  $T "$dir" 2 loop chest1 chest2
+  $T "$dir" 2 once chest1 groom7 --tag y
+  $T "$dir" 2 once sit lips1 --tag y
+  $T "$dir" 2 loop lips1 lips2
+  $T "$dir" 2 once lips1 sit --tag y
 
   # On a ledge: the tail swinging, looking down, dozing, a lazy kick, looking at you. Peeking: along
   # the ledge, ducking, up high.
