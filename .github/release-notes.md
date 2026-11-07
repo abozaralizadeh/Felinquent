@@ -6,7 +6,7 @@ Your pet has to go now and then! Rarely: a few times a day at normal, more at gr
 
 ## More about 0.1.9
 
-It holds on in a meeting, on a full-screen video and in quiet hours. Each animal does it its own way: the dog kicks back without turning round, the rabbit leaves a few pellets and hops off, and a cat sometimes gets the zoomies right after. Every animal got nine new drawings with smooth in-betweens, so the download is DMGSIZE MB (it was 109).
+It holds on in a meeting, on a full-screen video and in quiet hours. Each animal does it its own way: the dog kicks back without turning round, the rabbit leaves a few pellets and hops off, and a cat sometimes gets the zoomies right after. Every animal got nine new drawings with smooth in-betweens, and the download is 110 MB (it was 109).
 
 New in 0.1.8 too, if you skipped it: grab its toy and throw it, and its head follows your pointer all the way round.
 
