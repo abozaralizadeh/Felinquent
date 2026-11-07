@@ -8,7 +8,7 @@ You can throw it its toy now! Grab the toy with the mouse (or pick "Throw its to
 
 After a swipe to another desktop you don't see the cat flash in its old spot any more. The local model doesn't freeze it while it thinks, and it now gets the screen in words: where your pointer is from the animal's side, where the toy is, which apps are near (names only, never titles). Nothing looks at your screen.
 
-Every animal got 27 new drawings: the head three quarters toward you, looking back over its shoulder, a head tilt, and a tongue that moves. That makes the download about SIZE MB.
+Every animal got 27 new drawings: the head three quarters toward you, looking back over its shoulder, a head tilt, and a tongue that moves. That makes the download 109 MB (it was 97).
 
 New in 0.1.7 too, if you skipped it: it shows up on full-screen apps, and goes outside while one plays a video or shows slides.
 
