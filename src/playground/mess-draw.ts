@@ -1,7 +1,7 @@
 // Draws the mess (src/core/mess.ts): things on window tops, the pieces when they break, cracks and
 // claw marks on windows, strips torn off a title bar and the fly. Everything is drawn on the
 // overlay; nothing ever touches another app or reads its pixels (hard rules 2 and 3).
-import { PROP_HEIGHT, type MessSnapshot, type PropKind } from "../core/mess";
+import { PROP_HEIGHT, SPOT_HEIGHT, type MessSnapshot, type PropKind } from "../core/mess";
 import { PROP_ASPECT } from "../core/prop-aspect";
 import type { WindowInfo } from "../core/types";
 
@@ -18,7 +18,7 @@ function propImage(kind: PropKind | string): HTMLImageElement | null {
 
 /** Starts loading the drawings, so the first knock-off doesn't show an empty spot. */
 export function preloadProps(): void {
-  for (const k of Object.keys(PROP_HEIGHT)) propImage(k);
+  for (const k of [...Object.keys(PROP_HEIGHT), ...Object.keys(SPOT_HEIGHT)]) propImage(k);
 }
 
 /** A small random generator from a seed, so a crack keeps its shape from frame to frame. */
@@ -44,7 +44,8 @@ let layer: HTMLCanvasElement | null = null;
  * that covers it. Lower z is nearer the front.
  */
 function drawDecals(ctx: CanvasRenderingContext2D, snap: MessSnapshot, windows: WindowInfo[], scale: number): void {
-  if (snap.decals.length === 0) return;
+  const drips = (snap.spots ?? []).filter((x) => x.drips > 0 && x.windowId && x.cleaned === undefined);
+  if (snap.decals.length === 0 && drips.length === 0) return;
   const target = ctx.canvas;
   if (!layer) layer = document.createElement("canvas");
   if (layer.width !== target.width || layer.height !== target.height) {
@@ -73,6 +74,15 @@ function drawDecals(ctx: CanvasRenderingContext2D, snap: MessSnapshot, windows: 
       }
       lc.restore();
     }
+    const runs = drips.filter((x) => x.windowId === w.id);
+    if (runs.length > 0) {
+      lc.save();
+      lc.beginPath();
+      lc.rect(w.bounds.x, w.bounds.y, w.bounds.w, w.bounds.h);
+      lc.clip();
+      for (const d of runs) drawDrips(lc, d, scale);
+      lc.restore();
+    }
     // Whatever is in front of this window hides its marks (and the marks of the ones behind it).
     for (const f of windows) if (f.z < w.z) lc.clearRect(f.bounds.x, f.bounds.y, f.bounds.w, f.bounds.h);
   }
@@ -81,6 +91,154 @@ function drawDecals(ctx: CanvasRenderingContext2D, snap: MessSnapshot, windows: 
   ctx.drawImage(layer, 0, 0);
   ctx.restore();
   void scale;
+}
+
+type SpotView = MessSnapshot["spots"][number];
+const PEE = { fill: "rgba(236, 206, 84, 0.78)", edge: "rgba(190, 150, 40, 0.85)", shine: "rgba(255, 252, 230, 0.9)" };
+
+/** Little runs of pee down the front of the window under a puddle, growing for a while, ending in a drop. */
+function drawDrips(ctx: CanvasRenderingContext2D, d: SpotView, scale: number): void {
+  const r = seeded(d.seed + 0.37);
+  ctx.globalAlpha = Math.max(0, Math.min(1, d.alpha)) * 0.9;
+  ctx.strokeStyle = PEE.fill;
+  ctx.fillStyle = PEE.fill;
+  ctx.lineCap = "round";
+  const width = d.w * (0.6 + 0.4 * d.alpha);
+  for (let i = 0; i < d.drips; i++) {
+    const x = d.x + (r() - 0.5) * width * 0.8;
+    const most = (14 + r() * 26) * scale;
+    // They start once the puddle reaches the edge, and creep down for half a minute or so.
+    const len = Math.min(most, Math.max(0, d.ageSec - 1.5) * (1.2 + r()) * scale);
+    if (len < 1) continue;
+    ctx.lineWidth = (1.4 + r() * 0.8) * scale;
+    ctx.beginPath();
+    ctx.moveTo(x, d.y);
+    ctx.quadraticCurveTo(x + (r() - 0.5) * 2 * scale, d.y + len * 0.5, x, d.y + len);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, d.y + len + 1.2 * scale, 1.6 * scale, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/**
+ * Puddles and piles (ADR-048), before the animal. A puddle is a thin glossy pool lying on the window
+ * edge, spreading while it pees and shrinking as it dries. A pile is a drawing with a soft shadow,
+ * and a poop gets wavy stink lines for a while. A click cleans one: it shrinks into a sparkle.
+ */
+function drawSpots(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: number): void {
+  for (const d of snap.spots ?? []) {
+    const gone = d.cleaned ?? 0;
+    const alpha = Math.max(0, Math.min(1, d.alpha)) * (1 - gone);
+    if (alpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      if (d.kind === "puddle") drawPuddle(ctx, d, scale, 1 - gone);
+      else drawPile(ctx, d, scale, 1 - gone);
+      ctx.restore();
+    }
+    if (d.cleaned !== undefined) drawSparkle(ctx, d.x, d.y - 6 * scale, d.cleaned, d.seed, scale);
+  }
+}
+
+function drawPuddle(ctx: CanvasRenderingContext2D, d: SpotView, scale: number, shrink: number): void {
+  const r = seeded(d.seed);
+  // It spreads fast at first, then slower (a square root), and dries down to about half before it goes.
+  const w = d.w * Math.sqrt(Math.max(0.05, d.grow)) * (0.55 + 0.45 * d.alpha) * shrink;
+  const h = (2.6 + r() * 1.4) * scale * (0.7 + 0.3 * d.grow) * shrink;
+  const x0 = d.x - w / 2;
+  // A wobbly top edge: a few bumps from the seed, so no two puddles look the same.
+  const bumps = 4 + Math.floor(r() * 3);
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i <= bumps; i++) {
+    const f = i / bumps;
+    const hump = Math.sin(f * Math.PI);
+    pts.push({ x: x0 + f * w, y: d.y - h * hump * (0.75 + r() * 0.5) });
+  }
+  ctx.fillStyle = PEE.fill;
+  ctx.strokeStyle = PEE.edge;
+  ctx.lineWidth = 0.8 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x0 - 1.5 * scale, d.y + 0.5 * scale);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i] as { x: number; y: number };
+    const b = pts[i + 1] as { x: number; y: number };
+    ctx.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
+  }
+  ctx.lineTo(x0 + w + 1.5 * scale, d.y + 0.5 * scale);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // A shine along the top.
+  ctx.strokeStyle = PEE.shine;
+  ctx.lineWidth = 0.9 * scale;
+  ctx.beginPath();
+  ctx.moveTo(d.x - w * 0.28, d.y - h * 0.62);
+  ctx.quadraticCurveTo(d.x - w * 0.1, d.y - h * 0.8, d.x + w * 0.05, d.y - h * 0.66);
+  ctx.stroke();
+}
+
+function drawPile(ctx: CanvasRenderingContext2D, d: SpotView, scale: number, shrink: number): void {
+  const img = propImage(d.kind);
+  const h = SPOT_HEIGHT[d.kind as keyof typeof SPOT_HEIGHT] * scale * shrink;
+  const w = h * (PROP_ASPECT[d.kind] ?? (img ? img.naturalWidth / img.naturalHeight : 1.4));
+  ctx.fillStyle = "rgba(0,0,0,0.13)";
+  ctx.beginPath();
+  ctx.ellipse(d.x, d.y + 0.5, w * 0.5, 2.2 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (img) ctx.drawImage(img, d.x - w / 2, d.y - h + 0.5 * scale, w, h);
+  // Stink lines over a poop for the first few minutes (pellets hardly smell).
+  if ((d.kind === "poop" || d.kind === "poop_log") && d.ageSec < 240 && shrink > 0.9) {
+    const r = seeded(d.seed + 0.71);
+    const fade = Math.min(1, d.ageSec / 2) * Math.min(1, (240 - d.ageSec) / 30);
+    ctx.strokeStyle = "rgba(120, 140, 90, 0.5)";
+    ctx.lineWidth = 1.3 * scale;
+    ctx.lineCap = "round";
+    for (let i = 0; i < 3; i++) {
+      const x = d.x + (i - 1) * w * 0.32 + (r() - 0.5) * 2 * scale;
+      // Each one rises and fades in a loop of its own.
+      const phase = (d.ageSec * 0.45 + i * 0.33 + r() * 0.2) % 1;
+      const y = d.y - h - 3 * scale - phase * 14 * scale;
+      ctx.save();
+      ctx.globalAlpha = ctx.globalAlpha * fade * Math.sin(phase * Math.PI);
+      ctx.beginPath();
+      for (let k = 0; k <= 8; k++) {
+        const t = k / 8;
+        const px = x + Math.sin(t * Math.PI * 2 + d.ageSec * 3 + i) * 2.2 * scale;
+        const py = y - t * 10 * scale;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+/** Little four-point stars flying out as a spot is cleaned (t from 0 to 1). */
+function drawSparkle(ctx: CanvasRenderingContext2D, x: number, y: number, t: number, seed: number, scale: number): void {
+  const r = seeded(seed + 0.91);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, 1 - t) * 0.95;
+  ctx.fillStyle = "#fff8c8";
+  ctx.strokeStyle = "rgba(200, 170, 60, 0.7)";
+  ctx.lineWidth = 0.6 * scale;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + r();
+    const dist = (4 + 16 * t) * scale * (0.7 + r() * 0.6);
+    const sx = x + Math.cos(a) * dist;
+    const sy = y + Math.sin(a) * dist * 0.6 - 4 * t * scale;
+    const size = (2.5 + r() * 2) * scale * (1 - 0.5 * t);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - size);
+    ctx.quadraticCurveTo(sx, sy, sx + size, sy);
+    ctx.quadraticCurveTo(sx, sy, sx, sy + size);
+    ctx.quadraticCurveTo(sx, sy, sx - size, sy);
+    ctx.quadraticCurveTo(sx, sy, sx, sy - size);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** A spider web in the "glass", from the point where the animal came down, spreading into the window. */
@@ -350,15 +508,18 @@ export function drawMarks(ctx: CanvasRenderingContext2D, snap: MessSnapshot | nu
   if (snap) drawDecals(ctx, snap, windows, scale);
 }
 
-/** Only the things standing about. */
+/** Only the things standing about (and the puddles and piles). */
 export function drawPropsOnly(ctx: CanvasRenderingContext2D, snap: MessSnapshot | null, scale: number): void {
-  if (snap) drawProps(ctx, snap, scale);
+  if (!snap) return;
+  drawSpots(ctx, snap, scale);
+  drawProps(ctx, snap, scale);
 }
 
 /** Things standing on windows and the marks in windows: drawn before the animal. */
 export function drawMessBehind(ctx: CanvasRenderingContext2D, snap: MessSnapshot | null, windows: WindowInfo[], scale: number): void {
   if (!snap) return;
   drawDecals(ctx, snap, windows, scale);
+  drawSpots(ctx, snap, scale);
   drawProps(ctx, snap, scale);
 }
 

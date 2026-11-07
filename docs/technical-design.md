@@ -121,6 +121,8 @@ All sensors live behind a `Sensors` trait, so the Windows port and the playgroun
 - **Never while asleep.** The rules decide when to wake (energy recovered, being called, time).
 - Hard cap: ≤ 1 LLM call per 15 s and ≤ 60 per hour. A typical awake hour uses ~20-40 calls. A toy you threw that comes to rest is the one exception to the 15 s gap: the animal is told at once (`Mind.onToy`) and plans a bout from the toy reactions only.
 - **The animal never waits for the model.** The Mac app and the playground run the mind with `asyncMind`: a tick that has to wait for the local model goes on by itself while frames keep coming, and its decision is handed over on a later frame (the model used to freeze the animation for up to 8 s). An epoch counter drops a plan that comes back after something newer happened (a reflex, a treat, a toy, a desktop switch). Tests and simulations still wait, so a seeded run stays the same.
+- **When it has to go** (ADR-048). Two needs fill while it's awake (`Mind.potty`; pee every 5 waking hours and poop every 12 at normal, 3 and 7 at gremlin, none at chill, times the animal's own factor, 0.4 times as fast asleep). A full need skips the rest gap like the toy, without cutting the current action short: the next bout is an explore bout that starts with `pee` or `poop`, whatever the plan says, with a few calm moves after it. A blocked try comes back after 45 s, and a started one after 3 min if it never finished.
+- **The rules back every move.** Every intent the model can pick also has a rules path: `candidates()` offers it with a score, and with the model off (or failing, or too slow) `RulesBrain` plans the bout from the same list. The toy reactions, the chase reflex, the potty moves and the newer moves (`invite_play`, `yawn`, `look_around`) all happen with no model, and `tests/potty.test.ts` checks that with a brain that fails the test if it is ever called.
 - **The chase is a reflex.** At normal and gremlin a fast cursor close by can start `chase_cursor` at once, without the model (`Mind.impulse`: gremlin about 0.35 a second with a 40 s cooldown, normal 0.05 with 240 s). The model can also pick it from the menu.
 
 ### 6.2 Flow
@@ -289,6 +291,7 @@ It runs twice: once to filter `options`, once to validate the chosen intent. It 
 | `chase_cursor` | B-54 | 1 | 8 to 30 s | Normal or gremlin, cursor faster than 150 px/s within 1400 px, energy > 0.45. Also a reflex at gremlin (see 6.1). Short legs toward the cursor across the windows, a leap when it's above, a swat when close |
 | `invite_play` | B-55 | 1 | ≤ 20 s | Energy > 0.5, cursor within 1000 px |
 | `yawn`, `look_around` | B-56, B-57 | 0 | ≤ 20 s | none |
+| `pee`, `poop` | B-58, B-59 | 1 | 8 to 40 s / 10 to 60 s | Normal or gremlin. Only offered when that need is full (`Mind.potty`, 1 or more). Target here, a corner or the Dock, and at gremlin often your focused window. Blocked by every respect mode like any annoy-1 move; it asks again 45 s later. Puddles and piles are drawn on the overlay only (`Mess.spots`) |
 | `leave` | respect modes | 0 | n/a | Always allowed |
 
 **Other rules:**

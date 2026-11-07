@@ -120,6 +120,8 @@ export async function simulate(o: SimOptions): Promise<SimResult> {
       if (e.type === "wake") ((running = null), (doneAt = Infinity));
       if (e.type !== "intent") continue;
       running = e.intent.trick ? `trick:${e.intent.trick}` : e.intent.intent;
+      // No body here to squat: it went as soon as it started.
+      if (e.intent.intent === "pee" || e.intent.intent === "poop") cat.mind.relieved(e.intent.intent, now);
       if (e.intent.trick) {
         // What the human makes of a trick: the poses in it.
         const poses = (e.intent.script ?? []).map((b) => ("do" in b ? (b.do as string) : ""));

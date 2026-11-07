@@ -378,6 +378,8 @@ export const MOVE_MEANING: Partial<Record<IntentName, string>> = {
   invite_play: "play bow: chase me!",
   yawn: "a big yawn",
   look_around: "look all around",
+  pee: "pee (you really have to go)",
+  poop: "poop (you really have to go)",
   leave: "wander off screen",
 };
 

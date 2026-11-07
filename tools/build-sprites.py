@@ -28,7 +28,7 @@ if len(sys.argv) > 3:
 # Sheets drawn after 6 Nov 2026 (and every sheet of the three animals added then) may have loose bits
 # around a drawing (a sneeze puff, dizzy stars, motion lines, a dream bubble): those are dropped.
 NEW_IDS = {"chili", "clover", "hazel"}
-NEW_SHEETS = {"paw", "pawfix", "look", "lookstand", "ledge", "rest", "joy", "nose", "voice", "mood", "feel", "gazesit", "gazestand", "lick"}
+NEW_SHEETS = {"paw", "pawfix", "look", "lookstand", "ledge", "rest", "joy", "nose", "voice", "mood", "feel", "gazesit", "gazestand", "lick", "potty"}
 
 BASE = ["sit", "walk_a", "walk_b", "sleep", "groom", "jump", "crouch", "loaf", "wave"]
 SHEETS = {
@@ -110,6 +110,10 @@ MOTION_PASSES = {
     # The second deep bow (tail to the other side) turned the whole body round on half the sheets, so it is not cut.
     "joy": [(f"bow_down bow_l {_} bow_up {_} {_} {_} {_} binky", "play_bow", "2", "w"), (f"{_} {_} {_} {_} hop_crouch hop_up hop_land wiggle {_}", "sit", "8")],
     "nose": [(f"sniff1 sniff2 sniff3 {_} {_} {_} {_} {_} {_}", "sniff", "1", "w"), (f"{_} {_} {_} dig1 dig2 dig3 {_} {_} {_}", "dig", "4,5", "w"), (f"{_} {_} {_} {_} {_} {_} stalk1 stalk2 stalk3", "wiggle_a", "7,8", "w")],
+    # Nature calling (7 Nov 2026): the squat (a dog lifts a leg), relieved; the hunched squat, straining;
+    # a look back at it; covering it (a cat rakes with a front paw, a dog kicks back); a paw shake (a
+    # dog's big double kick); and a sheepish look at you mid-squat. Sized by the standing look back.
+    "potty": [("pee1 pee2 poop1 poop2 pottyback cover1 cover2 pawshake sheepish", "stand", "5", "w")],
 }
 for passes in TURN.values():
     passes["trans"] = TRANS
@@ -127,6 +131,10 @@ NEW_PICK = {"spin": ("stand", "1,2,3,4,5,6,7,8,9")}
 # sized from the standing drawing (the look, the mood, the turn, the hops) with them. Measured on the
 # heads and the pupils against the base sheet's side views.
 SHEET_SCALE = {("clover", "walk"): 0.87, ("hazel", "walk"): 1.12}
+# The potty sheets came out at their own scale per animal (sized by the standing look back, whose
+# turned head is wider or narrower than a stand). Measured by laying the squat's head over the
+# standing look-ahead drawing's head at a few scales and picking the one where they match.
+SHEET_SCALE.update({(c, "potty"): f for c, f in {"tabby": 1.15, "inky": 0.86, "pearl": 1.1, "mochi": 1.05, "bandit": 0.9, "biscuit": 0.84, "chili": 1.0, "clover": 0.88, "hazel": 0.78}.items()})
 # The far half of a turn is the near half mirrored, ending on the other side's own drawing, so the
 # pose after a turn is exactly the last turn frame.
 MIRRORS = {"turn_s4": "turn_s2", "turn_s5": "stand", "turn_t4": "turn_t2", "turn_t5": "sit"}
@@ -208,7 +216,7 @@ for cid in IDS:
                 run([str(sheet), str(dest), *names.split(), "--scale", str(mid), *solo])
                 continue
             d = dim[0] if dim else "h"
-            ref = (body(dest / f"{base}.webp")[0] if d == "w" else size(dest / f"{base}.webp")[1]) / SCALE * (dim[1] if len(dim) > 1 else 1)
+            ref = (body(dest / f"{base}.webp")[0] if d == "w" else size(dest / f"{base}.webp")[1]) / SCALE * (dim[1] if len(dim) > 1 else 1) * SHEET_SCALE.get((cid, kind), 1.0)
             said = run([str(sheet), str(dest), *names.split(), "--scale", str(SCALE), "--ref-dim", d, "--ref-val", str(ref), "--ref-pick", pick, *solo])
             scales.append(float(said.split("(scale ")[1].split(")")[0]))
     if cid in NEW_IDS and (dest / "perch_fwd.webp").exists():

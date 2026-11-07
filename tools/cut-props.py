@@ -1,11 +1,13 @@
 #!/usr/bin/env -S uv run --with pillow --with numpy --with scipy python
 """Cuts the props sheet (things on a magenta background) into transparent WebP files.
 
-Usage: tools/cut-props.py <sheet.png> <out-dir> <ts-file> name1 ... nameN [--height 3]
+Usage: tools/cut-props.py <sheet.png> <out-dir> <ts-file> name1 ... nameN [--height 3] [--grow 18]
 
 Things are read in grid order (left to right, top to bottom). Each one is trimmed and saved with its
-bottom edge as the base. Its height in pixels is --height times its size in PROP_HEIGHT (so it stays
-sharp at the large size on a Retina screen). The width to height ratio of every drawing goes into
+bottom edge as the base. Its height in pixels is --height times its size in PROP_HEIGHT or SPOT_HEIGHT
+(so it stays sharp at the large size on a Retina screen). A drawing made of loose bits (a row of
+pellets) stays one thing when --grow (pixels the bits are joined across) is larger than the gaps.
+The width to height ratio of every drawing goes into
 <ts-file>, because the core cuts broken things into pieces and needs their shape (rows of drawings
 cut from other sheets are kept).
 
@@ -27,12 +29,21 @@ if "--height" in args:
     i = args.index("--height")
     height_k = float(args[i + 1])
     del args[i : i + 2]
+grow = 18
+if "--grow" in args:
+    i = args.index("--grow")
+    grow = int(args[i + 1])
+    del args[i : i + 2]
 sheet, out_dir, ts_file, names = Path(args[0]), Path(args[1]), Path(args[2]), args[3:]
 out_dir.mkdir(parents=True, exist_ok=True)
 
 # Sizes from the core, so the drawings and the physics agree.
 mess_ts = (Path(__file__).parent.parent / "src/core/mess.ts").read_text()
-heights = {k: float(v) for k, v in re.findall(r"(\w+): (\d+)", re.search(r"PROP_HEIGHT[^{]*\{([^}]*)\}", mess_ts).group(1))}
+heights = {}
+for table in ("PROP_HEIGHT", "SPOT_HEIGHT"):
+    found_table = re.search(table + r"[^{]*\{([^}]*)\}", mess_ts)
+    if found_table:
+        heights.update({k: float(v) for k, v in re.findall(r"(\w+): (\d+)", found_table.group(1))})
 
 img = np.asarray(Image.open(sheet).convert("RGB")).astype(np.float32)
 r, g, b = img[..., 0], img[..., 1], img[..., 2]
@@ -49,7 +60,7 @@ rgb = np.clip((img - (1.0 - a3) * bg) / a3, 0, 255)
 rgb[alpha >= 0.999] = img[alpha >= 0.999]
 
 mask = alpha > 0.5
-blobs, n = ndimage.label(ndimage.binary_dilation(mask, iterations=18))
+blobs, n = ndimage.label(ndimage.binary_dilation(mask, iterations=grow))
 sizes = ndimage.sum(mask, blobs, index=range(1, n + 1))
 keep = [i + 1 for i in np.argsort(sizes)[::-1][: len(names)]]
 if len(keep) < len(names):

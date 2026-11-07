@@ -8,7 +8,7 @@ A cat that lives on your desktop and does whatever it wants.
 
 It walks along the tops of your windows, naps on the Dock, sits on the thing you're reading and ignores you when you call it. Pet it and it purrs, for a while. Poke it and it reacts like the animal it is. It's not useful, and that's the point.
 
-Turn the chaos level up and it gets worse. Mugs, plants and glasses show up on your windows and it pushes them off, slowly, while looking at you. They break into pieces on the floor. It claws title bars, chases flies, and at gremlin it runs laps across your windows and lands hard enough to crack one. None of it is real: the mess is drawn on the cat's own see-through layer, your windows are never touched, and Panic clears it all.
+Turn the chaos level up and it gets worse. Mugs, plants and glasses show up on your windows and it pushes them off, slowly, while looking at you. They break into pieces on the floor. It claws title bars, chases flies, and at gremlin it runs laps across your windows and lands hard enough to crack one. Once in a while it has to go, so it pees or poops right there on your window, looks back at it, and (if it's a cat) turns round and covers it up. Click the mess to clean it, or wait and it dries up. Never at chill. None of it is real: the mess is drawn on the cat's own see-through layer, your windows are never touched, and Panic clears it all.
 
 Move your cursor close and it looks at it, its head following it all the way round, up, over its shoulder, and a tilt of the head when you stop. Sometimes it follows you around and pesters you, or decides the cursor is prey and pounces on it. At gremlin, move the cursor fast near it and it chases it across your windows. Each animal has its own toy: a red yarn ball, a catnip fish, a stolen sock, a tennis ball, a carrot, an acorn and so on. Grab the toy with the mouse and throw it (or pick "Throw its toy" in the menu) and the animal decides what to do about it: the puppy fetches it and drops it at your feet, the fox runs off with it, the squirrel buries it, a cat might just bat it about or ignore it. Drag the window it's sitting on and it rides along; fling it and the animal (and the mug next to it) goes flying. Switch to another desktop and it stays behind, then wanders over a bit later from the side you came from, full-screen apps included (a treat from the menu calls it over right away).
 
@@ -41,7 +41,7 @@ After that it lives in the menu bar. Pick a character, set the chaos level, give
 - It can get in your way, on purpose. It never types, clicks, scrolls, moves your cursor, closes anything or sends anything. A check in CI fails the build if code that fakes input shows up.
 - No screenshots or screen capture, ever. It reads window positions, idle time and whether the camera or mic is on, nothing else.
 - It backs off in meetings, full-screen videos and presentations, and screen sharing, and there's a panic hotkey.
-- Everything runs locally. No accounts, no analytics, no cloud. The one thing it fetches on its own is the update check, a small file from GitHub with nothing about you in it, and you can turn it off. An optional small local model (through [Ollama](https://ollama.com)) plans what the cat does next and gives it thoughts in a little bubble. Turn it on in the menu and, if Ollama or the model is missing, the app offers to set them up (it asks first and shows the sizes). Without it a rules brain does the same job.
+- Everything runs locally. No accounts, no analytics, no cloud. The one thing it fetches on its own is the update check, a small file from GitHub with nothing about you in it, and you can turn it off. An optional small local model (through [Ollama](https://ollama.com)) plans what the cat does next and gives it thoughts in a little bubble. Turn it on in the menu and, if Ollama or the model is missing, the app offers to set them up (it asks first and shows the sizes). Without it a rules brain does the same job, and every move still happens: the toy, the chase, the potty, all of it.
 
 The full list is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).
 
@@ -54,7 +54,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. Drag the pretend windows (slowly, then fast), hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Drag its toy and throw it, or press Throw toy. Try the Meeting and Panic switches, the chaos level, the desktop arrows, its ball, and "Make up a trick".
+Open http://localhost:5173. Drag the pretend windows (slowly, then fast), hover over the cat to pet it, drag it to pick it up, shake it to shoo it, click it to poke it. Drag its toy and throw it, or press Throw toy. Press Has to pee or Has to poop to skip the wait. Try the Meeting and Panic switches, the chaos level, the desktop arrows, its ball, and "Make up a trick".
 
 To build the Mac app from source instead of downloading it (needs Rust):
 

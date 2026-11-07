@@ -517,7 +517,7 @@ $("throwtoy").addEventListener("click", throwToy);
 $("addwin").addEventListener("click", addWindow);
 preloadProps();
 // Mischief on demand, to see it without waiting for the cat to feel like it.
-const doNow = (intent: "knock_off" | "claw" | "hunt" | "zoomies" | "knock_toy" | "play_cursor" | "follow", target: string): void => {
+const doNow = (intent: "knock_off" | "claw" | "hunt" | "zoomies" | "knock_toy" | "play_cursor" | "follow" | "pee" | "poop", target: string): void => {
   start({ intent, target, approach: intent === "zoomies" ? "run" : "walk", stay_sec: 20, mood: "smug" });
   log(`you asked for ${intent}`);
 };
@@ -585,6 +585,8 @@ $("claw").addEventListener("click", () => {
 });
 $("hunt").addEventListener("click", () => doNow("hunt", "here"));
 $("zoom").addEventListener("click", () => doNow("zoomies", "here"));
+$("pee").addEventListener("click", () => doNow("pee", "here"));
+$("poop").addEventListener("click", () => doNow("poop", "here"));
 $("closewin").addEventListener("click", closeWindow);
 
 function setBrain(kind: string): void {
@@ -639,7 +641,7 @@ if (byTimer) setTimeout(() => frame(performance.now()), 0);
 else requestAnimationFrame(frame);
 
 /**
- * ?scene=knock|shatter|claw|hunt|zoom sets up a bit of gremlin mischief a second after loading, to
+ * ?scene=knock|shatter|claw|hunt|zoom|pee|poop sets up a bit of gremlin mischief a second after loading, to
  * look at it (or record it) without waiting for the cat to feel like it. ?scene=ball brings out its
  * own toy (each animal has its own; ?character=<id> picks the animal), ?scene=fetch throws it for the animal to react to, ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
  */
@@ -667,6 +669,7 @@ if (scene) {
     } else if (scene === "claw") doNow("claw", win.id);
     else if (scene === "hunt") doNow("hunt", "here");
     else if (scene === "zoom") doNow("zoomies", "here");
+    else if (scene === "pee" || scene === "poop") doNow(scene, win.id);
     else if (scene === "ball") doNow("knock_toy", "here");
     else if (scene === "fetch") {
       // ?do=fetch|carry_toy|stash_toy|nose_toy skips the animal's own choice.
@@ -691,6 +694,7 @@ if (scene) {
       decals: cat.mess.decals.length,
       strips: cat.mess.strips.length,
       fly: cat.mess.fly ? cat.mess.fly.state : null,
+      spots: cat.mess.spots.map((q) => [q.kind, Math.round(q.x), Math.round(q.y), q.windowId]),
       frames: frameCount,
       plats: (cat.mess as unknown as { platforms: { id: string; x1: number; x2: number; y: number }[] }).platforms.map((q) => [q.id, Math.round(q.x1), Math.round(q.x2), Math.round(q.y)]),
       shardY: cat.mess.shards.map((q) => [q.kind, Math.round(q.x), Math.round(q.y)]),

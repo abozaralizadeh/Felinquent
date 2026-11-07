@@ -16,6 +16,7 @@ for dir in "${dirs[@]}"; do
   id=$(basename "$dir")
   # Everything this script makes, so a shorter chain leaves nothing stale behind.
   rm -f "$dir"*[0-9]t[0-9].webp "$dir"groom[0-9][un][0-9].webp "$dir"{stand,sit,sit2,sitting_down,knead_a,knead_b,lowering,loaf2,drowsy,curl,waking,wake,presneeze}[tvdlfmp][0-9].webp "$dir"paw[0-9][up][0-9].webp
+  rm -f "$dir"stand[jocz][0-9].webp "$dir"{pee1,pee2,poop1,poop2,pottyback,cover1,cover2,pawshake,sheepish}[tjuocz][0-9].webp
   rm -f "$dir"{sit,stand}[ghkwxqby][0-9].webp "$dir"groom[27]y[0-9].webp "$dir"{sg_,tg_,sq_,sb_,tq_,tb_,lick,chest,lips,perch_,peek,loaf,sprawl,roll,belly,bow_,hop_,sniff,dig,stalk,howl,bark,giggle,chatter,cross,angry,hiss,puff,annoyed,fluster,shy,beg,headbutt,proud}*[tuvwxgchky][0-9].webp
 
   # First line up the sitting drawings on their feet and haunches, so the body does not slide while
@@ -40,6 +41,11 @@ for dir in "${dirs[@]}"; do
   $A "$dir" sit sq_down sq_level sq_up sb_down sb_level sb_up sb_high sg_tilt sg_tiltyou --min-iou 0.6
   $A "$dir" stand tq_down tq_level tq_up tb_down tb_level tb_up tb_high tg_tilt tg_tiltyou --min-iou 0.6
   $A "$dir" sit lick1 lick2 lick3 lick4 lick5 chest1 chest2 lips1 lips2 --min-iou 0.55
+  # Nature calling: the squat (or a dog's lifted leg) and the hunched squat are one body each, only the
+  # eyes and the head move; covering it is one body with a paw (or a hind leg) going.
+  $A "$dir" pee1 pee2 --min-iou 0.6
+  $A "$dir" poop1 poop2 sheepish --min-iou 0.55
+  $A "$dir" cover1 cover2 --min-iou 0.5
   $A "$dir" angry1 hiss1 hiss2 --min-iou 0.5
   $A "$dir" loaf loaf_blink loaf_up loaf_back loaf_drowse --min-iou 0.6
   $A "$dir" perch_fwd perch_back perch_down perch_doze perch_kick perch_you --min-iou 0.6
@@ -129,6 +135,22 @@ for dir in "${dirs[@]}"; do
   $T "$dir" 2 once sit lips1 --tag y
   $T "$dir" 2 loop lips1 lips2
   $T "$dir" 2 once lips1 sit --tag y
+
+  # Nature calling, with three in-betweens a link (slow, big moves that have to glide): down into the
+  # squat (a dog lifts a leg) and the eyes closing; down into the hunched squat, straining, and a
+  # sheepish look at you and back; up out of either into a look back at it, then standing; covering it
+  # (a cat rakes with a front paw, a dog kicks back); a paw shake (a dog's double kick).
+  $T "$dir" 3 once stand pee1 --tag j
+  $T "$dir" 3 loop pee1 pee2
+  $T "$dir" 3 once stand poop1 --tag o
+  $T "$dir" 3 loop poop1 poop2
+  $T "$dir" 3 once poop1 sheepish --tag u
+  $T "$dir" 3 once sheepish poop1 --tag u
+  $T "$dir" 3 once stand cover1 --tag c
+  $T "$dir" 3 loop cover1 cover2
+  $T "$dir" 3 once cover1 stand --tag c
+  $T "$dir" 3 once stand pawshake --tag z
+  $T "$dir" 3 once pawshake stand --tag z
 
   # On a ledge: the tail swinging, looking down, dozing, a lazy kick, looking at you. Peeking: along
   # the ledge, ducking, up high.

@@ -18,7 +18,10 @@ export type Anim =
   // Watching something (the cursor): sitting or standing still, only the head turns to follow it.
   | "watch" | "watch_stand"
   // Licking its lips (after a treat, or just because), sitting.
-  | "lick_lips";
+  | "lick_lips"
+  // It has to go (ADR-048): the squat (a dog lifts a leg to pee), a look back at it, covering it up
+  // (a cat rakes with a front paw, a dog kicks back), and a shake of the paw after.
+  | "pee" | "poop" | "potty_look" | "cover" | "paw_shake";
 
 /**
  * Something the animal does to the things around it (mess.ts): a paw on a mug, a nudge toward the
@@ -37,7 +40,9 @@ export type Fx =
   /** The toy picked up in the mouth, let go of, or buried where the animal is. */
   | { fx: "pick_up"; prop: string }
   | { fx: "drop_toy" }
-  | { fx: "bury" };
+  | { fx: "bury" }
+  /** It went: the puddle or the pile shows up under its rear. sec: how long it goes on (a puddle spreads that long). */
+  | { fx: "potty"; kind: "pee" | "poop"; sec: number };
 
 /** What it does with its toy: bring it back to you, take it off somewhere, bury it, or give it a sniff and a nudge. */
 export type ToyTask = "fetch" | "carry" | "stash" | "nose";
@@ -167,7 +172,7 @@ const DO_ANIM: Partial<Record<IntentName, Anim>> = {
   spook: "puffed", sprawl: "sprawl", tumble: "tumble", shy: "shy", react: "idle_sit",
   knock_off: "push_toy", claw: "scratch", hunt: "pounce",
   fetch: "watch_stand", carry_toy: "watch_stand", stash_toy: "watch_stand", nose_toy: "sniff", chase_cursor: "pounce",
-  invite_play: "play_bow", yawn: "yawn", look_around: "look",
+  invite_play: "play_bow", yawn: "yawn", look_around: "look", pee: "pee", poop: "poop",
 };
 
 /**
@@ -606,6 +611,7 @@ export class Executor {
       return [...steps, ...open, { k: "do", anim: "watch", sec: 0.8, face: "cursor" }, { k: "cursor", mode, until: this.clock + Math.max(8, intent.stay_sec) }];
     }
     if (intent.intent === "claw" && cur && !intent.script) return [...steps, ...this.clawSteps()];
+    if ((intent.intent === "pee" || intent.intent === "poop") && cur && !intent.script) return [...steps, ...this.pottySteps(intent, cur)];
     if (intent.intent === "hunt" && cur && !intent.script) return [...steps, ...this.huntSteps(cur)];
     // Scripted scenes: a reaction to a click, and the little routines of the playful intents.
     const script = intent.script ?? sceneFor(intent.intent, intent.stay_sec, this.rng);
@@ -987,6 +993,35 @@ export class Executor {
     return steps;
   }
 
+  /**
+   * It has to go (ADR-048): a sniff for the right spot, the squat (a dog lifts a leg to pee), a look
+   * back at what it did, then a cat, a fox or a raccoon turns round and rakes to cover it, a dog
+   * kicks back without looking, and a rabbit or a squirrel just leaves it. A shake of a paw, and
+   * after a poop, now and then, the zoomies (a cat most of all).
+   */
+  private pottySteps(intent: Intent, cur: Platform): Step[] {
+    const r = this.rng;
+    const kind = this.instinct.kind;
+    const poop = intent.intent === "poop";
+    const sec = poop ? r.range(6, 10) : r.range(4, 7);
+    const f = this.body.facing;
+    const steps: Step[] = [
+      { k: "do", anim: "sniff", sec: r.range(1.2, 2.4) },
+      { k: "do", anim: poop ? "poop" : "pee", sec, fx: { fx: "potty", kind: poop ? "poop" : "pee", sec }, fxAt: poop ? sec * 0.7 : 0.8 },
+      { k: "do", anim: "potty_look", sec: 1.3 },
+    ];
+    if (kind === "cat" || kind === "fox" || kind === "raccoon") steps.push({ k: "do", anim: "cover", sec: r.range(2, 4), face: (-f) as 1 | -1 });
+    else if (kind === "dog" && r.next() < 0.8) steps.push({ k: "do", anim: "cover", sec: r.range(1.6, 2.8) });
+    if (r.next() < 0.5) steps.push({ k: "do", anim: "paw_shake", sec: 1.2 });
+    const zoom = kind === "cat" ? 0.45 : kind === "dog" ? 0.35 : 0.2;
+    if (poop && r.next() < zoom) {
+      if (this.wild >= 2) steps.push(...this.zoomChain(cur, 8));
+      else for (let i = 0; i < 3; i++) steps.push({ k: "walk", x: r.range(cur.x1 + 20, cur.x2 - 20), speed: SPEED.run });
+      steps.push({ k: "do", anim: "idle_sit", sec: 1.5 });
+    } else steps.push({ k: "do", anim: "proud", sec: 2.4 });
+    return steps;
+  }
+
   /** Zoomies for real: flat out from window to window, three or four of them. */
   private zoomChain(cur: Platform, sec: number): Step[] {
     const steps: Step[] = [];
@@ -1270,7 +1305,9 @@ export class Executor {
     const b = this.body;
     if (fx.fx === "pick_up") this.carrying = fx.prop;
     else if (fx.fx === "bury" || fx.fx === "drop_toy") this.carrying = null;
-    this.outbox.push({ type: "fx", fx, x: b.x, y: b.y, dir: b.facing, windowId: this.ridingWindow });
+    // It goes under its rear, not under its middle.
+    const x = fx.fx === "potty" ? b.x - b.facing * this.size.w * 0.3 : b.x;
+    this.outbox.push({ type: "fx", fx, x, y: b.y, dir: b.facing, windowId: this.ridingWindow });
   }
 
   private land(p: Platform, speed = 0): void {

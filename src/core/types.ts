@@ -135,6 +135,9 @@ export type IntentName =
   | "invite_play"
   | "yawn"
   | "look_around"
+  /** It has to go, now and then (ADR-048): a puddle or a little pile, on a window top or the Dock. */
+  | "pee"
+  | "poop"
   | "leave";
 
 export interface Intent {

@@ -36,6 +36,8 @@ export interface Instinct {
   runs: number;
   /** How many pokes it takes before the mood turns, a click each. A dog shrugs off several, a cat none. */
   patience: number;
+  /** How much more often than a cat it has to pee and to poop (ADR-048). Missing means [1, 1]. */
+  potty?: [number, number];
 }
 
 const CAT: Instinct = {
@@ -72,6 +74,7 @@ const DOG: Instinct = {
   rest: [7, 16],
   runs: 0.45,
   patience: 3,
+  potty: [1.3, 1],
 };
 
 const FOX: Instinct = {
@@ -129,6 +132,7 @@ const CHIHUAHUA: Instinct = {
   rest: [6, 14],
   runs: 0.35,
   patience: 2,
+  potty: [1.5, 1],
 };
 
 const RABBIT: Instinct = {
@@ -148,6 +152,7 @@ const RABBIT: Instinct = {
   rest: [10, 24],
   runs: 0.15,
   patience: 1.2,
+  potty: [1, 1.8],
 };
 
 const SQUIRREL: Instinct = {
@@ -166,6 +171,7 @@ const SQUIRREL: Instinct = {
   rest: [6, 14],
   runs: 0.4,
   patience: 1.3,
+  potty: [1, 1.4],
 };
 
 export const INSTINCTS: Record<Kind, Instinct> = { cat: CAT, dog: DOG, fox: FOX, raccoon: RACCOON, rabbit: RABBIT, squirrel: SQUIRREL };

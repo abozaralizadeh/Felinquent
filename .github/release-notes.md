@@ -2,15 +2,13 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-You can throw it its toy now! Grab the toy with the mouse (or pick "Throw its toy" in the menu) and fling it. Your animal sees where it lands and decides what to do: the puppy brings it back to you, the squirrel buries its acorn. Its head follows your pointer all the way round, the tongue really moves when it washes, and at gremlin it sometimes runs after your pointer.
+Your pet has to go now and then! Rarely: a few times a day at normal, more at gremlin, never at chill. It sniffs a spot on your window, pees or poops, looks back at it, and a cat covers it up. Click the mess to clean it, or wait and it dries up. All drawn, your windows are fine. And with the local model off every move still happens: the toy, the chase, all of it.
 
-## More about 0.1.8
+## More about 0.1.9
 
-After a swipe to another desktop you don't see the cat flash in its old spot any more. The local model doesn't freeze it while it thinks, and it now gets the screen in words: where your pointer is from the animal's side, where the toy is, which apps are near (names only, never titles). Nothing looks at your screen.
+It holds on in a meeting, on a full-screen video and in quiet hours. Each animal does it its own way: the dog kicks back without turning round, the rabbit leaves a few pellets and hops off, and a cat sometimes gets the zoomies right after. Every animal got nine new drawings with smooth in-betweens, so the download is DMGSIZE MB (it was 109).
 
-Every animal got 27 new drawings: the head three quarters toward you, looking back over its shoulder, a head tilt, and a tongue that moves. That makes the download 109 MB (it was 97).
-
-New in 0.1.7 too, if you skipped it: it shows up on full-screen apps, and goes outside while one plays a video or shows slides.
+New in 0.1.8 too, if you skipped it: grab its toy and throw it, and its head follows your pointer all the way round.
 
 ## Updating
 

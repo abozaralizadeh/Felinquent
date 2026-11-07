@@ -70,6 +70,19 @@ const LIVELY: ReadonlySet<IntentName> = new Set<IntentName>(["chase_cursor", "fe
 
 /** What it may do about its toy when you throw it: the toy jobs, a bat, or a wash to show it doesn't care. */
 const TOY_REACTIONS: ReadonlySet<IntentName> = new Set<IntentName>(["fetch", "carry_toy", "stash_toy", "nose_toy", "knock_toy", "groom"]);
+/** What may follow when it has been: a race about (mostly after a poop), a wash, a sniff. */
+const POTTY_AFTER: ReadonlySet<IntentName> = new Set<IntentName>(["zoomies", "groom", "sniff", "scratch", "look_around", "wander"]);
+/**
+ * How many waking hours between two pees and two poops at each chaos level (ADR-048): rare on
+ * purpose, and never at chill. Asleep it builds up slower. Each animal kind changes it (species.ts).
+ */
+const POTTY_HOURS: Record<ChaosLevel, { pee: number; poop: number } | null> = {
+  chill: null,
+  normal: { pee: 5, poop: 12 },
+  gremlin: { pee: 3, poop: 7 },
+};
+/** When it has to go and the governor said no (a meeting, the budget), it asks again after this. */
+const POTTY_RETRY_MS = 45_000;
 /** What it can be doing and still drop it to chase a cursor that shoots past. */
 const CHASE_FROM: ReadonlySet<IntentName> = new Set<IntentName>(["watch", "groom", "stare", "look_around", "yawn", "wander", "sniff", "perch", "peek", "tour"]);
 /** How often per second a cursor racing past sets it off (while it moves fast nearby), and how long before it may again. */
@@ -127,6 +140,13 @@ export class Mind {
   private epoch = 0;
   /** You threw the toy: the next decision is about it. */
   private toyCall = false;
+  /** How badly it has to pee and to poop (ADR-048). From 1 it has to go, and that comes first. */
+  potty = { pee: 0, poop: 0 };
+  private pottyRng = seeded(4409);
+  private pottyCall = false;
+  private pottyNoted = false;
+  private pottyRetryMs = -Infinity;
+  private pottyStarted = false;
   private lastChaseMs = -Infinity;
   /** Its own dice for the quick impulses, so a seeded run of the rest is unchanged. */
   private impulseRng = seeded(3301);
@@ -254,6 +274,8 @@ export class Mind {
       restoreMul: instinctFor(this.personality.species).restore * ENERGY_BY_CHAOS[this.settings.chaos].restore,
     });
 
+    this.stepPotty(world, dtSec);
+
     const state = respectState(world);
     if (state.kind !== this.lastRespect) {
       const was = this.lastRespect;
@@ -308,7 +330,9 @@ export class Mind {
 
     if (this.impulse(world, dtSec, events)) return events;
     if (this.current) return events;
-    if (!this.toyCall && (now - this.lastDecisionMs < this.gapMs || now < this.restUntilMs)) return events;
+    // It has to go: that doesn't wait for the usual pause between actions.
+    if (this.pottyDue(now)) this.pottyCall = true;
+    if (!this.toyCall && !this.pottyCall && (now - this.lastDecisionMs < this.gapMs || now < this.restUntilMs)) return events;
     await this.decide(world, events);
     for (const message of this.llmProblems.splice(0)) events.unshift({ type: "llm_problem", message });
     return events;
@@ -400,7 +424,64 @@ export class Mind {
       rng: this.d.rng,
       propWindows: this.d.propWindows?.() ?? [],
       toy: this.d.toy?.() ?? null,
+      potty: { ...this.potty },
     };
+  }
+
+  /**
+   * The need to go builds up slowly while it is awake (slower asleep), from a random start, so it
+   * never runs like a clock. Once it has to, it says so, and a sleeping one gets up for it.
+   */
+  private stepPotty(world: WorldSnapshot, dtSec: number): void {
+    if (!this.pottyStarted) {
+      // A random start (from the clock, so a test repeats exactly), never on a schedule.
+      this.pottyStarted = true;
+      this.pottyRng = seeded(Math.floor(world.nowMs / 1000) % 2_147_483_647);
+      this.potty = { pee: this.pottyRng.range(0, 0.6), poop: this.pottyRng.range(0, 0.5) };
+    }
+    const hours = POTTY_HOURS[this.settings.chaos];
+    if (!hours) return;
+    const [kp, kq] = instinctFor(this.personality.species).potty ?? [1, 1];
+    const slow = this.sleeping ? 0.4 : 1;
+    const dt = Math.max(0, Math.min(dtSec, 600));
+    this.potty.pee = Math.min(3, this.potty.pee + (dt * kp * slow) / (hours.pee * 3600));
+    this.potty.poop = Math.min(3, this.potty.poop + (dt * kq * slow) / (hours.poop * 3600));
+    const which = this.potty.poop >= 1 ? "poop" : this.potty.pee >= 1 ? "pee" : null;
+    if (!which) {
+      this.pottyNoted = false;
+      return;
+    }
+    const now = world.nowMs;
+    if (!this.pottyNoted) {
+      this.pottyNoted = true;
+      this.note(now, which === "pee" ? "i really need to pee" : "i need to go. the other one.");
+    }
+    if (this.sleeping && Math.max(this.potty.pee, this.potty.poop) > 1.25 && respectState(world).kind === "none") this.wake(now);
+  }
+
+  private pottyDue(now: number): boolean {
+    if (!POTTY_HOURS[this.settings.chaos] || this.sleeping) return false;
+    return (this.potty.pee >= 1 || this.potty.poop >= 1) && now >= this.pottyRetryMs;
+  }
+
+  /** It went: the spot is there. The need starts again from a little below nothing. */
+  relieved(kind: "pee" | "poop", now: number): void {
+    if (kind === "pee") this.potty.pee = -this.pottyRng.range(0, 0.35);
+    else {
+      this.potty.poop = -this.pottyRng.range(0, 0.3);
+      // Mostly both at once.
+      this.potty.pee = Math.min(this.potty.pee, this.pottyRng.range(-0.2, 0.3));
+    }
+    this.pottyNoted = false;
+    this.note(now, kind === "pee" ? "i peed on the screen. it had to happen." : "i pooped on the screen. you're welcome.");
+    this.d.log?.("potty", { kind });
+  }
+
+  /** Test and debug hook: it has to go right now. */
+  forcePotty(kind: "pee" | "poop", level = 1.05): void {
+    this.pottyStarted = true;
+    this.potty[kind] = level;
+    this.pottyRetryMs = -Infinity;
   }
 
   /** urgent: something just happened that deserves a thought now (the toy), so the 15 s gap doesn't apply. */
@@ -421,6 +502,8 @@ export class Mind {
     const epoch = this.epoch;
     const toyCall = this.toyCall;
     this.toyCall = false;
+    const pottyCall = this.pottyCall && !toyCall;
+    this.pottyCall = false;
     const rulesCtx = this.ctx(world);
     const gov = this.d.governor;
     let options: Option[] = gov.filter(candidates(rulesCtx), world, this.needs);
@@ -452,6 +535,11 @@ export class Mind {
     const toyOptions = toyCall ? options.filter((o) => TOY_REACTIONS.has(o.intent)) : [];
     let toyPlanned = false;
     if (toyOptions.length > 0) toyPlanned = await this.startToyBout(world, toyOptions, brainCtx);
+    // It has to go: a short bout that starts with that. Not allowed right now (a meeting, the budget,
+    // chill): it holds on and asks again in a bit.
+    const pottyOptions = pottyCall ? options.filter((o) => o.intent === "pee" || o.intent === "poop") : [];
+    if (pottyCall) this.pottyRetryMs = now + POTTY_RETRY_MS;
+    if (pottyOptions.length > 0) toyPlanned = await this.startPottyBout(world, pottyOptions, options, brainCtx);
     // A new bout when there is none yet, when this one has run its course, or when the animal is worn out.
     const worn = this.needs.energy < 0.25 && this.bout !== null && this.bout.kind !== "rest";
     if (!toyPlanned && options.length > 0 && (!this.bout || now >= this.bout.untilMs || worn)) await this.startBout(world, options, brainCtx);
@@ -607,6 +695,36 @@ export class Mind {
     return true;
   }
 
+  /**
+   * It has to go: the model (or the rules) plans the bout, with the pee or the poop first wherever
+   * the plan put it (else where the rules say), and what comes after: zoomies, a wash, a sniff.
+   */
+  private async startPottyBout(world: WorldSnapshot, potty: Option[], options: Option[], brainCtx: BrainContext): Promise<boolean> {
+    const now = world.nowMs;
+    const after = options.filter((o) => POTTY_AFTER.has(o.intent));
+    const ctx: PlanContext = {
+      ...brainCtx,
+      bouts: [{ kind: "explore", weight: 1, options: [...potty, ...after] }],
+      fixedBout: "explore",
+      happened: this.happenedLines(now),
+      lastBout: this.lastBout,
+      busyForMin: this.busySinceMs === null ? 0 : (now - this.busySinceMs) / 60_000,
+      things: this.d.things?.() ?? [],
+    };
+    const got = await this.askPlan(ctx, world, true);
+    const first = [...potty].sort((a, b) => b.score - a.score)[0] as Option;
+    const planned = got?.plan.steps.find((x) => x.intent === first.intent);
+    const go = planned ?? intentFromOption(first, this.ctx(world), this.settings.chaos, false);
+    const steps = [go, ...(got?.plan.steps ?? []).filter((x) => x.intent !== "pee" && x.intent !== "poop")];
+    const thought = got?.plan.thought ?? this.writtenLine(world, "explore");
+    if (thought) steps[0] = { ...(steps[0] as Intent), thought };
+    const ins = instinctFor(this.personality.species);
+    this.bout = { kind: "explore", startedMs: now, untilMs: now + boutLengthMs("explore", this.settings.chaos, this.d.rng, ins.gap), steps, source: got?.source ?? "rules" };
+    this.lastBout = "explore";
+    this.d.log?.("bout", { kind: "explore", source: got?.source ?? "rules", steps: steps.map((x) => x.intent), about: first.intent });
+    return true;
+  }
+
   /** Starts the next bout: asks for a plan and puts the opening move (a stretch, a wash) first. */
   private async startBout(world: WorldSnapshot, options: Option[], brainCtx: BrainContext): Promise<void> {
     const now = world.nowMs;
@@ -658,6 +776,8 @@ export class Mind {
       this.d.memory.log({ atMs: world.nowMs, kind: "sat_on", app });
     }
     if (intent.intent === "gift" || intent.intent === "hairball") this.d.memory.log({ atMs: world.nowMs, kind: intent.intent });
+    // A go at it: if it gets interrupted before it went, it tries again in a few minutes, not at once.
+    if (intent.intent === "pee" || intent.intent === "poop") this.pottyRetryMs = world.nowMs + 3 * 60_000;
     this.setCurrent(intent, world.nowMs, source, events);
   }
 
@@ -832,6 +952,8 @@ export class Mind {
   giveTreat(world: WorldSnapshot): MindEvent[] {
     this.epoch++;
     this.needsEvent("treat");
+    // What goes in comes out, eventually.
+    this.potty.poop += 0.03;
     this.note(world.nowMs, "the human gave me a treat");
     this.learn(true, world.nowMs);
     this.d.memory.log({ atMs: world.nowMs, kind: "treat" });

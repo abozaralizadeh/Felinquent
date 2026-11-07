@@ -136,6 +136,42 @@ export interface Fly {
   bornMs: number;
 }
 
+/**
+ * What it leaves behind when it has to go, now and then (ADR-048). The puddle is drawn in code, the
+ * rest are drawings (public/props/<kind>.webp). A spot sticks to the window it was made on, dries up
+ * or fades after a while, and a click cleans it at once.
+ */
+export type SpotKind = "puddle" | "poop" | "poop_log" | "pellets" | "pellets_row";
+/** Height in pixels at the medium size of each drawn spot (tools/cut-props.py reads this table too). */
+export const SPOT_HEIGHT: Record<Exclude<SpotKind, "puddle">, number> = {
+  poop: 16, poop_log: 9, pellets: 9, pellets_row: 6,
+};
+
+export interface Spot {
+  id: number;
+  kind: SpotKind;
+  /** The window it is on, or null on the Dock or the floor. */
+  windowId: string | null;
+  /** From the window's left edge, so it rides along. */
+  dx: number;
+  /** Bottom centre, screen coordinates. */
+  x: number;
+  y: number;
+  /** How wide the puddle gets (a drawing has its own width). */
+  w: number;
+  seed: number;
+  bornMs: number;
+  /** A puddle spreads while it pees. */
+  growMs: number;
+  ttlMs: number;
+  /** A click cleaned it: it sparkles and is gone. */
+  cleanedMs?: number;
+  /** Little runs down the front of the window a puddle is on. */
+  drips: number;
+  /** A fly has been to this one already. */
+  flown?: boolean;
+}
+
 /** What lies about on one desktop. */
 export interface MessState {
   props: Prop[];
@@ -143,6 +179,7 @@ export interface MessState {
   decals: Decal[];
   strips: Strip[];
   fly: Fly | null;
+  spots: Spot[];
 }
 
 export type MessEvent =
@@ -164,6 +201,12 @@ const MAX_STRIPS = 40;
 /** Things on the floor (the Dock) fade after this long, so the desktop cleans itself up. */
 const FLOOR_LINGER_MS = 45_000;
 const FADE_MS = 4_000;
+/** How long a spot stays, shortest and longest, in minutes: a puddle dries, the rest fade away. */
+const SPOT_LIFE: Record<SpotKind, [number, number]> = { puddle: [6, 9], poop: [12, 20], poop_log: [12, 20], pellets: [8, 12], pellets_row: [8, 12] };
+/** The sparkle after a click. */
+const CLEAN_MS = 700;
+/** The last part of a spot's life, when it dries up or fades. */
+const SPOT_FADE_MS = 40_000;
 /** How many things stand on windows at once, and how often a new one shows up. */
 const CLUTTER: Record<ChaosLevel, { max: number; every: [number, number] }> = {
   chill: { max: 0, every: [600, 900] },
@@ -243,6 +286,7 @@ export class Mess {
   decals: Decal[] = [];
   strips: Strip[] = [];
   fly: Fly | null = null;
+  spots: Spot[] = [];
   private nextId = 1;
   private ownToy: ToyKind = "yarn";
   private nextSpawnMs: number | null = null;
@@ -266,11 +310,12 @@ export class Mess {
     this.decals = [];
     this.strips = [];
     this.fly = null;
+    this.spots = [];
   }
 
   /** Everything lying about on one desktop, put away while you are on another one (Spaces on the Mac). */
   stash(): MessState {
-    const st: MessState = { props: this.props, shards: this.shards, decals: this.decals, strips: this.strips, fly: this.fly };
+    const st: MessState = { props: this.props, shards: this.shards, decals: this.decals, strips: this.strips, fly: this.fly, spots: this.spots };
     this.clear();
     return st;
   }
@@ -285,6 +330,64 @@ export class Mess {
     this.decals = st.decals;
     this.strips = st.strips;
     this.fly = st.fly;
+    this.spots = st.spots ?? [];
+  }
+
+  /**
+   * It went, standing at x on that window (or on the floor when windowId is null). A puddle spreads
+   * for about as long as it pees (sec); the rest are there at once.
+   */
+  relieve(kind: SpotKind, windowId: string | null, x: number, nowMs: number, sec = 5): Spot | null {
+    const world = this.world;
+    if (!world) return null;
+    const win = windowId ? world.windows.find((w) => w.id === windowId) : undefined;
+    if (windowId && !win) return null;
+    const y = win ? win.bounds.y : this.floorAt(x, world);
+    const life = SPOT_LIFE[kind];
+    const puddle = kind === "puddle";
+    const spot: Spot = {
+      id: this.nextId++,
+      kind,
+      windowId: win ? win.id : null,
+      dx: win ? x - win.bounds.x : x,
+      x,
+      y,
+      w: puddle ? this.rng.range(26, 40) * this.scale : 0,
+      seed: this.rng.next(),
+      bornMs: nowMs,
+      growMs: puddle ? Math.max(1000, sec * 800) : 0,
+      ttlMs: this.rng.range(life[0], life[1]) * 60_000,
+      drips: puddle && win ? 1 + Math.floor(this.rng.next() * 3) : 0,
+    };
+    this.spots.push(spot);
+    // Only a few at once: the oldest goes first.
+    while (this.spots.length > 6) this.spots.shift();
+    return spot;
+  }
+
+  /** The box you click to clean a spot. */
+  spotBox(s: Spot): { x: number; y: number; w: number; h: number } {
+    const pad = 8 * this.scale;
+    if (s.kind === "puddle") return { x: s.x - s.w / 2 - pad, y: s.y - 6 * this.scale - pad, w: s.w + 2 * pad, h: 10 * this.scale + 2 * pad };
+    const h = SPOT_HEIGHT[s.kind] * this.scale;
+    const w = h * (PROP_ASPECT[s.kind] ?? 1.4);
+    return { x: s.x - w / 2 - pad, y: s.y - h - pad, w: w + 2 * pad, h: h + 2 * pad };
+  }
+
+  /** The spot under a point (the cursor), if there is one that can still be cleaned. */
+  spotUnder(x: number, y: number): Spot | undefined {
+    return this.spots.find((s) => {
+      if (s.cleanedMs !== undefined) return false;
+      const b = this.spotBox(s);
+      return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    });
+  }
+
+  /** You clicked it away. */
+  cleanSpot(id: number, nowMs: number): Spot | undefined {
+    const s = this.spots.find((q) => q.id === id && q.cleanedMs === undefined);
+    if (s) s.cleanedMs = nowMs;
+    return s;
   }
 
   /** A resting prop on this window, the one nearest x if there are several. */
@@ -807,6 +910,7 @@ export class Mess {
       this.stepStrips(dt / n, world);
       this.stepFly(dt / n);
     }
+    this.stepSpots(world);
     // Marks fade and go with their window.
     this.decals = this.decals.filter((d) => now - d.bornMs < d.ttlMs && world.windows.some((w) => w.id === d.windowId));
     const out = this.outbox;
@@ -1040,6 +1144,38 @@ export class Mess {
     this.strips = this.strips.filter((s) => !(s.settled && s.settledMs !== undefined && now - s.settledMs > FLOOR_LINGER_MS + FADE_MS));
   }
 
+  /** Spots ride their window, go with it when it closes, dry up, and now and then a poop gets a fly. */
+  private stepSpots(world: WorldSnapshot): void {
+    if (this.spots.length === 0) return;
+    const now = world.nowMs;
+    const windows = new Map<string, WindowInfo>(world.windows.map((w) => [w.id, w]));
+    this.spots = this.spots.filter((s) => {
+      if (s.cleanedMs !== undefined && now - s.cleanedMs > CLEAN_MS) return false;
+      if (now - s.bornMs > s.ttlMs) return false;
+      if (s.windowId) {
+        const w = windows.get(s.windowId);
+        if (!w) return false;
+        s.x = w.bounds.x + s.dx;
+        s.y = w.bounds.y;
+      } else {
+        s.y = this.floorAt(s.x, world);
+      }
+      return true;
+    });
+    // A fly finds a poop that has been there a while, once, and buzzes about it (it can't be caught).
+    if (this.fly) return;
+    for (const s of this.spots) {
+      if (s.kind === "puddle" || s.flown || s.cleanedMs !== undefined || now - s.bornMs < 25_000) continue;
+      s.flown = true;
+      if (this.rng.next() < 0.5) {
+        const h = SPOT_HEIGHT[s.kind] * this.scale;
+        this.flyIn(s.x, s.y - h - 14 * this.scale, this.rng.next() < 0.5 ? -1 : 1, false, now);
+        if (this.fly) (this.fly as Fly).t = 30;
+      }
+      break;
+    }
+  }
+
   private stepFly(dt: number): void {
     const f = this.fly;
     if (!f) return;
@@ -1075,6 +1211,24 @@ export class Mess {
       decals: this.decals.map((d) => ({ ...d, alpha: Math.min(1, ((d.bornMs + d.ttlMs) - (this.world?.nowMs ?? 0)) / 6000) })),
       strips: this.strips.map((s) => ({ x: s.x, y: s.y, rot: s.rot, w: s.w, h: s.h, seed: s.seed, alpha: s.settled && s.settledMs !== undefined ? fade(this.world?.nowMs ?? 0, s.settledMs) : 1 })),
       fly: this.fly ? { x: this.fly.x, y: this.fly.y, t: this.fly.t } : null,
+      spots: this.spots.map((s) => {
+        const now = this.world?.nowMs ?? s.bornMs;
+        const left = s.bornMs + s.ttlMs - now;
+        return {
+          id: s.id,
+          kind: s.kind,
+          x: s.x,
+          y: s.y,
+          w: s.w,
+          seed: s.seed,
+          windowId: s.windowId,
+          grow: s.growMs > 0 ? Math.min(1, (now - s.bornMs) / s.growMs) : 1,
+          alpha: Math.max(0, Math.min(1, left / SPOT_FADE_MS)),
+          cleaned: s.cleanedMs !== undefined ? Math.min(1, (now - s.cleanedMs) / CLEAN_MS) : undefined,
+          drips: s.drips,
+          ageSec: (now - s.bornMs) / 1000,
+        };
+      }),
     };
   }
 }
@@ -1088,4 +1242,6 @@ export interface MessSnapshot {
   decals: (Decal & { alpha: number })[];
   strips: { x: number; y: number; rot: number; w: number; h: number; seed: number; alpha: number }[];
   fly: { x: number; y: number; t: number } | null;
+  /** grow: 0 to 1 while a puddle spreads. alpha: drying up or fading. cleaned: 0 to 1 through the sparkle after a click. */
+  spots: { id: number; kind: SpotKind; x: number; y: number; w: number; seed: number; windowId: string | null; grow: number; alpha: number; cleaned?: number; drips: number; ageSec: number }[];
 }

@@ -34,6 +34,8 @@ interface CatState {
   /** Its toy, where you can grab it, and whether you are holding it (clicks there are ours). */
   toy: Rect | null;
   toyHeld: boolean;
+  /** Puddles and piles: a click there cleans one up (clicks there are ours too). */
+  spots: Rect[];
   t: number;
   character: string;
   /** The mess (mess.ts) and the window shapes it needs to hide marks behind front windows. No titles, no app names. */
@@ -137,7 +139,7 @@ async function main(): Promise<void> {
 
   function applyHit(st: CatState): void {
     // A cat that isn't there (it left, or it's on another desktop) catches no clicks.
-    const onToy = st.toyHeld || (st.toy !== null && inside(st.toy, st.cursor, 4));
+    const onToy = st.toyHeld || (st.toy !== null && inside(st.toy, st.cursor, 4)) || (st.spots ?? []).some((r) => inside(r, st.cursor, 0));
     void setThrough(!onToy && (st.body.hidden || !(inside(st.hit, st.cursor, 8) || st.held)));
   }
 
@@ -466,6 +468,7 @@ async function main(): Promise<void> {
         held: cat.executor.held,
         toy: cat.toyRect,
         toyHeld: cat.mess.holding,
+        spots: cat.spotRects,
         t: now / 1000,
         character: character.id,
         mess: cat.mess.snapshot(),

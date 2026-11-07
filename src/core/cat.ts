@@ -1,5 +1,5 @@
 import { Executor, type ExecEvent } from "./executor";
-import { Mess, type MessEvent, type MessState } from "./mess";
+import { Mess, type MessEvent, type MessState, type SpotKind } from "./mess";
 import { WindowMotion } from "./motion";
 import { Governor } from "./governor";
 import { InMemoryMemory, type Memory } from "./memory";
@@ -113,6 +113,8 @@ export class Cat {
   /** When you last threw the toy or put it down, and the pointer as it was last time (for grabbing the toy). */
   private toyThrownMs: number | null = null;
   private lastPointer: { t: number; down: boolean } | null = null;
+  /** A press that cleaned a spot: the rest of it (to the mouse-up) is not a poke. */
+  private cleaning = false;
 
   constructor(opts: CatOptions = {}) {
     const rng = opts.rng ?? seeded(1);
@@ -436,6 +438,12 @@ export class Cat {
         const kind = (this.mess.props.find((p) => p.state === "carried") ?? this.mess.toy)?.kind;
         this.mess.bury();
         if (kind) this.mind.note(now, `i buried my ${toyName(kind)} where you can't find it`);
+      } else if (f.fx === "potty") {
+        // A puddle, or a pile that looks like the animal: a dog's swirl, a cat's log, a rabbit's pellets.
+        const kind = instinctFor(this.mind.traits.species).kind;
+        const pile: SpotKind = kind === "dog" ? "poop" : kind === "rabbit" ? "pellets" : kind === "squirrel" ? "pellets_row" : "poop_log";
+        this.mess.relieve(f.kind === "pee" ? "puddle" : pile, ev.windowId, ev.x, now, f.sec);
+        this.mind.relieved(f.kind, now);
       }
     } else if (ev.type === "impact") {
       // Only a gremlin comes down hard enough to crack a window.
@@ -503,6 +511,10 @@ export class Cat {
     // while the animal is on another desktop.
     const last = this.lastPointer;
     this.lastPointer = { t: sample.t, down: sample.down };
+    if (this.cleaning) {
+      if (!sample.down) this.cleaning = false;
+      return [];
+    }
     if (this.mess.holding) {
       if (sample.down) this.mess.holdAt(sample.x, sample.y, last ? Math.max(0, (sample.t - last.t) / 1000) : 0);
       else if (this.mess.letGo()) {
@@ -519,6 +531,18 @@ export class Cat {
           this.mind.note(world.nowMs, `the human took my ${toyName(t.kind)} out of my mouth`);
         }
         this.mess.grab(t.id, sample.x, sample.y);
+        return [];
+      }
+    }
+    // A click on a puddle or a pile (not on the animal) cleans it up.
+    if (sample.down && last && !last.down && !this.executor.held) {
+      const spot = this.mess.spotUnder(sample.x, sample.y);
+      const r = this.executor.hitRect();
+      const onAnimal = !this.executor.body.hidden && !this.homeWorld && sample.x >= r.x && sample.x <= r.x + r.w && sample.y >= r.y && sample.y <= r.y + r.h;
+      if (spot && !onAnimal) {
+        this.mess.cleanSpot(spot.id, world.nowMs);
+        this.cleaning = true;
+        if (!this.homeWorld) this.mind.note(world.nowMs, "the human cleaned up after me");
         return [];
       }
     }
@@ -541,6 +565,11 @@ export class Cat {
       }
     }
     return events;
+  }
+
+  /** The puddles and piles you can click away (the overlay catches clicks there too). */
+  get spotRects(): Rect[] {
+    return this.mess.spots.filter((x) => x.cleanedMs === undefined).map((x) => this.mess.spotBox(x));
   }
 
   /** The toy's box on screen while it can be grabbed (the overlay lets clicks through everywhere else). */

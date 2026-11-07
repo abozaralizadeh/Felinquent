@@ -39,6 +39,8 @@ export interface RulesContext {
   propWindows?: string[];
   /** Its toy, if it is out (or buried). */
   toy?: ToyView | null;
+  /** How badly it has to pee and to poop (mind.ts, ADR-048): from 1 it has to go. */
+  potty?: { pee: number; poop: number };
 }
 
 const ACTIVE: IntentName[] = ["chase_cursor", "fetch", "carry_toy", "invite_play", "play_cursor", "follow", "knock_off", "claw", "hunt", "wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
@@ -166,6 +168,17 @@ export function candidates(ctx: RulesContext): Option[] {
   add("yawn", 0.04 + 0.35 * sleepy, ["here"]);
   add("look_around", 0.08 + 0.25 * c, ["here"]);
 
+  // It has to go (rare, mind.ts keeps count). Once it does, that comes before anything else. Where:
+  // mostly where it is, sometimes off in a corner or on the Dock, and a gremlin likes your window.
+  const potty = ctx.potty;
+  if (potty && (potty.pee >= 1 || potty.poop >= 1)) {
+    const first = ctx.rng.pick(["here", "here", "corner", "dock"]);
+    const spots = [first, ...["here", "corner", "dock"].filter((t) => t !== first)];
+    if (ctx.chaos === "gremlin" && focused && ctx.rng.next() < 0.6) spots.unshift(focused.id);
+    if (potty.pee >= 1) add("pee", 4 + potty.pee, spots);
+    if (potty.poop >= 1) add("poop", 4.2 + potty.poop, spots);
+  }
+
   // Animal things. How much each animal likes them comes from its instinct weights.
   const night = w.hour >= 22 || w.hour < 5;
   add("scratch", 0.12 + 0.1 * e, ["here"]);
@@ -274,6 +287,8 @@ const MOOD_THOUGHTS: Partial<Record<IntentName, string[]>> = {
   nose_toy: ["is it alive. checking.", "it smells like you."],
   chase_cursor: ["it ran. so i ran.", "come back here, arrow."],
   invite_play: ["you. me. chase. now.", "bottom up means play. everyone knows that."],
+  pee: ["when you have to go, you have to go.", "this spot looked important."],
+  poop: ["don't look. seriously, don't look.", "a little present. for you."],
 };
 
 /** Turns one option into a ready intent (used by the rules brain and the fake LLM). */

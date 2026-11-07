@@ -12,7 +12,7 @@ const ANIMS: Anim[] = [
   "idle_sit", "loaf", "sleep", "walk", "run", "jump", "fall", "land", "perch", "groom", "stretch", "look", "meow", "purr", "swat", "pounce", "headbutt", "sulk", "dangle",
   "turn_away", "stare", "blink", "keyboard", "hairball", "box", "push_toy", "gift", "peek", "chase_tail", "knead", "chatter", "sneeze", "happy", "angry", "hiss", "puffed",
   "annoyed", "flustered", "play_bow", "leap", "belly", "bark", "shy", "beg", "dig", "sniff", "tumble", "sprawl", "howl", "giggle", "startled", "proud", "curious", "love",
-  "yawn", "surprise", "dazed", "scratch", "bounce", "hang", "watch", "watch_stand",
+  "yawn", "surprise", "dazed", "scratch", "bounce", "hang", "watch", "watch_stand", "lick_lips", "pee", "poop", "potty_look", "cover", "paw_shake",
 ];
 
 describe("sprite art", () => {

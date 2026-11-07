@@ -121,6 +121,17 @@ Every animal has a toy of its own (ADR-042). You can grab it with the mouse, car
 | B-52 | Bury it | Picks it up, walks off a little way, digs and buries it, then looks proud. It's gone until you throw it again from the menu | You threw the toy (the squirrel especially) | 0 | LLM | none | MVP |
 | B-53 | Give it a sniff | Walks over, sniffs it, gives it a nudge with a paw, then lies down next to it | You threw the toy (the rabbit especially) | 0 | LLM | none | MVP |
 
+## When it has to go
+
+Now and then it has to pee or poop, and it does it right where it is, on a window top or the Dock. Rare on purpose. Two needs fill up while it's awake (slower while it sleeps): about one pee every 5 waking hours and one poop every 12 at normal, every 3 and 7 hours at gremlin, never at chill. A dog pees more often, the rabbit and the squirrel poop more, and a treat adds a little. When a need is full that comes first: the next pick is the potty move, and the rest of that bout follows (a sniff, a wash, a wander). The governor still decides, so it holds on in a meeting, while you're away, in quiet hours and on a full-screen video, and asks again 45 s later. A very full need wakes a sleeper. It's all drawn on its own layer, nothing touches the real window.
+
+What it leaves rides along with the window, goes when the window closes, and dries or fades by itself (a puddle in 6 to 9 minutes, a poop in 12 to 20, pellets in 8 to 12). Click one to clean it up (a little sparkle, and the animal notices). At most six at a time. A fly sometimes visits an old poop.
+
+| ID | Behavior | What happens | Triggered by | Annoy | Brain | Perm | Phase |
+|---|---|---|---|---|---|---|---|
+| B-58 | Pee | Sniffs a spot, squats and pees: a puddle spreads under its rear and runs down the front of the window. It looks back at it, then a cat, a fox or a raccoon turns round to face it and rakes over it, a dog kicks back without turning (most of the time), and the rabbit and the squirrel just leave. Sometimes it shakes a paw, then it looks proud | The pee need is full, normal or gremlin | 1 | Rule and LLM | none | MVP |
+| B-59 | Poop | Sniffs, squats with a straining face (it goes shy if your cursor comes close), and leaves a pile that fits the animal: a swirl for a dog, a log for a cat, a fox or a raccoon, pellets for the rabbit and a row of them for the squirrel. Then it looks back, covers it up like B-58, and often gets the zoomies (a cat about half the time) | The poop need is full, normal or gremlin | 1 | Rule and LLM | none | MVP |
+
 ## Freshness (what it learns and what bores it)
 
 Every choice the rules make is tilted by three things (`src/core/habits.ts`), per action and per trick:

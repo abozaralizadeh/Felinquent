@@ -80,7 +80,11 @@ export function poseFor(anim: Anim): Pose {
     case "beg": return { ...base, eyes: "happy", fx: "hearts" };
     case "howl": return { ...base, mouth: "open", eyes: "closed", fx: "notes" };
     case "dig":
+    case "cover":
     case "tumble": return { ...base, legs: "crouch", fx: "dust" };
+    case "pee":
+    case "poop": return { ...base, ...LOW, legs: "crouch", eyes: "half", tail: "up" };
+    case "potty_look": return { ...base, ...LOW, head: { x: -10, y: -56, r: 20 }, legs: "walk", tail: "up" };
     default: return base;
   }
 }

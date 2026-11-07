@@ -58,19 +58,25 @@ const GAZE = ["sq_down", "sq_level", "sq_up", "sb_down", "sb_level", "sb_up", "s
 const GAZESTAND = ["tq_down", "tq_level", "tq_up", "tb_down", "tb_level", "tb_up", "tb_high", "tg_tilt", "tg_tiltyou"] as const;
 /** Licking with the tongue drawn moving: a paw at the mouth, the tip out, flat on the paw, curled back, going in; the chest; the lips. */
 const LICK = ["lick1", "lick2", "lick3", "lick4", "lick5", "chest1", "chest2", "lips1", "lips2"] as const;
+/**
+ * It has to go (ADR-048): the squat to pee (a dog lifts a leg), relieved; the hunched squat to poop,
+ * straining; standing, a look back at the spot; covering it (a cat rakes with a front paw, a dog
+ * kicks back); a hind paw shaken; and a sheepish look at you in the middle of a poop.
+ */
+const POTTY = ["pee1", "pee2", "poop1", "poop2", "pottyback", "cover1", "cover2", "pawshake", "sheepish"] as const;
 
 type Drawn =
   | (typeof BASE)[number] | (typeof WALK)[number] | (typeof RUN)[number] | (typeof FACE)[number] | (typeof ACTION)[number] | (typeof LIFE)[number]
   | (typeof EXTRA)[number] | (typeof GROOM)[number] | (typeof SPIN)[number] | (typeof SEQ)[number] | (typeof TRANS)[number] | (typeof REACT)[number]
   | (typeof PLAY)[number] | (typeof SCRATCH)[number] | (typeof TURN)[number] | (typeof PAW)[number] | (typeof LOOK)[number] | (typeof LOOKSTAND)[number]
   | (typeof LEDGE)[number] | (typeof RESTING)[number] | (typeof JOYFUL)[number] | (typeof NOSE)[number] | (typeof VOICE)[number] | (typeof MOOD)[number] | (typeof FEEL)[number]
-  | (typeof GAZE)[number] | (typeof GAZESTAND)[number] | (typeof LICK)[number];
+  | (typeof GAZE)[number] | (typeof GAZESTAND)[number] | (typeof LICK)[number] | (typeof POTTY)[number];
 /**
  * Frames made from the drawings: `groom1t1` and `groom1t2` sit between groom1 and the frame after it,
  * another letter is a second link out of the same drawing (`groom5u1` leads back to groom2), and
  * `groom2n1` to `groom2n5` are groom2 nodding down and back up (a lick).
  */
-type Made = `${Drawn}${"t" | "u" | "v" | "w" | "x" | "d" | "l" | "f" | "m" | "n" | "p" | "g" | "h" | "k" | "c" | "q" | "b" | "y"}${1 | 2 | 3 | 4 | 5}`;
+type Made = `${Drawn}${"t" | "u" | "v" | "w" | "x" | "d" | "l" | "f" | "m" | "n" | "p" | "g" | "h" | "k" | "c" | "q" | "b" | "y" | "j" | "o" | "z"}${1 | 2 | 3 | 4 | 5}`;
 
 /**
  * Gait cycles rigged from the standing drawing (tools/rig-gait.py): a walk in lateral sequence, a trot
@@ -128,6 +134,27 @@ const CHEST_OUT = link("chest1", "groom7", "y");
 const LIPS_IN = link("sit", "lips1", "y");
 const LIPS_LOOP = [...dense(["lips1", "lips2"], 2), "lips1"] as SpriteKey[];
 const LIPS_OUT = link("lips1", "sit", "y");
+/** The potty moves have three in-betweens a link (not two): slow, big body moves that must not jump. */
+const link3 = (a: SpriteKey, b: SpriteKey, tag = "t"): SpriteKey[] => chain([a, b], 3, tag);
+const PEE_IN = link3("stand", "pee1", "j");
+const PEE_LOOP = [...dense(["pee1", "pee2"], 3), "pee1"] as SpriteKey[];
+const POOP_IN = link3("stand", "poop1", "o");
+const POOP_LOOP = [...dense(["poop1", "poop2"], 3), "poop1"] as SpriteKey[];
+const SHEEPISH_IN = link3("poop1", "sheepish", "u");
+const SHEEPISH_OUT = link3("sheepish", "poop1", "u");
+/**
+ * Getting up out of the squat is the way down played backwards. The look back at the spot is a quick
+ * swap of the head (like the gaze): flow can't follow a head swinging round that far and the
+ * in-betweens came out with doubled eyes.
+ */
+const PEE_UP = rev(PEE_IN);
+// The first in-between down (stando1) is a blur that only works going fast: getting up skips it.
+const POOP_UP: SpriteKey[] = ["poop1", "stando3", "stando2", "stand"];
+const COVER_IN = link3("stand", "cover1", "c");
+const COVER_LOOP = [...dense(["cover1", "cover2"], 3), "cover1"] as SpriteKey[];
+const COVER_OUT = link3("cover1", "stand", "c");
+const SHAKE_IN = link3("stand", "pawshake", "z");
+const SHAKE_OUT = link3("pawshake", "stand", "z");
 
 /** Every frame made from the drawings (tools/tween-all.sh makes them). */
 const MADE: SpriteKey[] = [
@@ -156,6 +183,8 @@ const MADE: SpriteKey[] = [
   ...chain(["tq_down", "tq_level", "tq_up"]), ...chain(["tb_down", "tb_level", "tb_up", "tb_high"]), ...link("stand", "tq_level", "q"), ...link("stand", "tb_level", "b"),
   ...link("tg_ahead", "tg_tilt", "y"), ...link("tq_level", "tg_tiltyou", "y"),
   ...LICK_IN, ...LICK_LOOP, ...LICK_OUT, ...CHEST_IN, ...CHEST_LOOP, ...CHEST_OUT, ...LIPS_IN, ...LIPS_LOOP, ...LIPS_OUT,
+  ...PEE_IN, ...PEE_LOOP, ...POOP_IN, ...POOP_LOOP, ...SHEEPISH_IN, ...SHEEPISH_OUT,
+  ...COVER_IN, ...COVER_LOOP, ...COVER_OUT, ...SHAKE_IN, ...SHAKE_OUT,
 ];
 
 /**
@@ -173,7 +202,7 @@ const RETIRED = new Set<SpriteKey>([
 export const SPRITE_KEYS: SpriteKey[] = [
   ...new Set<SpriteKey>([
     ...BASE, ...WALK, ...RUN, ...FACE, ...ACTION, ...LIFE, ...EXTRA, ...GROOM, ...SPIN, ...SEQ, ...TRANS, ...REACT, ...PLAY, ...SCRATCH, ...TURN, ...PAW,
-    ...LOOK, ...LOOKSTAND, ...LEDGE, ...RESTING, ...JOYFUL, ...NOSE, ...VOICE, ...MOOD, ...FEEL, ...GAZE, ...GAZESTAND, ...LICK, ...MADE, ...GW, ...GT, ...GR,
+    ...LOOK, ...LOOKSTAND, ...LEDGE, ...RESTING, ...JOYFUL, ...NOSE, ...VOICE, ...MOOD, ...FEEL, ...GAZE, ...GAZESTAND, ...LICK, ...POTTY, ...MADE, ...GW, ...GT, ...GR,
   ]),
 ].filter((k) => !RETIRED.has(k));
 
@@ -558,6 +587,12 @@ export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, 
     case "love": return { key: cycle(["love", "joy"] as const, t, 0.7), group: "sit", head: HEAD_SIT, motion: M({ breath: 0.035, breathHz: 5 }), fade: 0.4 };
     case "yawn": return { key: "yawn", group: "sit", head: HEAD_SIT, motion: M({ breath: 0.04, breathHz: 1.6 }) };
     case "lick_lips": return { key: "lips1", group: "lick_lips", head: HEAD_SIT, motion: REST };
+    // It has to go (ADR-048). Programs: see poseShot, and the look back in sequenceShot.
+    case "pee": return { key: "pee1", group: "pee", head: HEAD_SIDE, motion: M({ breath: 0.015, breathHz: 1.8 }) };
+    case "poop": return { key: "poop1", group: "poop", head: HEAD_SIDE, motion: M({ breath: 0.02, breathHz: 3 }) };
+    case "potty_look": return { key: "pottyback", group: "potty_look", head: HEAD_SIDE, motion: STILL };
+    case "cover": return { key: "cover1", group: "cover", head: HEAD_LOW, motion: M({ breath: 0.02, breathHz: 4 }) };
+    case "paw_shake": return { key: "pawshake", group: "paw_shake", head: HEAD_SIDE, motion: STILL };
     case "surprise": return { key: "surprise", group: "sit", head: HEAD_SIT, motion: M({ wobble: 0.01, wobbleHz: 20, breath: 0.03 }) };
     case "dazed": return { key: "dazed", group: "sit", head: HEAD_SIT, motion: M({ wobble: 0.05, wobbleHz: 4, breath: 0.02 }) };
     case "scratch": return { key: "scratch1", group: "scratch", head: HEAD_SIT, motion: M({ breath: 0.015 }) };
@@ -997,6 +1032,21 @@ export function poseShot(anim: Anim, id: string, e: number): Shot | null {
       return looped([], LOOKING, e);
     case "lick_lips":
       return looped([], LIP_LICK, e);
+    case "pee":
+      // Down into the squat (a dog lifts its leg), then the relieved look comes and goes.
+      return looped([move(PEE_IN, 0.7), hold("pee1", 0.5)], [move(chain(["pee1", "pee2"], 3), 0.6), hold("pee2", 1.5), move(chain(["pee2", "pee1"], 3), 0.6), hold("pee1", 0.6)], e);
+    case "poop":
+      // Hunched down, staring into the distance, straining now and then.
+      return looped([move(POOP_IN, 0.8), hold("poop1", 0.9)], [move(chain(["poop1", "poop2"], 3), 0.45), hold("poop2", 1.1), move(chain(["poop2", "poop1"], 3), 0.45), hold("poop1", 1.3)], e);
+    case "cover": {
+      // Three or four rakes (a dog: kicks), then a pause to check, and again.
+      const rake = [move(chain(["cover1", "cover2"], 3), 0.2, true), move(chain(["cover2", "cover1"], 3), 0.2, true)];
+      return looped([move(COVER_IN, 0.45)], [...rake, ...rake, ...rake, hold("cover1", 0.55)], e);
+    }
+    case "paw_shake": {
+      const flick = [hold("pawshake", 0.07), hold("pawshakez1", 0.07)];
+      return play([move(SHAKE_IN, 0.3), ...flick, ...flick, ...flick, ...flick, hold("pawshake", 0.15), move(SHAKE_OUT, 0.3)], e) ?? still("stand");
+    }
     case "belly":
       return looped([move(link("belly", "belly_l"), 0.4)], [move(link("belly_l", "belly_r"), 0.45), hold("belly_r", 0.35), move(link("belly_r", "belly_l"), 0.45), hold("belly_l", 0.35)], e);
     case "play_bow":
@@ -1026,6 +1076,29 @@ export function poseShot(anim: Anim, id: string, e: number): Shot | null {
   }
 }
 
+/**
+ * Mid-poop, your cursor comes close: it looks round at you, sheepish (blushing), holds that while you
+ * stay, and goes back to its business. One per drawing slot.
+ */
+const blushes = new Map<string, { at: number; out: number | null }>();
+const BLUSH_SEC = 0.35;
+function blushShot(slot: string, near: boolean, t: number, ready: boolean): Shot | null {
+  let b = blushes.get(slot);
+  if (!b && near && ready) blushes.set(slot, (b = { at: t, out: null }));
+  if (!b) return null;
+  if (b.out === null && !near && t - b.at > BLUSH_SEC + 1.2) b.out = t;
+  if (b.out !== null) {
+    const u = (t - b.out) / BLUSH_SEC;
+    if (u >= 1) {
+      blushes.delete(slot);
+      return null;
+    }
+    return along(SHEEPISH_OUT, smooth(u));
+  }
+  const u = (t - b.at) / BLUSH_SEC;
+  return u < 1 ? along(SHEEPISH_IN, smooth(u)) : still("sheepish");
+}
+
 /** Turning round on the spot, standing or sitting, `u` (0 to 1) of the way: slow to start and to stop. */
 export function turnShot(kind: "stand" | "sit", u: number): Shot {
   const steps = TURN_STEPS[kind];
@@ -1048,6 +1121,9 @@ const WAKE_TO_SIT: Seg[] = [...WAKE, move(link("wake", "sit"), 0.35)];
 const LOAF_IN: Seg[] = [move(link("sit2", "lowering", "l"), 0.35), hold("lowering", 0.2), move(link("lowering", "loaf2"), 0.3), hold("loaf2", 0.15), move(link("loaf2", "loaf", "f"), 0.3)];
 const STOP_TO_LOAF: Seg[] = [...FROM_STAND, ...LOAF_IN];
 const STRETCH_IN: Seg[] = [hold("stretch1", 0.3), move(link("stretch1", "stretch2"), 0.3), hold("stretch2", 0.3), move(link("stretch2", "stretch3"), 0.35), hold("stretch3", 1.45), move(link("stretch3", "shake"), 0.25)];
+const LOOK_ROUND: Seg[] = [move(["stand", "pottyback"], 0.14, false, 1), hold("pottyback", 0.55), move(["pottyback", "stand"], 0.14, false, 1)];
+const LOOK_BACK_PEE: Seg[] = [move(PEE_UP, 0.45), ...LOOK_ROUND];
+const LOOK_BACK_POOP: Seg[] = [move(POOP_UP, 0.45), ...LOOK_ROUND];
 const SNEEZE_IN: Seg[] = [hold("presneeze", 0.55), move(link("presneeze", "sneeze2"), 0.12), hold("sneeze2", 0.3), move(link("sneeze2", "dazed"), 0.25)];
 
 /**
@@ -1059,6 +1135,8 @@ function sequenceShot(anim: Anim, plan: SpritePlan, prev: string, e: number): Sh
   const wasMoving = MOVING.has(prev);
   if (plan.group === "stretch") return play(STRETCH_IN, e) ?? still("shake");
   if (anim === "sneeze") return play(SNEEZE_IN, e) ?? still("dazed");
+  // Up out of the squat, a look back at what it did, and standing.
+  if (anim === "potty_look") return play(prev === "poop" ? LOOK_BACK_POOP : LOOK_BACK_PEE, e) ?? still("stand");
   if (plan.group === "sleep" && prev !== "sleep" && prev !== "") return play(wasMoving ? STOP_TO_SLEEP : LIE_DOWN, e);
   if (prev === "sleep" && plan.group !== "sleep" && plan.group !== "dangle") return play(plan.group === "sit" ? WAKE_TO_SIT : WAKE, e);
   if (plan.group === "loaf" && prev !== "loaf" && prev !== "sleep" && prev !== "") return play(wasMoving ? STOP_TO_LOAF : LOAF_IN, e);
@@ -1129,7 +1207,8 @@ const WALK_BELOW = 2.5;
  * before and after). Anything else (a jump, a hiss) turns by fading the old frame out facing the old way.
  */
 function turnKind(key: SpriteKey, was: string, now: string): "stand" | "sit" | null {
-  const settled = now === "walk" || now === "trot" || now === "run" || now === "sit";
+  // Covering it up, a cat turns round to face the spot first (from standing, after the look back).
+  const settled = now === "walk" || now === "trot" || now === "run" || now === "sit" || now === "cover";
   if (!settled) return null;
   if (GAITISH.test(key) || key.startsWith("turn_s")) return "stand";
   if (was === "sit") return "sit";
@@ -1325,6 +1404,13 @@ export function drawSprite(
       const hx = x + drawDir * plan.head.x * look.naturalWidth * K * scale;
       const hy = y - plan.head.y * look.naturalHeight * K * scale;
       follow = gazeShot(slot, anim === "watch_stand", poseAt, t, gazeTarget((d.cursor.x - hx) * drawDir, hy - d.cursor.y), TILTY[set.id] ?? 0.35);
+    }
+    if (anim !== "poop") blushes.delete(slot);
+    else if (d.cursor) {
+      const look = frameOf(set, plan.key);
+      const hx = x + drawDir * plan.head.x * look.naturalWidth * K * scale;
+      const hy = y - plan.head.y * look.naturalHeight * K * scale;
+      follow = blushShot(slot, Math.hypot(d.cursor.x - hx, d.cursor.y - hy) < 180 * scale, t, e > 1.8);
     }
     shot = sequenceShot(anim, plan, sh.prev, e) ?? follow ?? poseShot(anim, set.id, e - settle) ?? { key: plan.key, next: plan.next ?? null, mix: plan.mix ?? 0 };
   }

@@ -24,6 +24,8 @@ interface Situation {
   tricks?: boolean;
   /** Its toy lies on the Dock a little way off, just thrown by you. */
   toy?: boolean;
+  /** It has to go (mind.ts). */
+  potty?: { pee: number; poop: number };
 }
 
 const book = new TrickBook();
@@ -87,6 +89,8 @@ const SITUATIONS: Partial<Record<IntentName, Situation>> = {
   invite_play: { needs: { energy: 0.9, attention: 0.8, mood: "playful" } },
   yawn: { needs: { energy: 0.3 } },
   look_around: {},
+  pee: { potty: { pee: 1.2, poop: 0 } },
+  poop: { potty: { pee: 0, poop: 1.2 } },
 };
 
 function build(s: Situation) {
@@ -108,6 +112,7 @@ function build(s: Situation) {
     propWindows: s.props ? [(world.windows[0] as { id: string }).id] : [],
     tricks: s.tricks ? book : undefined,
     toy: s.toy ? { kind: "tennis", x: 700, y: world.dockTop, state: "lying", thrownSecAgo: 3 } : null,
+    potty: s.potty,
   };
   return { settings, world, needs, ctx };
 }
