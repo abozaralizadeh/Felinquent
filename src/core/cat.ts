@@ -1,19 +1,23 @@
 import { Executor, type ExecEvent } from "./executor";
-import { Mess, type MessEvent, type MessState, type SpotKind } from "./mess";
+import { Mess, type MessEvent, type MessState, type SpotKind, type TreatKind } from "./mess";
 import { WindowMotion } from "./motion";
 import { Governor } from "./governor";
 import { InMemoryMemory, type Memory } from "./memory";
-import { Mind, toyName, type MindEvent } from "./mind";
+import { Mind, toyName, treatName, type MindEvent, type Ask } from "./mind";
 import { RulesBrain, type Brain } from "./brain";
 import type { ToyView } from "./rules";
 import { DEFAULT_PERSONALITY, type Personality } from "./personality";
 import { ReflexDetector, type PointerSample, type ReflexEvent, type ReflexKind } from "./reflexes";
 import { seeded, type Rng } from "./rng";
-import { instinctFor } from "./species";
+import { instinctFor, type Kind } from "./species";
 import { DEFAULT_SETTINGS, type Rect, type Settings, type WindowInfo, type WorldSnapshot } from "./types";
 
 /** How long a window list that looks like a desktop swipe is held before it is believed. */
 export const SWIPE_HOLD_MS = 1000;
+/** What each kind of animal gets as a treat. */
+export const TREAT_FOR: Record<Kind, TreatKind> = { cat: "fish_treat", dog: "biscuit", fox: "egg", raccoon: "grapes", rabbit: "strawberry", squirrel: "peanut" };
+/** A treat held out this long without a click slips out of your fingers. */
+export const TREAT_HOLD_MS = 45_000;
 /** How long past its time to come over a sleeping animal naps on before it wakes and comes. */
 export const WAKE_TO_COME_MS = 60_000;
 
@@ -113,8 +117,11 @@ export class Cat {
   /** When you last threw the toy or put it down, and the pointer as it was last time (for grabbing the toy). */
   private toyThrownMs: number | null = null;
   private lastPointer: { t: number; down: boolean } | null = null;
-  /** A press that cleaned a spot: the rest of it (to the mouse-up) is not a poke. */
+  /** A press that was used up (it cleaned a spot, or let go of a treat): the rest of it, to the mouse-up, is not a poke. */
   private cleaning = false;
+  /** When you took a treat out (it is in your hand until you click). */
+  private treatOfferedMs: number | null = null;
+  private readonly log?: (message: string, fields?: Record<string, unknown>) => void;
 
   constructor(opts: CatOptions = {}) {
     const rng = opts.rng ?? seeded(1);
@@ -134,10 +141,19 @@ export class Cat {
     this.executor.toyAt = () => {
       const t = this.mess.toy;
       return t
-        ? { id: t.id, x: t.x, y: t.y, windowId: t.windowId, moving: t.state === "fall" || Math.abs(t.vx) > 25, held: t.state === "held", carried: t.state === "carried" }
+        ? { id: t.id, x: t.x, y: t.y, windowId: t.windowId, moving: t.state === "fall" || Math.abs(t.vx) > 25, flying: t.state === "fall", held: t.state === "held", carried: t.state === "carried" }
         : null;
     };
+    this.executor.treatAt = () => {
+      // The nearest treat lying about first, else the one falling or in your hand.
+      const b = this.executor.body;
+      const all = this.mess.props.filter((p) => p.treat && (p.bites ?? 0) < 1);
+      const down = all.filter((p) => p.state !== "held" && p.state !== "fall").sort((a, c) => Math.abs(a.x - b.x) - Math.abs(c.x - b.x));
+      const t = down[0] ?? all.find((p) => p.state === "fall") ?? all[0];
+      return t ? { id: t.id, x: t.x, y: t.y, windowId: t.windowId, moving: t.state === "fall" || Math.abs(t.vx) > 25, flying: t.state === "fall", held: t.state === "held" } : null;
+    };
     this.asyncMind = opts.asyncMind ?? false;
+    this.log = opts.log;
     this.executor.glanceChance = 0.95 - 0.6 * (opts.personality ?? DEFAULT_PERSONALITY).aloofness;
     this.memory = opts.memory ?? new InMemoryMemory();
     this.mind = new Mind({
@@ -239,6 +255,11 @@ export class Cat {
   /** dtSec drives needs and decisions. execDtSec (default: the same) drives movement, so a demo can warp time. */
   async step(live: WorldSnapshot, dtSec: number, execDtSec: number = dtSec): Promise<StepResult> {
     this.desktops(live);
+    // The treat in your hand stays at the pointer, every frame, until you click.
+    if (this.mess.treatInHand) {
+      this.mess.holdAt(live.cursor.x, live.cursor.y, execDtSec);
+      if (this.treatOfferedMs !== null && live.nowMs - this.treatOfferedMs > TREAT_HOLD_MS) this.mess.letGo();
+    }
     const seen = this.steadied(live);
     this.motion.update(seen.windows, execDtSec);
     // Away on its own desktop: it lives among that desktop's windows, and you and your cursor aren't there.
@@ -425,6 +446,7 @@ export class Cat {
       else if (f.fx === "pounce_fly") this.mess.pounceFly();
       else if (f.fx === "toy_out") this.mess.bringToy(ev.x, now);
       else if (f.fx === "bat") this.mess.bat(f.prop, ev.dir, f.strength);
+      else if (f.fx === "bite") this.mess.bite(f.prop, f.amount);
       else if (f.fx === "pick_up") {
         // Gone by the time its mouth got there (you took it, or it rolled off): nothing in its mouth.
         if (!this.mess.carry(f.prop)) this.executor.carrying = null;
@@ -482,13 +504,28 @@ export class Cat {
     else if (ev.type === "cracked") this.mind.note(now, "i landed so hard a window cracked");
     else if (ev.type === "fly") this.mind.note(now, ev.caught ? "i caught a fly" : "a fly got away from me");
     else if (ev.type === "flung") this.mind.note(now, `the human moved a window so hard the ${ev.kind} flew off it`);
-    else if (ev.type === "toy") {
+    else if (ev.type === "toy") this.mind.onToyLanded(world, ev);
+    else if (ev.type === "toy_thrown") {
       // On another desktop, a toy thrown here calls it over, like a treat.
       if (this.homeWorld) {
         this.callOver(now);
         if (this.mind.sleeping) this.mind.wake(now);
       }
-      this.mind.onToy(world, ev);
+      this.apply(this.mind.onToyThrown(world, ev));
+    } else if (ev.type === "toy_grabbed") this.mind.note(now, "the human picked up my toy");
+    else if (ev.type === "treat_dropped") {
+      this.treatOfferedMs = null;
+      if (this.homeWorld) {
+        this.callOver(now);
+        if (this.mind.sleeping) this.mind.wake(now);
+      }
+      this.apply(this.mind.onTreatDropped(world, ev.kind));
+    } else if (ev.type === "treat_landed") this.apply(this.mind.onTreatLanded(world, ev));
+    else if (ev.type === "treat_eaten") {
+      this.mind.ateTreat(world, ev.kind);
+      // Another one still lying about: that one next.
+      const more = this.mess.props.find((p) => p.treat && p.state !== "held" && (p.bites ?? 0) < 1);
+      if (more) this.apply(this.mind.onTreatDropped(world, more.kind));
     }
   }
 
@@ -496,6 +533,16 @@ export class Cat {
   throwToy(world: WorldSnapshot): void {
     if (this.executor.carrying) this.executor.carrying = null;
     if (this.mess.toss(world.cursor.x, world.cursor.y, world.nowMs)) this.toyThrownMs = world.nowMs;
+  }
+
+  /**
+   * Something you asked for in the menu on the animal (Pet it, Zoomies!, Nap time). It starts in this
+   * frame, from the rules; the model is never asked. Respect modes still win (see Mind.onAsked).
+   */
+  ask(world: WorldSnapshot, what: Ask): MindEvent[] {
+    const events = this.mind.onAsked(world, what);
+    this.apply(events);
+    return events;
   }
 
   /** A reflex happened (from the pointer or from a menu button). Runs the Mind's reaction and starts any intent. */
@@ -515,21 +562,27 @@ export class Cat {
       if (!sample.down) this.cleaning = false;
       return [];
     }
-    if (this.mess.holding) {
-      if (sample.down) this.mess.holdAt(sample.x, sample.y, last ? Math.max(0, (sample.t - last.t) / 1000) : 0);
-      else if (this.mess.letGo()) {
-        this.toyThrownMs = world.nowMs;
-        this.mind.note(world.nowMs, "the human picked up my toy");
+    // A treat held out: the click lets it go, wherever you are (and nothing else happens with it).
+    if (this.mess.treatInHand) {
+      if (sample.down && !last?.down) {
+        this.mess.letGo();
+        this.cleaning = true;
       }
       return [];
     }
-    if (sample.down && last && !last.down) {
-      const t = this.mess.toyUnder(sample.x, sample.y);
+    if (this.mess.holding) {
+      if (sample.down) this.mess.holdAt(sample.x, sample.y, last ? Math.max(0, (sample.t - last.t) / 1000) : 0);
+      else if (this.mess.letGo()) this.toyThrownMs = world.nowMs;
+      return [];
+    }
+    if (sample.down && !last?.down) {
+      const t = this.mess.grabbableUnder(sample.x, sample.y);
       if (t) {
         if (t.state === "carried") {
           this.executor.carrying = null;
           this.mind.note(world.nowMs, `the human took my ${toyName(t.kind)} out of my mouth`);
-        }
+        } else if (t.treat) this.mind.note(world.nowMs, `the human picked up my ${treatName(t.kind)}`);
+        this.log?.("grab", { kind: t.kind, state: t.state });
         this.mess.grab(t.id, sample.x, sample.y);
         return [];
       }
@@ -572,11 +625,27 @@ export class Cat {
     return this.mess.spots.filter((x) => x.cleanedMs === undefined).map((x) => this.mess.spotBox(x));
   }
 
-  /** The toy's box on screen while it can be grabbed (the overlay lets clicks through everywhere else). */
+  /** The toy's box on screen while it can be grabbed. */
   get toyRect(): Rect | null {
     const t = this.mess.toy;
     if (!t || t.alpha < 0.5) return null;
     return this.mess.toyBox(t);
+  }
+
+  /** Everything you can pick up with the mouse, as boxes on screen (the overlay lets clicks through everywhere else). */
+  get grabRects(): Rect[] {
+    return this.mess.grabbable.map((p) => this.mess.toyBox(p));
+  }
+
+  /** Where its eyes go: its toy or a treat flying through the air or rolling away, else the pointer. */
+  lookAt(cursor: { x: number; y: number }): { x: number; y: number } {
+    const t = this.mess.props.find((p) => (p.toy || p.treat) && p.alpha > 0.5 && (p.state === "fall" || (p.state === "roll" && Math.abs(p.vx) > 40)));
+    return t ? { x: t.x, y: t.y - 8 * this.mess.scale } : cursor;
+  }
+
+  /** A treat is in your hand: the next click anywhere lets it go (the overlay catches that click). */
+  get treatHeld(): boolean {
+    return !!this.mess.treatInHand;
   }
 
   treat(world: WorldSnapshot): void {
@@ -586,6 +655,15 @@ export class Cat {
       if (this.mind.sleeping) this.mind.wake(world.nowMs);
       this.desktops(world);
     }
-    this.apply(this.mind.giveTreat(world));
+    // A treat already in your hand: asking again lets it fall.
+    if (this.mess.treatInHand) {
+      this.mess.letGo();
+      return;
+    }
+    if (this.mess.holding) this.mess.letGo();
+    const kind = TREAT_FOR[instinctFor(this.mind.traits.species).kind];
+    if (!this.mess.offerTreat(kind, world.cursor.x, world.cursor.y, world.nowMs)) return;
+    this.treatOfferedMs = world.nowMs;
+    this.apply(this.mind.onTreatOffered(world, kind));
   }
 }

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHARACTERS } from "../src/core/characters";
 import { GAIT_STRIDE } from "../src/playground/gaits";
-import { gazeShot, gazeTarget, groomShot, LICK_HZ, lengthOf, pawShot, planFor, poseShot, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
+import { gazeShot, gazeTarget, groomShot, restLook, LICK_HZ, lengthOf, pawShot, planFor, poseShot, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
 import { TURN_SEC, type Anim } from "../src/core/executor";
 import { SCRATCH_SEC } from "../src/core/scenes";
 
@@ -12,7 +12,7 @@ const ANIMS: Anim[] = [
   "idle_sit", "loaf", "sleep", "walk", "run", "jump", "fall", "land", "perch", "groom", "stretch", "look", "meow", "purr", "swat", "pounce", "headbutt", "sulk", "dangle",
   "turn_away", "stare", "blink", "keyboard", "hairball", "box", "push_toy", "gift", "peek", "chase_tail", "knead", "chatter", "sneeze", "happy", "angry", "hiss", "puffed",
   "annoyed", "flustered", "play_bow", "leap", "belly", "bark", "shy", "beg", "dig", "sniff", "tumble", "sprawl", "howl", "giggle", "startled", "proud", "curious", "love",
-  "yawn", "surprise", "dazed", "scratch", "bounce", "hang", "watch", "watch_stand", "lick_lips", "pee", "poop", "potty_look", "cover", "paw_shake",
+  "yawn", "surprise", "dazed", "scratch", "bounce", "hang", "watch", "watch_stand", "lick_lips", "pee", "poop", "potty_look", "cover", "paw_shake", "prep", "eat",
 ];
 
 describe("sprite art", () => {
@@ -50,13 +50,26 @@ describe("sprite art", () => {
   });
 
   it("the programs (washing, the ear scratch, turning round) only use frames that exist", () => {
+    const keys = new Set<string>(SPRITE_KEYS);
+    const bad = new Set<string>();
     const seen = (s: Shot): void => {
-      expect(SPRITE_KEYS).toContain(s.key);
-      if (s.next) expect(SPRITE_KEYS).toContain(s.next);
+      for (const k of [s.key, s.next]) if (k && !keys.has(k)) bad.add(k);
     };
     for (const c of CHARACTERS) for (let e = 0; e < 120; e += 0.05) seen(groomShot(c.id, e, 0.37));
     for (let e = 0; e < SCRATCH_SEC + 1; e += 0.02) seen(scratchShot(e, 0.61));
     for (let u = 0; u <= 1; u += 0.01) (seen(turnShot("stand", u)), seen(turnShot("sit", u)));
+    expect([...bad]).toEqual([]);
+  }, 30_000);
+
+  it("lying, on an edge or peeking, the head turns to the pointer with that pose's own drawings", () => {
+    // Facing right: up and ahead, behind, below.
+    expect(restLook("loaf", 120, 120)).toBe("up");
+    expect(restLook("loaf", -150, 10)).toBe("back");
+    expect(restLook("loaf", 200, -20)).toBe(null);
+    expect(restLook("perch", 60, -150)).toBe("down");
+    expect(restLook("perch", -120, 0)).toBe("you");
+    expect(restLook("peek", 20, 150)).toBe("up");
+    expect(restLook("peek", -100, 0)).toBe("back");
   });
 
   it("every frame a character's programs play is on disk for that character (nothing ever draws as a gap)", () => {

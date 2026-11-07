@@ -44,6 +44,18 @@ function onWindow() {
 }
 
 describe("riding a window that moves", () => {
+  it("a window that only twitches a pixel back and forth doesn't keep it crouched", () => {
+    const s = onWindow();
+    s.still(0.5);
+    const anims = new Set<string>();
+    for (let i = 0; i < 6 * 60; i++) {
+      s.frame(i % 2 === 0 ? 1 : -1, 0);
+      if (i > 60) anims.add(s.ex.body.anim);
+    }
+    expect(anims.has("land")).toBe(false);
+    expect(s.ex.windowId).toBe("w1");
+  });
+
   it("a gentle drag carries the animal and the mug along, nothing falls", () => {
     const s = onWindow();
     expect(s.mug).not.toBeNull();

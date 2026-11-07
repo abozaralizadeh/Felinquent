@@ -137,8 +137,11 @@ export function candidates(ctx: RulesContext): Option[] {
   const toy = ctx.toy;
   const thrown = toy && toy.thrownSecAgo < 45 ? 1 - toy.thrownSecAgo / 90 : 0;
   const playful = e > 0.5 && n.mood === "playful" ? 0.4 * (p.chaos + 0.3) : 0;
-  add("knock_toy", playful + (toy && toy.state === "lying" ? 1.6 * thrown * e : 0), ["here"]);
-  if (toy && toy.state === "lying") {
+  // Just thrown and still flying or rolling counts too: it goes for it as it lands (the executor
+  // watches it until it can get to it).
+  const toyOut = toy && (toy.state === "lying" || (toy.state === "rolling" && toy.thrownSecAgo < 10));
+  add("knock_toy", playful + (toyOut ? 1.6 * thrown * e : 0), ["here"]);
+  if (toy && toyOut) {
     const near = dist(ctx.catPos, toy) < 700 ? 1 : 0.6;
     add("fetch", (0.06 + 2.4 * thrown) * (0.4 + e) * near * (0.6 + n.trust / 250), ["toy"]);
     add("carry_toy", (0.08 + 1.3 * thrown) * near, ["toy"]);

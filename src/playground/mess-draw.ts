@@ -346,9 +346,11 @@ function drawChip(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
 }
 
 /** front: only what is in your hand or the animal's mouth (drawn over the animal); otherwise the rest. */
-function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: number, front = false): void {
-  for (const p of snap.props) {
-    if (!!p.front !== front) continue;
+function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: number, front = false, mouth: { x: number; y: number } | null = null): void {
+  for (const q of snap.props) {
+    if (!!q.front !== front) continue;
+    // In the mouth: centred on the mouth the drawing has (the core only knows roughly where it is).
+    const p = q.carried && mouth ? { ...q, x: mouth.x, y: mouth.y + (PROP_HEIGHT[q.kind] * scale) / 2 } : q;
     if (p.trail && p.trail.length > 1) {
       // The yarn unwinds behind it.
       ctx.save();
@@ -375,11 +377,53 @@ function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: num
       ctx.ellipse(p.x, p.y + 0.5, w * 0.42, 2.5 * scale, 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    const b = p.bites ?? 0;
+    if (b > 0) crumbs(ctx, p.x, p.y, w, scale, p.id);
     ctx.translate(p.x, p.y - h / 2);
     ctx.rotate(p.rot);
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    ctx.drawImage(b > 0 ? bitten(img, w, h, b) : img, -w / 2, -h / 2, w, h);
     ctx.restore();
+  }
+}
+
+let biteCanvas: HTMLCanvasElement | null = null;
+/** A treat with bites out of it: round bites from one end, deeper with each one. */
+function bitten(img: HTMLImageElement, w: number, h: number, b: number): HTMLCanvasElement {
+  const k = 2 * (globalThis.devicePixelRatio || 1);
+  const c = (biteCanvas ??= document.createElement("canvas"));
+  c.width = Math.max(1, Math.ceil(w * k));
+  c.height = Math.max(1, Math.ceil(h * k));
+  const g = c.getContext("2d") as CanvasRenderingContext2D;
+  g.clearRect(0, 0, c.width, c.height);
+  g.imageSmoothingQuality = "high";
+  g.drawImage(img, 0, 0, c.width, c.height);
+  g.globalCompositeOperation = "destination-out";
+  const n = Math.max(1, Math.round(b * 3));
+  const r = Math.min(c.width, c.height) * 0.36;
+  for (let i = 0; i < n; i++) {
+    const depth = (c.width * 0.72 * (i + 1)) / 3;
+    const cx = c.width + r * 0.55 - depth;
+    const cy = c.height * (i % 2 === 0 ? 0.32 : 0.7);
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.arc(cx + r * 0.5, c.height - cy, r * 0.9, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalCompositeOperation = "source-over";
+  return c;
+}
+
+/** A few crumbs round a treat being eaten. */
+function crumbs(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, scale: number, id: string): void {
+  let seed = 0;
+  for (const ch of id) seed = (seed * 31 + ch.charCodeAt(0)) % 9973;
+  const rnd = (): number => ((seed = (seed * 16807) % 2147483647) % 1000) / 1000;
+  ctx.fillStyle = "rgba(150,110,70,0.75)";
+  for (let i = 0; i < 6; i++) {
+    ctx.beginPath();
+    ctx.arc(x + (rnd() - 0.5) * w * 1.6, y - rnd() * 1.5 * scale, (0.6 + rnd() * 0.8) * scale, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -524,9 +568,10 @@ export function drawMessBehind(ctx: CanvasRenderingContext2D, snap: MessSnapshot
 }
 
 /** What flies through the air: drawn after the animal. */
-export function drawMessFront(ctx: CanvasRenderingContext2D, snap: MessSnapshot | null, scale: number): void {
+/** mouth: where the drawing has the animal's mouth (from drawCat), so a toy it carries sits there. */
+export function drawMessFront(ctx: CanvasRenderingContext2D, snap: MessSnapshot | null, scale: number, mouth: { x: number; y: number } | null = null): void {
   if (!snap) return;
-  drawProps(ctx, snap, scale, true);
+  drawProps(ctx, snap, scale, true, mouth);
   drawShards(ctx, snap, scale);
   drawStrips(ctx, snap);
   drawFly(ctx, snap, scale);

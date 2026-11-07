@@ -1,6 +1,7 @@
 import { TURN_SEC, type Anim } from "../core/executor";
 import { SCRATCH_SEC } from "../core/scenes";
 import { GAIT_STRIDE } from "./gaits";
+import { HEADS } from "./heads";
 
 /**
  * Illustrated sprites (see docs/art-and-ux.md §5). Each character has fourteen sheets of drawn
@@ -95,18 +96,34 @@ export type SpriteKey = Drawn | Made | GaitKey;
 
 /** A run of frames backwards. */
 const rev = (keys: readonly SpriteKey[]): SpriteKey[] => [...keys].reverse();
+/**
+ * Each frame made from the drawings: the drawing it starts from, the one it goes to, and how far along
+ * it is (0 to 1). Its size and its mouth come from those two (see sizeFix and mouthOf).
+ */
+const BETWEEN = new Map<string, readonly [SpriteKey, SpriteKey, number]>();
 /** A chain of drawings with `n` in-betweens after each one but the last, named the way tween-sprites.py names them. */
 function chain(names: readonly SpriteKey[], n = 2, tag = "t"): SpriteKey[] {
+  names.forEach((k, i) => {
+    const to = names[i + 1];
+    if (to !== undefined) for (let j = 0; j < n; j++) BETWEEN.set(`${k}${tag}${j + 1}`, [k, to, (j + 1) / (n + 1)]);
+  });
   return names.flatMap((k, i) => (i === names.length - 1 ? [k] : [k, ...Array.from({ length: n }, (_, j) => `${k}${tag}${j + 1}` as SpriteKey)]));
 }
 /** A loop: in-betweens after every drawing, the last ones leading back to the first. */
 function dense(names: readonly SpriteKey[], n: number): SpriteKey[] {
+  names.forEach((k, i) => {
+    const to = names[(i + 1) % names.length] as SpriteKey;
+    for (let j = 0; j < n; j++) BETWEEN.set(`${k}t${j + 1}`, [k, to, (j + 1) / (n + 1)]);
+  });
   return names.flatMap((k) => [k, ...Array.from({ length: n }, (_, i) => `${k}t${i + 1}` as SpriteKey)]);
 }
 /** Two drawings and the in-betweens from one to the other. */
 const link = (a: SpriteKey, b: SpriteKey, tag = "t"): SpriteKey[] => chain([a, b], 2, tag);
 /** One lick: a drawing nodded down and back up (nod-sprites.py), ending where it started. */
-const nodOf = (k: SpriteKey): SpriteKey[] => [k, ...[1, 2, 3, 4, 5].map((i) => `${k}n${i}` as SpriteKey), k];
+const nodOf = (k: SpriteKey): SpriteKey[] => {
+  for (let i = 1; i <= 5; i++) BETWEEN.set(`${k}n${i}`, [k, k, 0]);
+  return [k, ...[1, 2, 3, 4, 5].map((i) => `${k}n${i}` as SpriteKey), k];
+};
 
 const GROOM_LOOP = dense(GROOM, 2);
 const TURN_STAND = chain(["stand", "turn_s1", "turn_s2", "turn_s3", "turn_s4", "turn_s5"]);
@@ -158,7 +175,7 @@ const SHAKE_OUT = link3("pawshake", "stand", "z");
 
 /** Every frame made from the drawings (tools/tween-all.sh makes them). */
 const MADE: SpriteKey[] = [
-  ...GROOM_LOOP, ...link("groom5", "groom2", "u"), ...link("groom2", "groom6", "u"), ...(["groom2", "groom6", "groom7", "groom8"] as const).flatMap(nodOf),
+  ...GROOM_LOOP, ...link("groom5", "groom2", "u"), ...link("groom2", "groom6", "u"), ...(["groom2", "groom6", "groom7", "groom8", "sniff2"] as const).flatMap(nodOf),
   ...TURN_STAND, ...TURN_SIT, ...chain(SCRATCH), ...KNEAD, ...RETCH, ...MEOW,
   ...chain(["sitting_down", "sit2", "sit"]), ...link("stand", "sitting_down", "d"), ...link("sit", "stand2", "v"), ...link("stand2", "stand"), ...link("sit2", "lowering", "l"),
   ...chain(["lowering", "loaf2", "drowsy", "curl", "sleep"]), ...link("loaf2", "loaf", "f"), ...chain(["waking", "wake", "sit"]),
@@ -528,6 +545,7 @@ export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, 
     case "jump": return { key: vy > 80 ? "fall" : "jump", group: "air", head: HEAD_SIDE, motion: M({ breath: 0 }) };
     case "fall": return { key: "fall", group: "air", head: HEAD_SIDE, motion: M({ breath: 0 }) };
     case "land": return { key: "land", group: "land", head: HEAD_LOW, motion: M({ wobble: 0.02, wobbleHz: 14 }) };
+    case "prep": return { key: "prep", group: "prep", head: HEAD_LOW, motion: M({ breath: 0.02, breathHz: 7 }), fade: 0.1 };
     case "dangle": return { key: "dangle", group: "dangle", head: HEAD_SIT, motion: M({ wobble: 0.05, wobbleHz: 5, breath: 0.01 }) };
     case "peek": return { ...idleWith(t, "peek", PEEKING), group: "peek", head: { x: 0.15, y: 0.6 }, motion: M({ breath: 0.02 }) };
     case "box": return { key: "box", group: "box", head: { x: 0.0, y: 0.8 }, motion: M({ breath: 0.015, wobble: 0.01, wobbleHz: 2 }) };
@@ -577,6 +595,7 @@ export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, 
     case "beg": return { key: "beg", group: "beg", head: HEAD_SIT, motion: M({ breath: 0.025, breathHz: 5 }) };
     case "dig": return { key: "dig1", group: "dig", head: HEAD_LOW, motion: M({ breath: 0.02 }) };
     case "sniff": return { key: "sniff1", group: "sniff", head: HEAD_LOW, motion: M({ breath: 0.03, breathHz: 9 }) };
+    case "eat": return { key: "sniff2", group: "eat", head: HEAD_LOW, motion: M({ breath: 0.02, breathHz: 4 }) };
     case "tumble": return { key: "tumble", group: "tumble", head: HEAD_SIT, roll: true, motion: M({ breath: 0 }) };
     case "sprawl": return { ...idleWith(t, "sprawl", SPRAWLING), group: "sprawl", head: HEAD_LOW, motion: M({ breath: 0.025, breathHz: 2 }) };
     case "howl": return { key: "sit", group: "howl", head: HEAD_SIT, motion: M({ breath: 0.04, breathHz: 2.4 }) };
@@ -905,6 +924,44 @@ export function gazeShot(slot: string, standing: boolean, since: number, t: numb
   }
   return along(GAZE_DIRS[kind][yaw] as readonly SpriteKey[], g.u / (PITCH_TOP[yaw] ?? 1), 1);
 }
+/**
+ * Lying down, sitting on an edge or peeking over one, the head turns to the pointer with that pose's
+ * own drawings (up, back over the shoulder, down, at you) instead of getting up to watch. Only while
+ * the pointer is near and has moved in the last few seconds; otherwise the pose goes on by itself.
+ */
+const REST_LOOKS = {
+  loaf: { base: "loaf", up: link("loaf", "loaf_up", "u"), back: link("loaf", "loaf_back", "v") },
+  perch: { base: "perch_fwd", down: link("perch_fwd", "perch_down", "u"), you: link("perch_fwd", "perch_you", "x") },
+  peek: { base: "peek", up: link("peek", "peek_up", "v"), back: link("peek", "peek_back") },
+} as const;
+type RestGroup = keyof typeof REST_LOOKS;
+export const REST_GROUPS = new Set<string>(Object.keys(REST_LOOKS));
+/** Which of the pose's looks fits the pointer: dx ahead of the head, dy above it (px). null: straight ahead. */
+export function restLook(group: RestGroup, dx: number, dy: number): string | null {
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  if (group === "loaf") return dx < -40 ? "back" : deg > 28 && deg < 150 ? "up" : null;
+  if (group === "perch") return deg < -25 && deg > -150 ? "down" : dx < -40 || deg > 50 ? "you" : null;
+  return dx < -40 ? "back" : deg > 35 ? "up" : null;
+}
+interface RestGaze { since: number; at: string | null; amt: number; t: number; cx: number; cy: number; movedAt: number }
+const restGazes = new Map<string, RestGaze>();
+function restShot(slot: string, group: RestGroup, since: number, t: number, dx: number, dy: number, cursor: { x: number; y: number }, near: boolean): Shot | null {
+  let r = restGazes.get(slot);
+  if (!r || r.since !== since) restGazes.set(slot, (r = { since, at: null, amt: 0, t, cx: cursor.x, cy: cursor.y, movedAt: -99 }));
+  const dt = Math.max(0, Math.min(0.1, t - r.t));
+  r.t = t;
+  if (Math.hypot(cursor.x - r.cx, cursor.y - r.cy) > 3) ((r.movedAt = t), (r.cx = cursor.x), (r.cy = cursor.y));
+  const active = near && t - r.movedAt < 5;
+  const want = active ? restLook(group, dx, dy) : null;
+  // Back to ahead first, then over to the new look (never straight from up to back).
+  if (want !== r.at) {
+    r.amt = Math.max(0, r.amt - dt / 0.3);
+    if (r.amt === 0) r.at = want;
+  } else if (r.at) r.amt = Math.min(1, r.amt + dt / 0.35);
+  const looks = REST_LOOKS[group] as Record<string, readonly SpriteKey[] | SpriteKey>;
+  if (!r.at || r.amt === 0) return active ? still(looks.base as SpriteKey) : null;
+  return along(looks[r.at] as readonly SpriteKey[], r.amt, 1);
+}
 /** A dog cocks its head at a sound or a stopped hand far more than a cat does. */
 const TILTY: Record<string, number> = { biscuit: 0.8, chili: 0.75, mochi: 0.5, bandit: 0.45, clover: 0.3, hazel: 0.4 };
 /** Looking round with nothing in particular to follow: up, higher, ahead, over to you and back. */
@@ -1056,6 +1113,11 @@ export function poseShot(anim: Anim, id: string, e: number): Shot | null {
       const n = id === "clover" ? 2 : 3;
       const round: Seg[] = [...Array.from({ length: n - 1 }, () => HOP).flat(), ...BINKY];
       return looped([], round, e);
+    }
+    case "eat": {
+      // Nose down at the food, chewing: the head bobs, three or four chews, a short pause, again.
+      const chew = (sec: number): Seg => move(nodOf("sniff2"), sec, true, 1);
+      return looped([hold("sniff2", 0.25)], [chew(0.3), chew(0.28), chew(0.33), hold("sniff2", 0.4), chew(0.3), chew(0.32), chew(0.27), chew(0.34), hold("sniff2", 0.65)], e);
     }
     case "sniff":
       return looped([], [hold("sniff1", 0.5), move(link("sniff1", "sniff2"), 0.35), hold("sniff2", 0.6), move(link("sniff2", "sniff3"), 0.4), hold("sniff3", 0.8), move(link("sniff3", "sniff1"), 0.45)], e);
@@ -1222,12 +1284,70 @@ function turnKind(key: SpriteKey, was: string, now: string): "stand" | "sit" | n
  * missing file never makes the animal vanish.
  */
 function frameOf(set: SpriteSet, key: SpriteKey): HTMLImageElement {
+  return set.img[frameKey(set, key)] as HTMLImageElement;
+}
+
+/** The frame whose image frameOf draws for a key. */
+function frameKey(set: SpriteSet, key: SpriteKey): SpriteKey {
   const img = set.img[key];
-  if (img && img.naturalWidth > 0) return img;
+  if (img && img.naturalWidth > 0) return key;
   const from = /^(.+)[a-z]\d$/.exec(key)?.[1] as SpriteKey | undefined;
   const near = from ? set.img[from] : undefined;
-  if (near && near.naturalWidth > 0) return near;
-  return set.img[/^(g[wtr]\d|t[gqb]_|turn_s|stand|walk|run|trot)/.test(key) ? "stand" : "sit"];
+  if (from && near && near.naturalWidth > 0) return from;
+  return /^(g[wtr]\d|t[gqb]_|turn_s|stand|walk|run|trot)/.test(key) ? "stand" : "sit";
+}
+
+/**
+ * How much to scale a frame so the animal is the same size in every drawing (ADR-056). The sheets
+ * were drawn at different sizes, so a head could be a fifth bigger in one pose than in the next. heads.ts has the measured fix per drawing; an in-between takes it from the two
+ * drawings it sits between, and a rigged gait frame from the standing drawing it was made from.
+ */
+const fixes = new Map<string, number>();
+/** `?nofix=1` draws the frames as they are, to compare (characters.html, the playground). */
+const NO_FIX = typeof location !== "undefined" && new URLSearchParams(location.search).has("nofix");
+export function sizeFix(id: string, key: string): number {
+  if (NO_FIX) return 1;
+  const at = `${id}/${key}`;
+  let v = fixes.get(at);
+  if (v === undefined) fixes.set(at, (v = fixFor(id, key, 0)));
+  return v;
+}
+function fixFor(id: string, key: string, depth: number): number {
+  const row = HEADS[id];
+  if (!row) return 1;
+  const own = row[key];
+  if (own) return own[0] ?? 1;
+  if (depth > 3) return 1;
+  const b = BETWEEN.get(key);
+  if (b) return fixFor(id, b[0], depth + 1) * (1 - b[2]) + fixFor(id, b[1], depth + 1) * b[2];
+  if (/^g[wtr]\d/.test(key)) return fixFor(id, "stand", depth + 1);
+  return 1;
+}
+
+/**
+ * Where a toy held in the teeth sits in a frame, in its own pixels before the size fix (x from the
+ * middle, forward; y up from the bottom), or null where the head was not found well enough.
+ */
+export function mouthOf(id: string, key: string, depth = 0): { x: number; y: number } | null {
+  const own = HEADS[id]?.[key];
+  if (own) return own[1] !== null && own[2] !== null ? { x: own[1], y: own[2] } : null;
+  if (depth > 3) return null;
+  const b = BETWEEN.get(key);
+  if (b) {
+    const a = mouthOf(id, b[0], depth + 1);
+    const c = mouthOf(id, b[1], depth + 1);
+    if (a && c) return { x: a.x + (c.x - a.x) * b[2], y: a.y + (c.y - a.y) * b[2] };
+    return b[2] < 0.5 ? a : c;
+  }
+  return null;
+}
+
+/** A frame's drawn width and height in cat units, with the size fix. */
+function drawnSize(set: SpriteSet, key: SpriteKey): { w: number; h: number; fix: number; img: HTMLImageElement } {
+  const k = frameKey(set, key);
+  const img = set.img[k] as HTMLImageElement;
+  const fix = sizeFix(set.id, k);
+  return { w: img.naturalWidth * K * fix, h: img.naturalHeight * K * fix, fix, img };
 }
 
 const strideOf = (set: SpriteSet, g: "walk" | "trot" | "run"): number => GAIT_STRIDE[set.id]?.[g] ?? 90;
@@ -1272,6 +1392,8 @@ interface Layer {
   img: HTMLImageElement;
   w: number;
   flip: boolean;
+  /** The size fix of its frame (ADR-056). */
+  fix: number;
 }
 
 /**
@@ -1280,8 +1402,8 @@ interface Layer {
  * with no see-through moment in the middle. A flipped layer is mirrored round the middle.
  */
 function blend(set: SpriteSet, layers: readonly Layer[], ppu: number): { src: CanvasImageSource; w: number; h: number } {
-  const w = Math.max(...layers.map((l) => l.img.naturalWidth * K));
-  const h = Math.max(...layers.map((l) => l.img.naturalHeight * K));
+  const w = Math.max(...layers.map((l) => l.img.naturalWidth * K * l.fix));
+  const h = Math.max(...layers.map((l) => l.img.naturalHeight * K * l.fix));
   let c = blendCanvas.get(set);
   if (!c) blendCanvas.set(set, (c = document.createElement("canvas")));
   const cw = Math.max(1, Math.ceil(w * ppu));
@@ -1298,8 +1420,8 @@ function blend(set: SpriteSet, layers: readonly Layer[], ppu: number): { src: Ca
   cx.imageSmoothingEnabled = true;
   cx.imageSmoothingQuality = "high";
   layers.forEach((l, i) => {
-    const lw = l.img.naturalWidth * K;
-    const lh = l.img.naturalHeight * K;
+    const lw = l.img.naturalWidth * K * l.fix;
+    const lh = l.img.naturalHeight * K * l.fix;
     cx.setTransform(l.flip ? -1 : 1, 0, 0, 1, l.flip ? cw : 0, 0);
     cx.globalCompositeOperation = i === 0 ? "source-over" : "lighter";
     cx.globalAlpha = l.w;
@@ -1322,7 +1444,7 @@ export function drawSprite(
   scale: number,
   t: number,
   d: SpriteDraw,
-): { x: number; y: number } {
+): { x: number; y: number; mouth: { x: number; y: number } | null } {
   const slot = `${set.id}/${d.slot ?? ""}`;
   let g = gaits.get(slot);
   if (!g) gaits.set(slot, (g = { x: null, t, phase: 0, speed: 0, trot: false, dir: facing, turn: null, turnAt: -1e9, turnEnd: -1e9 }));
@@ -1400,16 +1522,23 @@ export function drawSprite(
     let follow: Shot | null = null;
     if ((anim === "watch" || anim === "watch_stand") && d.cursor) {
       // Where the head is, from the looking-ahead drawing, and which way the cursor is from it.
-      const look = frameOf(set, plan.key);
-      const hx = x + drawDir * plan.head.x * look.naturalWidth * K * scale;
-      const hy = y - plan.head.y * look.naturalHeight * K * scale;
+      const look = drawnSize(set, plan.key);
+      const hx = x + drawDir * plan.head.x * look.w * scale;
+      const hy = y - plan.head.y * look.h * scale;
       follow = gazeShot(slot, anim === "watch_stand", poseAt, t, gazeTarget((d.cursor.x - hx) * drawDir, hy - d.cursor.y), TILTY[set.id] ?? 0.35);
+    } else if (REST_GROUPS.has(plan.group) && d.cursor) {
+      const look = drawnSize(set, plan.key);
+      const hx = x + drawDir * plan.head.x * look.w * scale;
+      const hy = y - plan.head.y * look.h * scale;
+      const dx = (d.cursor.x - hx) * drawDir;
+      const dy = hy - d.cursor.y;
+      follow = restShot(slot, plan.group as RestGroup, poseAt, t, dx, dy, d.cursor, Math.hypot(dx, dy) < 420 * scale);
     }
     if (anim !== "poop") blushes.delete(slot);
     else if (d.cursor) {
-      const look = frameOf(set, plan.key);
-      const hx = x + drawDir * plan.head.x * look.naturalWidth * K * scale;
-      const hy = y - plan.head.y * look.naturalHeight * K * scale;
+      const look = drawnSize(set, plan.key);
+      const hx = x + drawDir * plan.head.x * look.w * scale;
+      const hy = y - plan.head.y * look.h * scale;
       follow = blushShot(slot, Math.hypot(d.cursor.x - hx, d.cursor.y - hy) < 180 * scale, t, e > 1.8);
     }
     shot = sequenceShot(anim, plan, sh.prev, e) ?? follow ?? poseShot(anim, set.id, e - settle) ?? { key: plan.key, next: plan.next ?? null, mix: plan.mix ?? 0 };
@@ -1443,9 +1572,7 @@ export function drawSprite(
   sh.dir = drawDir;
   const k = sh.from !== null && t - sh.fadeAt < sh.fade ? smooth(Math.max(0, (t - sh.fadeAt) / sh.fade)) : 1;
   if (k >= 1) sh.from = null;
-  const img = frameOf(set, shot.key);
-  const w = img.naturalWidth * K;
-  const h = img.naturalHeight * K;
+  const { w, h } = drawnSize(set, shot.key);
 
   // Breathing, steps, rocking and the occasional fidget. A fast tremble or a quick hop of more than a
   // few pixels reads as flicker on the real screen (frames come from a timer and are not perfectly
@@ -1489,28 +1616,48 @@ export function drawSprite(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   const layers: Layer[] = [];
-  if (k < 1 && sh.from !== null) layers.push({ img: frameOf(set, sh.from), w: 1 - k, flip: sh.fromDir !== drawDir });
+  const layer = (key: SpriteKey, wt: number, flip: boolean): Layer => {
+    const f = drawnSize(set, key);
+    return { img: f.img, w: wt, flip, fix: f.fix };
+  };
+  if (k < 1 && sh.from !== null) layers.push(layer(sh.from, 1 - k, sh.fromDir !== drawDir));
   const mix = shot.next ? shot.mix : 0;
-  if (mix < 0.999) layers.push({ img, w: k * (1 - mix), flip: false });
-  if (shot.next && mix > 0.001) layers.push({ img: frameOf(set, shot.next), w: k * mix, flip: false });
+  if (mix < 0.999) layers.push(layer(shot.key, k * (1 - mix), false));
+  if (shot.next && mix > 0.001) layers.push(layer(shot.next, k * mix, false));
+  // Where the mouth is in the frame that shows most (measured, heads.ts), in the caller's coordinates,
+  // so a toy carried in the teeth is drawn there and not at a guess (ADR-056).
+  let mouth: { x: number; y: number } | null = null;
+  const weighed: [SpriteKey, number][] = [[shot.key, k * (1 - mix)]];
+  if (shot.next) weighed.push([shot.next, k * mix]);
+  if (k < 1 && sh.from !== null && sh.fromDir === drawDir) weighed.push([sh.from, 1 - k]);
+  weighed.sort((a, b) => b[1] - a[1]);
+  for (const [key] of weighed) {
+    const fk = frameKey(set, key);
+    const mo = mouthOf(set.id, fk);
+    if (!mo) continue;
+    if (typeof DOMPoint === "undefined") break;
+    const f = sizeFix(set.id, fk);
+    const at = deviceScale.inverse().multiply(ctx.getTransform()).transformPoint(new DOMPoint(mo.x * K * f, -mo.y * K * f));
+    mouth = { x: at.x, y: at.y };
+    break;
+  }
   if (layers.length === 1 && !(layers[0] as Layer).flip) {
-    const only = (layers[0] as Layer).img;
-    const ow = only.naturalWidth * K;
-    const oh = only.naturalHeight * K;
-    ctx.drawImage(scaledFor(only, ow * ppu), -ow / 2, -oh, ow, oh);
+    const only = layers[0] as Layer;
+    const ow = only.img.naturalWidth * K * only.fix;
+    const oh = only.img.naturalHeight * K * only.fix;
+    ctx.drawImage(scaledFor(only.img, ow * ppu), -ow / 2, -oh, ow, oh);
   } else {
     const b = blend(set, layers, ppu);
     ctx.drawImage(b.src, -b.w / 2, -b.h, b.w, b.h);
   }
   ctx.restore();
   // The head, upright and in the direction the cat is facing, for hearts and other effects.
-  return { x: plan.head.x * w, y: -plan.head.y * h };
+  return { x: plan.head.x * w, y: -plan.head.y * h, mouth };
 }
 
 /** The width of the current sprite in cat units (for the soft shadow). */
 export function spriteWidth(set: SpriteSet, anim: Anim, t: number): number {
   const key = planFor(anim, t).key;
   // Gait frames have room around the drawing for the legs, so the shadow goes by the standing pose.
-  const img = frameOf(set, /^g[wtr]\d/.test(key) ? "stand" : key);
-  return img.naturalWidth * K;
+  return drawnSize(set, /^g[wtr]\d/.test(key) ? "stand" : key).w;
 }

@@ -118,6 +118,8 @@ export type IntentName =
   | "tumble"
   | "shy"
   | "react"
+  /** Eating the treat you dropped (a response to you, never picked by the brain). */
+  | "eat"
   | "knock_off"
   | "claw"
   | "hunt"
@@ -154,6 +156,8 @@ export interface Intent {
   opener?: { anim: Anim; sec: number };
   /** For "trick": which of its tricks (an id from tricks.ts). */
   trick?: string;
+  /** "follow" the cursor because you hold a treat: it begs under it instead of just tagging along. */
+  treat?: boolean;
 }
 
 export interface Option {

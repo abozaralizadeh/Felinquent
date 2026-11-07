@@ -26,7 +26,7 @@ curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scri
 
 It downloads the same `Felinquent.dmg` from the latest release, checks it against the SHA-256 published next to it (and stops if it doesn't match), copies the app into Applications and starts it. macOS only asks "is this safe?" about files a browser tagged as downloaded from the internet, and a download made by `curl` doesn't get that tag, so there's no Open Anyway step. Run it again any time to update. The script is [scripts/get-mac.sh](../scripts/get-mac.sh) if you want to read it first. Add `-s -- --no-open` after `bash` to install without starting it.
 
-From 0.1.2 on, the app updates itself. Every 12 hours it asks GitHub if there's a newer version. If there is, it asks you first: **Update now**, **Later** or **Skip this version**. Update now downloads it, checks its signature, puts it in place of the old one and restarts the cat. Your cat keeps what it learned. On 0.1.1, download the new DMG and drag it into Applications once more.
+From 0.1.10 on, the app updates itself. A minute after it starts and then every 3 hours it asks GitHub if there's a newer version. If there is, it downloads it, checks its signature and puts it in place of the old one the next time you leave the Mac alone for a couple of minutes (not in a call, nothing full screen), then restarts the cat. Your cat keeps what it learned. Turn off **Update automatically** in the menu and it won't check by itself; **Check for updates…** asks first either way: **Update now**, **Later** or **Skip this version**. Versions 0.1.2 to 0.1.9 check every 12 hours and ask before updating. On 0.1.1, download the new DMG and drag it into Applications once more.
 
 ### The menu
 
@@ -35,16 +35,19 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 | Item | What it does |
 |---|---|
 | Check for updates… | Looks for a new version right now. Shows "Update to 0.x.y…" when one is waiting |
-| Give a treat | Calls the cat over (and ends a shoo) |
-| Character | Tabby, Inky, Pearl, Mochi, Bandit or Biscuit. The current one has a tick |
+| Give a treat | A treat hangs at your pointer and the animal comes to beg under it. Click anywhere to drop it and it eats it. Also calls it over and ends a shoo |
+| Throw its toy | Drops its toy at your pointer. You can also grab the toy (or a mug, a plant) with the mouse and throw it |
+| Character | Tabby, Inky, Pearl, Mochi, Bandit, Biscuit, Chili, Clover or Hazel. The current one has a tick |
 | Chaos level | Chill, Normal or Gremlin |
 | Panic: hide the cat | Hides it until you click again. Also Cmd+Opt+Shift+P |
 | Shoo for 1 hour | Keeps it away for an hour. Click again to call it back early |
 | Use the local model | Lets a small local model pick what the cat wants to do. Needs [Ollama](https://ollama.com) with `gemma3:1b`. If they're missing when you turn it on, the app offers to set them up: it asks first, shows the sizes (Ollama about 230 MB, the model about 815 MB), checks the download and shows the progress right here in the menu. Without it, or with this off, a rules brain does the same job |
 | Start at login | Opens Felinquent when you log in |
-| Check for updates automatically | Looks for a new version every 12 hours and asks before installing it. On by default |
+| Update automatically | Looks for a new version at launch and every 3 hours and puts it in place by itself when you leave the Mac alone for a couple of minutes. On by default |
 | Forget everything it learned | Wipes its memory of you |
 | Open logs folder | The logs are size-limited and kept in `~/Library/Logs/Felinquent/` |
+
+Right-click the animal for a shorter menu right there: Give a treat, Throw its toy, Pet it, Zoomies!, Nap time, Character, Chaos level, Shoo for 1 hour and Panic. They start at once, with or without the local model. The click stays with the animal: the app under it doesn't get it and keeps the keyboard. In the browser playground the same menu opens on a right-click too.
 
 No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. The only thing it fetches from the internet on its own is the update check, one small file from GitHub, and you can turn that off. Setting up the local model downloads Ollama and the model, but only after you say yes. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
 

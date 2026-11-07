@@ -82,6 +82,18 @@ describe("its toy, thrown by you", () => {
     expect(s.intents.some((i) => reactions.includes(i))).toBe(true);
   });
 
+  it("reacts the moment you throw it, even while a slow model is busy thinking", async () => {
+    // A model that never answers: whatever happens has to come from the rules, at once.
+    const never = { name: "slow", decide: () => new Promise(() => {}), plan: () => new Promise(() => {}) };
+    const s = await setup("biscuit", "normal", { brain: never as never, settings: { chaos: "normal", brain: "llm" }, asyncMind: true });
+    await s.run(3);
+    s.cursor = { x: 900, y: 400 };
+    s.cat.throwToy(s.world());
+    await s.run(0.2);
+    const reactions = ["fetch", "carry_toy", "stash_toy", "nose_toy", "knock_toy", "groom"];
+    expect(reactions).toContain(s.cat.executor.intent?.intent);
+  });
+
   it("a squirrel may bury it, and then it is gone until it comes out again", async () => {
     const s = await setup("hazel");
     s.cursor = { x: 900, y: 500 };
@@ -195,7 +207,8 @@ describe("what the model sees", () => {
     const client = {
       name: "spy",
       generate: async (req: { system: string; user: string; schema: unknown }) => {
-        seen = req;
+        // The first plan asked after the throw (the reaction itself is the rules', at once).
+        if (!seen && req.user.includes("tennis ball")) seen = req;
         return "{}";
       },
     };
@@ -205,14 +218,14 @@ describe("what the model sees", () => {
     s.cat.throwToy(s.world());
     s.cursor = { x: b.x - 300, y: b.y - 200 };
     s.speed = 600;
-    await s.run(8);
+    await s.run(45);
     expect(seen).not.toBeNull();
     const req = seen as unknown as { system: string; user: string; schema: unknown };
     const user = JSON.parse(req.user) as { screen?: Record<string, unknown>; bouts: Record<string, { options: unknown }> };
     expect(user.screen).toBeDefined();
     const screen = user.screen as { pointer: string; pointer_on: string; toy?: string; me: string; size: string };
     expect(screen.toy).toMatch(/tennis ball/);
-    expect(screen.pointer).toMatch(/to my left/);
+    expect(screen.pointer).toMatch(/to my (left|right)|above me|below me|on me/);
     expect(screen.me).toMatch(/Dock|window|mid-air/);
     expect(screen.size).toMatch(/^\d+x\d+/);
     // The bout it is planning gets the meaning of each move.

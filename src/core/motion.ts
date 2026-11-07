@@ -32,6 +32,8 @@ const STOP_FROM = 450;
 const MAX_GAP = 0.1;
 /** No sample for this long: the window is taken to be still (seconds). */
 const STALE = 0.12;
+/** A change this small (px) is jitter in the reading, not a move. */
+const JITTER_PX = 1.5;
 /** Smoothing time constants (seconds). The readings jitter a little from frame to frame. */
 const TAU_V = 0.045;
 const TAU_A = 0.06;
@@ -75,10 +77,16 @@ export class WindowMotion {
         continue;
       }
       const dt = this.clock - t.t;
-      const dx = w.bounds.x - t.x;
-      const dy = w.bounds.y - t.y;
-      t.x = w.bounds.x;
-      t.y = w.bounds.y;
+      // A pixel or so either way is the reading jittering (a window resizing itself, rounding on a
+      // scaled display), not a move. Read as moves every frame, it kept an animal braced on a still
+      // window for 15 s (Abozar's log, 7 Nov 2026).
+      const jitter = Math.abs(w.bounds.x - t.x) <= JITTER_PX && Math.abs(w.bounds.y - t.y) <= JITTER_PX;
+      const dx = jitter ? 0 : w.bounds.x - t.x;
+      const dy = jitter ? 0 : w.bounds.y - t.y;
+      if (!jitter) {
+        t.x = w.bounds.x;
+        t.y = w.bounds.y;
+      }
       t.t = this.clock;
       if (dx !== 0 || dy !== 0) this.lastMoveAt = this.clock;
       if (gap > MAX_GAP || dt <= 0 || dt > MAX_GAP) {

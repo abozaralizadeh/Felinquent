@@ -1,7 +1,7 @@
 import { FakeLlmClient, LlmBrain, OllamaClient, isLocalUrl, type Brain } from "../core/brain";
 import { Cat } from "../core/cat";
 import { generateDiary, InMemoryMemory } from "../core/memory";
-import type { MindEvent } from "../core/mind";
+import type { Ask, MindEvent } from "../core/mind";
 import { CHARACTERS, characterById } from "../core/characters";
 import { ARCHETYPES, DEFAULT_PERSONALITY } from "../core/personality";
 import { seeded } from "../core/rng";
@@ -233,6 +233,8 @@ function feedPointer(e: PointerEvent): void {
 }
 stage.addEventListener("pointermove", feedPointer);
 stage.addEventListener("pointerdown", (e) => {
+  // The right button opens the menu on the animal; only the left one presses, drags and pokes.
+  if (e.button !== 0) return;
   state.pointerDown = true;
   feedPointer(e);
 });
@@ -338,8 +340,8 @@ function draw(tSec: number): void {
   drawMarks(mctx, snap, buildWorld().windows, scale);
   drawPropsOnly(ctx, snap, scale);
   // On another desktop: it isn't here.
-  if (!cat.away) drawCat(ctx, body, { scale, t: tSec, character: characterId, cursor: state.cursor });
-  drawMessFront(ctx, snap, scale);
+  const mouth = cat.away ? null : drawCat(ctx, body, { scale, t: tSec, character: characterId, cursor: cat.lookAt(state.cursor) });
+  drawMessFront(ctx, snap, scale, mouth);
   const r = cat.executor.hitRect();
   hit.classList.toggle("hidden", body.hidden || cat.away);
   hit.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;`;
@@ -514,6 +516,94 @@ function throwToy(): void {
   log("you threw its toy");
 }
 $("throwtoy").addEventListener("click", throwToy);
+
+// ---- the menu on the animal (right-click): the same items as in the Mac app ----
+const petMenu = $("petmenu");
+type MenuEntry = { label: string; on?: boolean; run?: () => void; sub?: MenuEntry[] } | "-";
+function ask(what: Ask): void {
+  cat.ask(buildWorld(), what);
+  log(`you asked: ${what}`);
+}
+function petMenuItems(): MenuEntry[] {
+  const chaos = $("chaos") as HTMLSelectElement;
+  const setChaos = (level: ChaosLevel): void => {
+    chaos.value = level;
+    chaos.dispatchEvent(new Event("change"));
+  };
+  return [
+    { label: "Give a treat", run: () => $("treat").click() },
+    { label: "Throw its toy", run: throwToy },
+    { label: "Pet it", run: () => ask("pet") },
+    { label: "Zoomies!", run: () => ask("zoomies") },
+    { label: "Nap time", run: () => ask("nap") },
+    "-",
+    { label: "Character", sub: CHARACTERS.map((c) => ({ label: `${c.name} (${c.species})`, on: c.id === characterId, run: () => pickCharacter(c.id) })) },
+    { label: "Chaos level", sub: (["chill", "normal", "gremlin"] as const).map((l) => ({ label: l[0]?.toUpperCase() + l.slice(1), on: chaos.value === l, run: () => setChaos(l) })) },
+    "-",
+    { label: "Shoo for 1 hour", on: state.shooedUntilMs > state.simNow, run: () => $("shoo").click() },
+    { label: "Panic: hide the cat", on: state.panic, run: () => $("panic").click() },
+  ];
+}
+function menuList(entries: MenuEntry[]): DocumentFragment {
+  const out = document.createDocumentFragment();
+  for (const e of entries) {
+    if (e === "-") {
+      out.append(document.createElement("hr"));
+      continue;
+    }
+    const el = document.createElement("div");
+    el.className = `mi${e.on ? " on" : ""}${e.sub ? " has" : ""}`;
+    el.setAttribute("role", "menuitem");
+    el.append(e.label);
+    if (e.sub) {
+      const sub = document.createElement("div");
+      sub.className = "pmenu sub";
+      sub.append(menuList(e.sub));
+      el.append(sub);
+    }
+    const run = e.run;
+    if (run)
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        hidePetMenu();
+        run();
+      });
+    out.append(el);
+  }
+  return out;
+}
+function hidePetMenu(): void {
+  petMenu.classList.add("hidden");
+}
+function showPetMenu(x: number, y: number): void {
+  petMenu.replaceChildren(menuList(petMenuItems()));
+  petMenu.classList.remove("hidden", "flip");
+  const W = stage.clientWidth;
+  const H = stage.clientHeight;
+  const w = petMenu.offsetWidth;
+  const h = petMenu.offsetHeight;
+  petMenu.style.left = `${Math.max(4, Math.min(W - w - 4, x))}px`;
+  petMenu.style.top = `${Math.max(32, Math.min(H - h - 4, y))}px`;
+  // Not enough room on the right for a submenu: they open to the left.
+  if (x + w * 2.2 > W) petMenu.classList.add("flip");
+}
+stage.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const r = stage.getBoundingClientRect();
+  const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+  const hitBox = cat.executor.hitRect();
+  const onIt = !cat.executor.body.hidden && !cat.away && p.x >= hitBox.x && p.x <= hitBox.x + hitBox.w && p.y >= hitBox.y && p.y <= hitBox.y + hitBox.h;
+  if (onIt) showPetMenu(p.x, p.y);
+  else hidePetMenu();
+});
+// Clicks and moves in the menu are the menu's, not presses or pets on the animal underneath.
+for (const type of ["pointerdown", "pointermove", "pointerup"] as const) petMenu.addEventListener(type, (e) => e.stopPropagation());
+window.addEventListener("pointerdown", (e) => {
+  if (!petMenu.contains(e.target as Node)) hidePetMenu();
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hidePetMenu();
+});
 $("addwin").addEventListener("click", addWindow);
 preloadProps();
 // Mischief on demand, to see it without waiting for the cat to feel like it.
@@ -643,7 +733,8 @@ else requestAnimationFrame(frame);
 /**
  * ?scene=knock|shatter|claw|hunt|zoom|pee|poop sets up a bit of gremlin mischief a second after loading, to
  * look at it (or record it) without waiting for the cat to feel like it. ?scene=ball brings out its
- * own toy (each animal has its own; ?character=<id> picks the animal), ?scene=fetch throws it for the animal to react to, ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
+ * own toy (each animal has its own; ?character=<id> picks the animal), ?scene=fetch throws it for the animal to react to, ?scene=treat holds out a
+ * treat and drops it after ?drop=<ms> (6 s), ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
  */
 const scene = new URLSearchParams(location.search).get("scene");
 if (scene) {
@@ -677,6 +768,12 @@ if (scene) {
       const pick = new URLSearchParams(location.search).get("do");
       if (pick === "fetch" || pick === "carry_toy" || pick === "stash_toy" || pick === "nose_toy")
         setTimeout(() => start({ intent: pick, target: "toy", approach: pick === "fetch" ? "run" : "walk", stay_sec: 20, mood: "playful" }), 1200);
+    }
+    else if (scene === "treat") {
+      // Holds a treat out over the Dock, then lets it go (?drop=<ms>, 6 s by default).
+      state.cursor = { x: Math.round(stage.clientWidth * 0.62), y: Math.round(w.dockTop - 150) };
+      cat.treat(buildWorld());
+      setTimeout(() => cat.treat(buildWorld()), Number(new URLSearchParams(location.search).get("drop") ?? "6000"));
     }
     else if (scene === "trick") {
       const seed = Number(new URLSearchParams(location.search).get("seed") ?? "0");

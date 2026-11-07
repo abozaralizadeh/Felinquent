@@ -79,12 +79,13 @@ describe("reflex reactions in the Mind", () => {
     expect(ev.filter((e) => e.type === "intent")).toEqual([]);
   });
 
-  it("a treat brings it running and lowers its attention need", () => {
+  it("a treat held out brings it running to beg under it (the treat counts once it is eaten)", () => {
     const { cat, world } = newCat();
     cat.mind.forceNeeds({ attention: 0.8, trust: 40 });
     cat.treat(world);
-    expect(cat.mind.needs.attention).toBeCloseTo(0.4, 5);
-    expect(cat.mind.current).toMatchObject({ intent: "follow", target: "cursor", approach: "run" });
+    expect(cat.mess.treatInHand).toBeTruthy();
+    expect(cat.mind.current).toMatchObject({ intent: "follow", target: "cursor", approach: "run", treat: true });
+    expect(cat.mind.needs.attention).toBeCloseTo(0.8, 5);
   });
 });
 
@@ -221,5 +222,19 @@ describe("a held cat", () => {
     expect(intents).toEqual([]);
     expect(cat.governor.budget).toBeGreaterThanOrEqual(before);
     expect(cat.executor.held).toBe(true);
+  });
+});
+
+describe("coming back", () => {
+  it("back after a while away, a dog comes over to say hello (not after a minute, not asleep)", async () => {
+    const { characterById } = await import("../src/core/characters");
+    const { cat, world } = newCat({ personality: characterById("biscuit").personality });
+    const away = (ms: number) => at(world, ms, { activity: "away", idleSec: (ms - T0) / 1000 });
+    await cat.mind.tick(away(T0), 1, false);
+    await cat.mind.tick(away(T0 + 12 * 60_000), 1, false);
+    if (cat.mind.sleeping) cat.mind.wake(T0 + 12 * 60_000);
+    const back = await cat.mind.tick(at(world, T0 + 12 * 60_000 + 1000, { activity: "typing", idleSec: 0 }), 1, false);
+    const hello = back.find((e) => e.type === "intent");
+    expect(hello?.type === "intent" && hello.intent).toMatchObject({ intent: "follow", target: "cursor", opener: { anim: "happy" } });
   });
 });

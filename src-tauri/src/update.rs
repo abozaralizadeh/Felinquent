@@ -1,9 +1,14 @@
-//! Updates (macOS). Every 12 hours the app fetches one small file from GitHub Releases
-//! (latest.json) to see if a newer Felinquent is out. Nothing about the user goes with it.
-//! When there is one, it asks: update now, later, or skip this version. On a yes it downloads
-//! the new app, checks its signature against the public key in tauri.conf.json, puts it in
-//! place of this one and restarts. "Check for updates automatically" in the menu turns the
-//! checks off; "Check for updates…" works by hand either way.
+//! Updates (macOS). A minute after launch and then every 3 hours the app fetches one small file
+//! from GitHub Releases (latest.json) to see if a newer Felinquent is out. Nothing about the user
+//! goes with it. With "Update automatically" on (the default) a newer version is downloaded,
+//! checked against the public key in tauri.conf.json and put in place by itself the next time
+//! you leave the Mac alone for two minutes (not in a call, nothing full screen), and the cat
+//! restarts with it. "Check for updates…" works by hand either way and asks first: update now,
+//! later, or skip this version. With "Update automatically" off it never checks by itself.
+//!
+//! Before 0.1.10 it checked every 12 hours counted from the last check of any kind, so a check by
+//! hand pushed the next one back, and it always asked: Abozar's log shows every update so far
+//! came from a click, and 0.1.7 and 0.1.8 were never offered (ADR-050).
 //!
 //! FELINQUENT_UPDATE_URL points the check at another latest.json, to try an update locally.
 //! FELINQUENT_UPDATE_TEST=<n>[@seconds] is for trying the questions without a mouse: 5 seconds
@@ -23,7 +28,11 @@ use crate::alert::{self, short};
 use crate::{logfile, sensors};
 
 /// Seconds between automatic checks.
-const EVERY: u64 = 12 * 3600;
+const EVERY: u64 = 3 * 3600;
+/// After a check that failed (no network), the next try.
+const RETRY: u64 = 30 * 60;
+/// How long you leave the Mac alone before an automatic update puts itself in place.
+const IDLE_FOR: f64 = 120.0;
 /// After "Later", it waits this long before asking about the same version again.
 const LATER: u64 = 3 * 24 * 3600;
 /// Where people can always get the app by hand.
@@ -32,7 +41,7 @@ const PAGE: &str = "https://github.com/abozaralizadeh/Felinquent/releases/latest
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 struct Prefs {
-    /// Check by itself every 12 hours.
+    /// Check by itself and put new versions in place on its own.
     auto: bool,
     /// A version the user said to skip.
     skipped: String,
@@ -40,11 +49,13 @@ struct Prefs {
     last_check: u64,
     /// Don't ask on its own before this time (set by "Later").
     ask_after: u64,
+    /// The version that ran last time, to say hello after an update.
+    ran: String,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { auto: true, skipped: String::new(), last_check: 0, ask_after: 0 }
+        Prefs { auto: true, skipped: String::new(), last_check: 0, ask_after: 0, ran: String::new() }
     }
 }
 
@@ -101,13 +112,27 @@ fn in_bundle() -> bool {
 pub fn menu_items(app: &tauri::App) -> tauri::Result<(MenuItem<Wry>, CheckMenuItem<Wry>)> {
     let prefs = load(app.handle());
     let item = MenuItem::with_id(app, "update", "Check for updates…", true, None::<&str>)?;
-    let auto_item = CheckMenuItem::with_id(app, "autoupdate", "Check for updates automatically", true, prefs.auto, None::<&str>)?;
+    let auto_item = CheckMenuItem::with_id(app, "autoupdate", "Update automatically", true, prefs.auto, None::<&str>)?;
     app.manage(Updates { item: item.clone(), auto_item: auto_item.clone(), prefs: Mutex::new(prefs), busy: Mutex::new(false), found: Mutex::new(None), offering: AtomicBool::new(false) });
     Ok((item, auto_item))
 }
 
-/// The automatic checks: a minute after launch, then whenever 12 hours have passed. The clock
-/// is the wall clock, read every 10 minutes, so a Mac that sleeps a lot still gets its checks.
+/// The version it was before, if it just updated itself (the page shows a little hello). Once per update.
+pub fn just_updated(app: &AppHandle) -> Option<String> {
+    let current = app.package_info().version.to_string();
+    let mut before = None;
+    change(app, |p| {
+        if !p.ran.is_empty() && p.ran != current {
+            before = Some(p.ran.clone());
+        }
+        p.ran = current.clone();
+    });
+    before
+}
+
+/// The automatic checks: a minute after launch, then every 3 hours. The clock is the wall clock,
+/// read every 10 minutes, so a Mac that sleeps a lot still gets its checks. A check by hand
+/// doesn't push the next one back.
 pub fn start(app: &AppHandle) {
     let app = app.clone();
     if std::env::var("FELINQUENT_UPDATE_TEST").is_ok() {
@@ -119,12 +144,14 @@ pub fn start(app: &AppHandle) {
     }
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(60));
+        let mut first = true;
         loop {
             let due = app.try_state::<Updates>().is_some_and(|u| {
                 let p = u.prefs.lock().unwrap();
-                p.auto && now().saturating_sub(p.last_check) >= EVERY
+                p.auto && (first || now().saturating_sub(p.last_check) >= EVERY)
             });
             if due && (in_bundle() || std::env::var("FELINQUENT_UPDATE_URL").is_ok()) {
+                first = false;
                 check(&app, false);
             }
             std::thread::sleep(Duration::from_secs(600));
@@ -144,19 +171,14 @@ pub fn on_menu(app: &AppHandle, id: &str) {
             if let Some(u) = app.try_state::<Updates>() {
                 let _ = u.auto_item.set_checked(on);
             }
-            logfile::write(&format!("menu: automatic update checks {}", if on { "on" } else { "off" }));
+            logfile::write(&format!("menu: update automatically {}", if on { "on" } else { "off" }));
         }
         "update" => {
             logfile::write("menu: check for updates");
             let app = app.clone();
             // Off the main thread: the check waits on the network and the questions are modal.
-            std::thread::spawn(move || {
-                let found = app.try_state::<Updates>().and_then(|u| u.found.lock().unwrap().clone());
-                match found {
-                    Some(update) => offer(&app, update, true),
-                    None => check(&app, true),
-                }
-            });
+            // Always a fresh check, so a version that came out since the last one is the one offered.
+            std::thread::spawn(move || check(&app, true));
         }
         _ => {}
     }
@@ -185,17 +207,23 @@ fn check(app: &AppHandle, by_hand: bool) {
     match result {
         Ok(Some(update)) => {
             logfile::write(&format!("update: {} is out (this is {current})", update.version));
-            change(app, |p| p.last_check = now());
+            if !by_hand {
+                change(app, |p| p.last_check = now());
+            }
             let _ = u.item.set_text(format!("Update to {}…", update.version));
             *u.found.lock().unwrap() = Some(update.clone());
             let p = u.prefs.lock().unwrap().clone();
-            if by_hand || (p.skipped != update.version && now() >= p.ask_after) {
-                offer(app, update, by_hand);
+            if by_hand {
+                offer(app, update);
+            } else if p.auto && p.skipped != update.version {
+                quietly(app, update);
             }
         }
         Ok(None) => {
             logfile::write(&format!("update: {current} is the newest"));
-            change(app, |p| p.last_check = now());
+            if !by_hand {
+                change(app, |p| p.last_check = now());
+            }
             if by_hand {
                 if !in_bundle() && std::env::var("FELINQUENT_UPDATE_URL").is_err() {
                     ask(app, "Updates work in the installed app", "This is a build from source. Updates only replace the app installed from the DMG.", &["OK"]);
@@ -206,8 +234,10 @@ fn check(app: &AppHandle, by_hand: bool) {
         }
         Err(e) => {
             logfile::write(&format!("update: the check failed: {e}"));
-            // Try again in an hour, not at the next 10-minute tick.
-            change(app, |p| p.last_check = now().saturating_sub(EVERY - 3600));
+            // Try again in half an hour, not at the next 10-minute tick.
+            if !by_hand {
+                change(app, |p| p.last_check = now().saturating_sub(EVERY - RETRY));
+            }
             if by_hand {
                 ask(app, "Couldn't check for updates", &format!("GitHub didn't answer. Check the connection and try again later.\n\n({})", short(&e, 200)), &["OK"]);
             }
@@ -215,20 +245,41 @@ fn check(app: &AppHandle, by_hand: bool) {
     }
 }
 
-/// Offers the update. An automatic offer waits for a quiet moment first.
-fn offer(app: &AppHandle, update: Update, by_hand: bool) {
+/// "Update automatically": no question. It waits until you leave the Mac alone for a couple of
+/// minutes, then downloads, puts the new app in place and restarts (a second or two without the cat).
+fn quietly(app: &AppHandle, update: Update) {
     let Some(u) = app.try_state::<Updates>() else { return };
     if u.offering.swap(true, Ordering::SeqCst) {
         return;
     }
-    ask_about(app, update, by_hand);
+    logfile::write(&format!("update: {} will go in by itself at a quiet moment", update.version));
+    loop {
+        // Turned off meanwhile: it asks the next time you check by hand instead.
+        if !u.prefs.lock().unwrap().auto {
+            logfile::write("update: automatic updates were turned off, not installing");
+            u.offering.store(false, Ordering::SeqCst);
+            return;
+        }
+        if sensors::idle_sec() >= IDLE_FOR && !sensors::camera_in_use() && !sensors::mic_in_use() && !fullscreen_in_front() {
+            break;
+        }
+        std::thread::sleep(Duration::from_secs(15));
+    }
+    u.offering.store(false, Ordering::SeqCst);
+    install(app, update, false);
+}
+
+/// Asks about the update (after a check by hand).
+fn offer(app: &AppHandle, update: Update) {
+    let Some(u) = app.try_state::<Updates>() else { return };
+    if u.offering.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    ask_about(app, update);
     u.offering.store(false, Ordering::SeqCst);
 }
 
-fn ask_about(app: &AppHandle, update: Update, by_hand: bool) {
-    if !by_hand {
-        wait_for_a_quiet_moment();
-    }
+fn ask_about(app: &AppHandle, update: Update) {
     let current = app.package_info().version.to_string();
     let notes = update.body.as_deref().map(str::trim).filter(|n| !n.is_empty()).map(|n| format!("{}\n\n", short(n, 400))).unwrap_or_default();
     let text = format!(
@@ -238,7 +289,7 @@ fn ask_about(app: &AppHandle, update: Update, by_hand: bool) {
     let answer = ask(app, "A new Felinquent is out", &text, &["Update now", "Later", "Skip this version"]);
     logfile::write(&format!("update: asked about {}, answer {}", update.version, ["update now", "later", "skip"].get(answer).unwrap_or(&"none")));
     match answer {
-        0 => install(app, update),
+        0 => install(app, update, true),
         2 => {
             logfile::write(&format!("update: skipping {}", update.version));
             change(app, |p| p.skipped = update.version.clone());
@@ -250,25 +301,14 @@ fn ask_about(app: &AppHandle, update: Update, by_hand: bool) {
     }
 }
 
-/// Not in a call, no fullscreen app in front, and no typing for a few seconds, so the question
-/// doesn't jump in the middle of something (or catch a key meant for another app).
-fn wait_for_a_quiet_moment() {
-    loop {
-        let busy = sensors::camera_in_use() || sensors::mic_in_use() || sensors::since_key_sec() < 5.0 || fullscreen_in_front();
-        if !busy {
-            return;
-        }
-        std::thread::sleep(Duration::from_secs(5));
-    }
-}
-
 fn fullscreen_in_front() -> bool {
     let displays = sensors::displays();
     sensors::windows("felinquent").iter().filter(|w| w.z == 0).any(|w| displays.iter().any(|d| w.x <= d.x && w.y <= d.y && w.w >= d.w && w.h >= d.h))
 }
 
 /// Downloads, checks the signature, swaps the app and restarts. The menu item shows how far it got.
-fn install(app: &AppHandle, update: Update) {
+/// `asked`: you said yes to it, so a failure says so; an automatic one only logs and tries again later.
+fn install(app: &AppHandle, update: Update, asked: bool) {
     let Some(u) = app.try_state::<Updates>() else { return };
     {
         let mut busy = u.busy.lock().unwrap();
@@ -307,6 +347,10 @@ fn install(app: &AppHandle, update: Update) {
             *u.busy.lock().unwrap() = false;
             let _ = u.item.set_enabled(true);
             let _ = u.item.set_text(format!("Update to {}…", update.version));
+            if !asked {
+                change(app, |p| p.last_check = now().saturating_sub(EVERY - RETRY));
+                return;
+            }
             let text = format!("{}\n\nThe app you have still works. You can also get the new one from the download page.", short(&e.to_string(), 300));
             if ask(app, "The update didn't work", &text, &["Open the download page", "Close"]) == 0 {
                 let _ = std::process::Command::new("/usr/bin/open").arg(PAGE).spawn();
@@ -335,6 +379,7 @@ mod tests {
         assert!(!p.auto);
         assert_eq!(p.skipped, "0.1.2");
         assert_eq!(p.last_check, 0);
+        assert_eq!(p.ran, "");
     }
 
     #[test]

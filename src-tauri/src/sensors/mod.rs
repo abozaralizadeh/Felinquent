@@ -79,6 +79,9 @@ mod other {
     pub fn pointer() -> (f64, f64, bool) {
         (0.0, 0.0, false)
     }
+    pub fn right_button() -> bool {
+        false
+    }
 }
 #[cfg(not(any(target_os = "macos", windows)))]
 pub use other::*;

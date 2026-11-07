@@ -308,6 +308,11 @@ export function toyName(kind: string): string {
   return ({ yarn: "ball of yarn", jingle: "jingle ball", fish: "toy fish", sock: "sock", foil: "foil ball", tennis: "tennis ball", bone: "bone", carrot: "carrot", acorn: "acorn" } as Record<string, string>)[kind] ?? kind;
 }
 
+/** A treat's name in words, for its thoughts. */
+export function treatName(kind: string): string {
+  return ({ fish_treat: "fish treat", biscuit: "biscuit", egg: "egg", grapes: "grapes", strawberry: "strawberry", peanut: "peanut" } as Record<string, string>)[kind] ?? "treat";
+}
+
 /** Where something is from the animal, in words: dx to the right, dy up (screen pixels). */
 export function spotWords(dx: number, dy: number): string {
   const d = Math.hypot(dx, dy);

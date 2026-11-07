@@ -12,7 +12,10 @@ import type { ChaosLevel, WindowInfo, WorldSnapshot } from "./types";
  * Abozar asked for a chaos level where it "can run around and break things" (6 Nov 2026).
  */
 export type ToyKind = "yarn" | "jingle" | "fish" | "sock" | "foil" | "tennis" | "bone" | "carrot" | "acorn";
-export type PropKind = "mug" | "glass" | "plant" | "vase" | "yarn" | "pencils" | "teacup" | "duck" | "mouse" | ToyKind;
+/** What each kind of animal eats as a treat (from your hand): a cat a fish-shaped biscuit, a dog a bone-shaped one, a fox an egg, a raccoon grapes, a rabbit a strawberry, a squirrel a peanut. */
+export type TreatKind = "fish_treat" | "biscuit" | "egg" | "grapes" | "strawberry" | "peanut";
+export const TREAT_KINDS: readonly TreatKind[] = ["fish_treat", "biscuit", "egg", "grapes", "strawberry", "peanut"];
+export type PropKind = "mug" | "glass" | "plant" | "vase" | "yarn" | "pencils" | "teacup" | "duck" | "mouse" | ToyKind | TreatKind;
 /** What stands about on window tops to be knocked off. */
 export const PROP_KINDS: readonly PropKind[] = ["mug", "glass", "plant", "vase", "yarn", "pencils", "teacup", "duck", "mouse"];
 /** Each animal's own toy (Personality.toy): the yarn is the tabby's, the others belong to one animal each. */
@@ -23,6 +26,7 @@ export const ROLLS: ReadonlySet<PropKind> = new Set<PropKind>(["yarn", "jingle",
 export const PROP_HEIGHT: Record<PropKind, number> = {
   mug: 30, glass: 34, plant: 40, vase: 42, yarn: 26, pencils: 46, teacup: 24, duck: 28, mouse: 18,
   jingle: 21, fish: 18, sock: 23, foil: 20, tennis: 22, bone: 14, carrot: 17, acorn: 21,
+  fish_treat: 13, biscuit: 13, egg: 17, grapes: 19, strawberry: 17, peanut: 12,
 };
 /** What shatters when it lands hard. The rest bounces (and the yarn rolls). */
 export const FRAGILE: ReadonlySet<PropKind> = new Set<PropKind>(["mug", "glass", "plant", "vase", "teacup", "pencils"]);
@@ -66,6 +70,11 @@ export interface Prop {
   slip?: number;
   /** You threw it (or put it down): when it comes to rest, the animal is told (a "toy" event). */
   thrown?: boolean;
+  /** A treat (from your hand): it lies where it lands until it is eaten. bites: how much of it is gone, 0 to 1. */
+  treat?: boolean;
+  bites?: number;
+  /** You moved it with the mouse: it is sturdier than a thing knocked off (you put it down, you didn't hurl it). */
+  handled?: boolean;
   /** Held in your hand: where you grabbed it, from its middle, and how fast your hand moves (px/s, smoothed). */
   grip?: { dx: number; dy: number; vx: number; vy: number };
 }
@@ -190,7 +199,15 @@ export type MessEvent =
   /** A window moved so hard that what stood on it flew off (the human did it). */
   | { type: "flung"; kind: PropKind }
   /** The toy you threw or put down came to rest. */
-  | { type: "toy"; kind: ToyKind; x: number; y: number; windowId: string | null };
+  | { type: "toy"; kind: ToyKind; x: number; y: number; windowId: string | null }
+  /** You threw the toy (from the menu or out of your hand): it is in the air now. */
+  | { type: "toy_thrown"; kind: ToyKind; x: number; y: number }
+  /** You picked the toy up. */
+  | { type: "toy_grabbed"; kind: ToyKind; x: number; y: number }
+  /** You let go of the treat (a click), it fell and came to rest, and the animal ate the last of it. */
+  | { type: "treat_dropped"; kind: TreatKind; x: number; y: number }
+  | { type: "treat_landed"; kind: TreatKind; x: number; y: number; windowId: string | null }
+  | { type: "treat_eaten"; kind: TreatKind };
 
 const GRAVITY = 2000;
 const STILL: WinMotion = { vx: 0, vy: 0, ax: 0, ay: 0 };
@@ -551,6 +568,77 @@ export class Mess {
     return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h ? t : undefined;
   }
 
+  /** Things you can pick up with the mouse: the toy, a treat lying about, and whatever stands on a window or lies on the floor. */
+  get grabbable(): Prop[] {
+    return this.props.filter(
+      (p) => p.alpha >= 0.5 && (p.state === "rest" || p.state === "roll" || p.state === "settled" || p.state === "carried" || p.state === "teeter") && !(p.treat && (p.bites ?? 0) > 0),
+    );
+  }
+
+  /** The thing under a point (the cursor) that you can pick up: the toy first, then the smallest box. */
+  grabbableUnder(x: number, y: number): Prop | undefined {
+    const hit = this.grabbable.filter((p) => {
+      const b = this.toyBox(p);
+      return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    });
+    return hit.find((p) => p.toy) ?? hit.sort((a, b) => PROP_HEIGHT[a.kind] - PROP_HEIGHT[b.kind])[0];
+  }
+
+  /** The thing in your hand, if any (the toy, a treat, a mug). */
+  get held(): Prop | undefined {
+    return this.props.find((p) => p.state === "held");
+  }
+
+  /**
+   * "Give a treat": one appears in your hand at the cursor and stays there, swinging a little, until
+   * you click to let it fall (a second "Give a treat" lets it go too). One at a time.
+   */
+  offerTreat(kind: TreatKind, x: number, y: number, nowMs: number): Prop | null {
+    if (this.props.some((p) => p.treat && p.state === "held")) return null;
+    const p: Prop = {
+      id: `p${this.nextId++}`,
+      kind,
+      windowId: null,
+      offset: 0,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      rot: 0,
+      vr: 0,
+      state: "held",
+      alpha: 1,
+      bornMs: nowMs,
+      teeter: 0,
+      dir: 1,
+      slideLeft: 0,
+      treat: true,
+      bites: 0,
+      // Just below and right of the pointer's tip, so the arrow doesn't cover it.
+      grip: { dx: 9 * this.scale, dy: 4 * this.scale, vx: 0, vy: 0 },
+    };
+    this.props.push(p);
+    this.holdAt(x, y, 0);
+    return p;
+  }
+
+  /** The treat: in your hand, falling, or lying where it landed (not once it is eaten). */
+  get treat(): Prop | undefined {
+    return this.props.find((p) => p.treat && (p.bites ?? 0) < 1);
+  }
+
+  /** A bite of the treat (amount of the whole, 0 to 1). The last bite finishes it. */
+  bite(id: string, amount: number): void {
+    const p = this.props.find((q) => q.id === id && q.treat);
+    if (!p || p.state === "held" || p.state === "fall") return;
+    p.bites = Math.min(1, (p.bites ?? 0) + amount);
+    if (p.bites >= 1) {
+      p.alpha = 0;
+      this.props = this.props.filter((q) => q !== p);
+      this.outbox.push({ type: "treat_eaten", kind: p.kind as TreatKind });
+    }
+  }
+
   /** You picked the toy up with the mouse (out of the animal's mouth too). */
   grab(id: string, x: number, y: number): void {
     const p = this.props.find((q) => q.id === id);
@@ -560,7 +648,11 @@ export class Mess {
     p.windowId = null;
     p.slip = undefined;
     p.alpha = 1;
+    p.rot = p.toy ? p.rot : 0;
+    p.settledMs = undefined;
     p.grip = { dx: p.x - x, dy: p.y - h / 2 - y, vx: 0, vy: 0 };
+    if (!p.toy && !p.treat) p.handled = true;
+    if (p.toy) this.outbox.push({ type: "toy_grabbed", kind: p.kind as ToyKind, x: p.x, y: p.y });
   }
 
   /** Where your hand is now, every frame while you hold the toy. */
@@ -591,15 +683,29 @@ export class Mess {
     p.vx = cap(g.vx, 2200);
     p.vy = cap(g.vy, 1800);
     p.dir = p.vx >= 0 ? 1 : -1;
-    p.vr = p.dir * Math.min(12, 2 + Math.abs(p.vx) / 150);
+    // A ball spins off your hand; a mug or a treat put down mostly doesn't.
+    p.vr = p.toy ? p.dir * Math.min(12, 2 + Math.abs(p.vx) / 150) : p.dir * Math.min(6, Math.abs(p.vx) / 300);
     p.grip = undefined;
-    p.thrown = true;
+    // A treat is let go of, not thrown: it mostly just drops.
+    if (p.treat) {
+      p.vx *= 0.3;
+      p.vy = Math.max(-150, p.vy * 0.3);
+      p.vr *= 0.3;
+    }
+    p.thrown = !!(p.toy || p.treat);
+    if (p.toy) this.outbox.push({ type: "toy_thrown", kind: p.kind as ToyKind, x: p.x, y: p.y });
+    if (p.treat) this.outbox.push({ type: "treat_dropped", kind: p.kind as TreatKind, x: p.x, y: p.y });
     return p;
   }
 
-  /** Is the toy in your hand? */
+  /** Is something in your hand (the toy, a thing you picked up; a treat counts, see treatInHand)? */
   get holding(): boolean {
-    return this.props.some((p) => p.state === "held");
+    return this.props.some((p) => p.state === "held" && !p.treat);
+  }
+
+  /** A treat in your hand, waiting for your click. */
+  get treatInHand(): Prop | undefined {
+    return this.props.find((p) => p.treat && p.state === "held");
   }
 
   /**
@@ -620,6 +726,7 @@ export class Mess {
     p.vy = -this.rng.range(0, 120);
     p.vr = this.rng.range(-6, 6);
     p.thrown = true;
+    this.outbox.push({ type: "toy_thrown", kind: p.kind as ToyKind, x: p.x, y: p.y });
     return p;
   }
 
@@ -810,7 +917,8 @@ export class Mess {
   private cameToRest(p: Prop): void {
     if (!p.thrown || Math.abs(p.vx) > 25) return;
     p.thrown = false;
-    this.outbox.push({ type: "toy", kind: p.kind as ToyKind, x: p.x, y: p.y, windowId: p.windowId });
+    if (p.treat) this.outbox.push({ type: "treat_landed", kind: p.kind as TreatKind, x: p.x, y: p.y, windowId: p.windowId });
+    else this.outbox.push({ type: "toy", kind: p.kind as ToyKind, x: p.x, y: p.y, windowId: p.windowId });
   }
 
   /** Bounces a moving thing off the outer edges of the displays. */
@@ -900,7 +1008,7 @@ export class Mess {
     };
     const lively =
       this.fly !== null ||
-      this.props.some((p) => (p.state !== "rest" && p.state !== "settled") || p.toy || moving(p.windowId)) ||
+      this.props.some((p) => (p.state !== "rest" && p.state !== "settled") || p.toy || p.treat || moving(p.windowId)) ||
       this.shards.some((x) => !x.settled || moving(x.windowId)) ||
       this.strips.some((x) => !x.settled);
     const n = lively ? Math.min(60, Math.ceil(dt / (1 / 30))) : 1;
@@ -952,16 +1060,16 @@ export class Mess {
           p.state = "fall";
           p.windowId = null;
           p.slip = undefined;
-          p.vx = p.toy ? p.vx : this.rng.range(-30, 30);
+          p.vx = p.toy || p.treat ? p.vx : this.rng.range(-30, 30);
           p.vr = this.rng.range(-3, 3);
           this.outbox.push({ type: "fell", kind: p.kind });
           continue;
         }
-        if (!this.ride(p, win, dt, p.toy ? BALL_GRIP : GRIP.prop)) continue;
+        if (!this.ride(p, win, dt, p.toy || p.treat ? BALL_GRIP : GRIP.prop)) continue;
         p.y = win.bounds.y;
         // Hidden behind a window in front: fade out until it shows again.
         const visible = segmentsOf(this.platforms, win.id).some((s) => p.x >= s.x1 - 4 && p.x <= s.x2 + 4);
-        p.alpha = Math.max(0, Math.min(1, p.alpha + (visible ? dt / (p.toy ? 0.3 : 1.2) : -dt / 0.25)));
+        p.alpha = Math.max(0, Math.min(1, p.alpha + (visible ? dt / (p.toy || p.treat ? 0.3 : 1.2) : -dt / 0.25)));
         if (p.state === "roll") {
           // The ball rolls along the window top, and off the end of it.
           this.roll(p, dt);
@@ -1027,7 +1135,8 @@ export class Mess {
           continue;
         }
         p.y = hit.y;
-        if (FRAGILE.has(p.kind) && p.vy > 520) {
+        // Put down by you it takes a real drop to break (about 300 px); knocked off, about 70 px does it.
+        if (FRAGILE.has(p.kind) && p.vy > (p.handled ? 1100 : 520)) {
           this.breakProp(p, now);
           p.alpha = 0;
           continue;
@@ -1036,7 +1145,7 @@ export class Mess {
         p.vy = -p.vy * (p.kind === "duck" || ROLLS.has(p.kind) ? 0.45 : 0.3);
         p.vx *= 0.6;
         p.vr *= 0.5;
-        if (Math.abs(p.vy) < 90 && p.toy) {
+        if (Math.abs(p.vy) < 90 && (p.toy || p.treat)) {
           // The ball lands and rolls on, on a window or on the floor.
           p.state = "roll";
           p.vy = 0;
@@ -1206,7 +1315,7 @@ export class Mess {
     return {
       props: this.props
         .filter((p) => p.alpha > 0 && p.state !== "stashed")
-        .map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, rot: p.rot, alpha: p.alpha, trail: p.trail?.slice(-160), lying: p.toy && p.state === "roll", front: p.state === "carried" || p.state === "held" })),
+        .map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, rot: p.rot, alpha: p.alpha, trail: p.trail?.slice(-160), lying: (p.toy || p.treat) && p.state === "roll", front: p.state === "carried" || p.state === "held", carried: p.state === "carried", bites: p.bites })),
       shards: this.shards.map((s) => ({ kind: s.kind, x: s.x, y: s.y, rot: s.rot, poly: s.poly, cx: s.cx, cy: s.cy, w: s.w, h: s.h, alpha: s.settled && s.settledMs !== undefined ? fade(this.world?.nowMs ?? 0, s.settledMs) : 1 })),
       decals: this.decals.map((d) => ({ ...d, alpha: Math.min(1, ((d.bornMs + d.ttlMs) - (this.world?.nowMs ?? 0)) / 6000) })),
       strips: this.strips.map((s) => ({ x: s.x, y: s.y, rot: s.rot, w: s.w, h: s.h, seed: s.seed, alpha: s.settled && s.settledMs !== undefined ? fade(this.world?.nowMs ?? 0, s.settledMs) : 1 })),
@@ -1236,8 +1345,8 @@ export class Mess {
 const fade = (now: number, settledMs: number): number => Math.max(0, Math.min(1, 1 - (now - settledMs - FLOOR_LINGER_MS) / FADE_MS));
 
 export interface MessSnapshot {
-  /** lying: the animal's toy on a window top or the floor, however it has turned. front: in your hand or in its mouth, drawn in front of the animal. */
-  props: { id: string; kind: PropKind; x: number; y: number; rot: number; alpha: number; trail?: { x: number; y: number }[]; lying?: boolean; front?: boolean }[];
+  /** lying: the animal's toy on a window top or the floor, however it has turned. front: in your hand or in its mouth, drawn in front of the animal. carried: in its mouth. */
+  props: { id: string; kind: PropKind; x: number; y: number; rot: number; alpha: number; trail?: { x: number; y: number }[]; lying?: boolean; front?: boolean; carried?: boolean; bites?: number }[];
   shards: { kind: Shard["kind"]; x: number; y: number; rot: number; poly: number[]; cx: number; cy: number; w: number; h: number; alpha: number }[];
   decals: (Decal & { alpha: number })[];
   strips: { x: number; y: number; rot: number; w: number; h: number; seed: number; alpha: number }[];

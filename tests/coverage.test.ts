@@ -158,8 +158,32 @@ describe("every behavior can be chosen and runs to the end", () => {
     }
   });
 
+  it("eating a treat (only ever the answer to one you drop) runs to the end, a bite at a time", () => {
+    const world = makeWorld({ nowMs: T0 });
+    const ex = new Executor(seeded(2));
+    ex.placeOnDock(world, 200);
+    let left = 1;
+    ex.treatAt = () => (left > 0 ? { id: "t1", x: 600, y: world.dockTop, windowId: null, moving: false } : null);
+    ex.start({ intent: "eat", target: "treat", approach: "run", stay_sec: 30, mood: "content" });
+    let done = false;
+    let bites = 0;
+    for (let i = 0; i < 90 * 60 && !done; i++) {
+      for (const e of ex.update(1 / 60)) {
+        if (e.type === "done") done = true;
+        if (e.type === "fx" && e.fx.fx === "bite") {
+          bites++;
+          left -= e.fx.amount;
+          expect(Math.abs(ex.body.x + ex.body.facing * ex.size.w * 0.4 - 600)).toBeLessThan(25);
+        }
+      }
+    }
+    expect(done).toBe(true);
+    expect(bites).toBeGreaterThanOrEqual(3);
+    expect(left).toBeLessThanOrEqual(0);
+  });
+
   it("covers every behavior in the catalog table", () => {
-    const covered = new Set<string>([...Object.keys(SITUATIONS), "ignore", "sulk", "leave", "react"]);
+    const covered = new Set<string>([...Object.keys(SITUATIONS), "ignore", "sulk", "leave", "react", "eat"]);
     expect(BEHAVIORS.map((b) => b.intent).filter((i) => !covered.has(i))).toEqual([]);
   });
 });

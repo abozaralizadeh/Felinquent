@@ -41,6 +41,7 @@ export function poseFor(anim: Anim): Pose {
     case "jump": return { ...base, body: { x: 0, y: -50, rx: 44, ry: 17, rot: -0.25 }, head: { x: 46, y: -66, r: 19 }, legs: "air", tail: "low", eyes: "wide", mouth: "open" };
     case "fall": return { ...base, body: { x: 0, y: -50, rx: 36, ry: 22, rot: 0.2 }, head: { x: 30, y: -48, r: 20 }, legs: "air", eyes: "wide", mouth: "open", tail: "up" };
     case "land": return { ...base, body: { x: 0, y: -24, rx: 32, ry: 24, rot: 0 }, head: { x: 20, y: -44, r: 21 }, legs: "crouch" };
+    case "prep": return { ...base, body: { x: 0, y: -22, rx: 33, ry: 22, rot: 0.08 }, head: { x: 24, y: -40, r: 21 }, legs: "crouch" };
     case "perch": return { ...base, legs: "perch", eyes: "half" };
     case "watch_stand": return { ...base, ...LOW, legs: "walk", tail: "up", eyes: "wide" };
     case "groom": return { ...base, paw: true, eyes: "closed" };
@@ -79,6 +80,7 @@ export function poseFor(anim: Anim): Pose {
     case "love":
     case "beg": return { ...base, eyes: "happy", fx: "hearts" };
     case "howl": return { ...base, mouth: "open", eyes: "closed", fx: "notes" };
+    case "eat": return { ...base, ...LOW, head: { x: 40, y: -40, r: 20 }, legs: "crouch", eyes: "happy" };
     case "dig":
     case "cover":
     case "tumble": return { ...base, legs: "crouch", fx: "dust" };
@@ -521,8 +523,9 @@ export interface DrawOptions {
 }
 
 /** Draws the character with its feet at body.x, body.y. */
-export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): void {
-  if (body.hidden) return;
+/** Draws the animal. Returns where its mouth is on screen when the drawing knows (for a carried toy). */
+export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): { x: number; y: number } | null {
+  if (body.hidden) return null;
   const ch = characterById(o.character);
   const pal = ch.palette;
   const p = poseFor(body.anim);
@@ -539,7 +542,7 @@ export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): void {
   const bob = moving ? -Math.abs(Math.sin(o.t * (body.anim === "run" ? 14 : 9))) * 2.2 : 0;
   const wag = ch.species === "dog" && body.anim !== "sleep" && body.anim !== "sulk";
   const spr = getSprites(ch.id);
-  if (!spr && spritesPending(ch.id)) return;
+  if (!spr && spritesPending(ch.id)) return null;
 
   // A soft shadow on the ground, so it sits on the window instead of floating over it.
   if (body.anim !== "fall" && body.anim !== "jump" && body.anim !== "dangle" && body.anim !== "hang") {
@@ -556,7 +559,7 @@ export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): void {
     // The sprite gaits bob in their own frames, so the walking bob above is only for the drawn-in-code art.
     const head = drawSprite(ctx, spr, body.facing, body.anim, body.x, body.y, scale, o.t, { sx, sy, bob: 0, vy: body.vy, phase: o.phase, slot: o.slot, cursor: o.cursor });
     drawEffects(ctx, body, p.fx, head, scale, o.t);
-    return;
+    return head.mouth;
   }
 
   ctx.save();
@@ -618,6 +621,7 @@ export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): void {
   ctx.restore();
 
   drawEffects(ctx, body, p.fx, p.head, scale, o.t);
+  return null;
 }
 
 /** Effects are drawn upright (not mirrored), above the head. */

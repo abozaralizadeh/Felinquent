@@ -1,6 +1,6 @@
 import { behavior } from "./behaviors";
 import { BOUT_INTENTS, BOUT_KINDS, PAUSE, PAUSE_BY_CHAOS, boutLengthMs, boutWeights, openingMove, pickBout, type BoutKind } from "./bouts";
-import type { Brain, BrainContext, Plan, PlanContext } from "./brain";
+import { weighted, type Brain, type BrainContext, type Plan, type PlanContext } from "./brain";
 import { Governor, respectPlan, respectState, type RespectState } from "./governor";
 import type { Memory } from "./memory";
 import { applyEvent, initialNeeds, stepNeeds, type NeedsEvent } from "./needs";
@@ -8,12 +8,13 @@ import type { Personality } from "./personality";
 import { ENERGY_BY_CHAOS, instinctFor } from "./species";
 import type { ReflexKind } from "./reflexes";
 import { pokeReaction, scriptSeconds } from "./reactions";
+import { doing } from "./scenes";
 import { lineFor } from "./lines";
 import { seeded, type Rng } from "./rng";
 import { candidates, focusedWindow, intentFromOption, type RulesContext, type ToyView } from "./rules";
-import { spotWords, thoughtTopic, toyName } from "./summary";
+import { spotWords, thoughtTopic, toyName, treatName } from "./summary";
 
-export { spotWords, toyName };
+export { spotWords, toyName, treatName };
 import type { ChaosLevel, Intent, IntentName, Needs, Option, Settings, WorldSnapshot } from "./types";
 
 export type MindEvent =
@@ -45,6 +46,8 @@ export interface MindDeps {
 }
 
 const WAKE_ENERGY = 0.85;
+/** What you can ask it from the menu on the animal (right-click). */
+export type Ask = "pet" | "zoomies" | "nap";
 const MIN_NAP_MS = 120_000;
 const HOUR_MS = 3_600_000;
 
@@ -84,6 +87,10 @@ const POTTY_HOURS: Record<ChaosLevel, { pee: number; poop: number } | null> = {
 /** When it has to go and the governor said no (a meeting, the budget), it asks again after this. */
 const POTTY_RETRY_MS = 45_000;
 /** What it can be doing and still drop it to chase a cursor that shoots past. */
+/** Away at least this long (minutes) and it comes to say hello when you're back. */
+const GREET_AFTER_MIN = 10;
+/** What it drops to come and say hello. */
+const GREET_FROM: ReadonlySet<IntentName> = new Set<IntentName>(["watch", "groom", "stare", "look_around", "yawn", "wander", "sniff", "perch", "peek", "tour", "sit_on", "block_dock", "follow"]);
 const CHASE_FROM: ReadonlySet<IntentName> = new Set<IntentName>(["watch", "groom", "stare", "look_around", "yawn", "wander", "sniff", "perch", "peek", "tour"]);
 /** How often per second a cursor racing past sets it off (while it moves fast nearby), and how long before it may again. */
 const CHASE_IMPULSE: Record<ChaosLevel, { perSec: number; coolMs: number }> = {
@@ -103,6 +110,10 @@ export class Mind {
   /** No new decision before this time: the animal is resting after its last action. */
   private restUntilMs = -Infinity;
   private lastRespect: RespectState["kind"] = "none";
+  /** Why it was away last time (panic, shoo, full screen), so coming back from a shoo can be in a huff. */
+  private awayReason: string | null = null;
+  /** What the respect mode had it do (leave, nap in a corner), to tell it from something you started since. */
+  private respectIntent: Intent | null = null;
   private justWoke = false;
   private napStartMs = 0;
   private llmCalls: number[] = [];
@@ -139,7 +150,6 @@ export class Mind {
    */
   private epoch = 0;
   /** You threw the toy: the next decision is about it. */
-  private toyCall = false;
   /** How badly it has to pee and to poop (ADR-048). From 1 it has to go, and that comes first. */
   potty = { pee: 0, poop: 0 };
   private pottyRng = seeded(4409);
@@ -228,7 +238,8 @@ export class Mind {
   }
 
   /** Keeps track of the human: busy for how long, back from being away, a new window. */
-  private watchHuman(world: WorldSnapshot, newApps: string[]): void {
+  private watchHuman(world: WorldSnapshot, newApps: string[]): number {
+    let backAfterMin = 0;
     const now = world.nowMs;
     const busy = world.activity === "typing" || world.activity === "typing_fast" || world.activity === "reading";
     if (world.activity === "away") {
@@ -238,12 +249,34 @@ export class Mind {
       if (this.awaySinceMs !== null) {
         const m = Math.round((now - this.awaySinceMs) / 60_000);
         if (m >= 5) this.note(now, `the human came back after ${m} min away`);
+        backAfterMin = m;
         this.awaySinceMs = null;
       }
       if (busy) this.busySinceMs ??= now;
       else if (world.idleSec > 120) this.busySinceMs = null;
     }
     for (const app of newApps.slice(0, 2)) this.note(now, `a new ${app || "window"} window opened`);
+    return backAfterMin;
+  }
+
+  /**
+   * You're back after a while away: it comes over to say hello, a meow (a dog: a happy wiggle) and a
+   * headbutt. A dog nearly always does; an aloof cat only now and then. Not while it sleeps, not in
+   * a meeting, and not in the middle of something it cares about.
+   */
+  private greet(world: WorldSnapshot, events: MindEvent[]): void {
+    const now = world.nowMs;
+    if (this.sleeping || respectState(world).kind !== "none") return;
+    if (this.current && !GREET_FROM.has(this.current.intent)) return;
+    const ins = instinctFor(this.personality.species);
+    const keen = ins.kind === "dog" ? 0.95 : 0.9 - 0.6 * this.personality.aloofness;
+    if (this.impulseRng.next() > keen) return;
+    this.epoch++;
+    this.restUntilMs = -Infinity;
+    this.lastDecisionMs = now;
+    const thought = this.writtenLine(world, "social");
+    const opener: Intent["opener"] = { anim: ins.kind === "dog" ? "happy" : "meow", sec: 1.4 };
+    this.setCurrent({ intent: "follow", target: "cursor", approach: ins.kind === "dog" ? "run" : "walk", stay_sec: 14, mood: "content", opener, ...(thought ? { thought } : {}) }, now, "reflex", events);
   }
 
   async tick(world: WorldSnapshot, dtSec: number, moving: boolean, held = false): Promise<MindEvent[]> {
@@ -261,7 +294,7 @@ export class Mind {
         }
       }
     }
-    this.watchHuman(world, newApps);
+    if (this.watchHuman(world, newApps) >= GREET_AFTER_MIN) this.greet(world, events);
     this.needs = stepNeeds(this.needs, dtSec, {
       sleeping: this.sleeping,
       moving,
@@ -280,12 +313,23 @@ export class Mind {
     if (state.kind !== this.lastRespect) {
       const was = this.lastRespect;
       this.lastRespect = state.kind;
+      const wasShooed = was === "away" && this.awayReason === "shoo";
+      this.awayReason = state.kind === "away" ? state.reason : null;
       events.push({ type: "respect", state: state.kind });
       this.d.log?.("respect mode", { from: was, to: state.kind });
       const plan = respectPlan(state);
       if (plan) {
         this.setCurrent(plan, now, "respect", events);
+        this.respectIntent = plan;
         this.sleeping = plan.intent === "nap";
+        return events;
+      }
+      // Something you started as the mode ended (a treat ends a shoo) goes on, and wins over a grudge.
+      const yours = this.current !== null && this.current !== this.respectIntent;
+      this.respectIntent = null;
+      if ((was === "meeting" || was === "away") && yours) {
+        this.bout = null;
+        this.restUntilMs = -Infinity;
         return events;
       }
       if (was === "meeting" || was === "away") {
@@ -294,12 +338,23 @@ export class Mind {
         this.bout = null;
         this.lastDecisionMs = now - this.gapMs;
         this.restUntilMs = -Infinity;
+        // Back from being shooed: it comes back in a huff and lets you know.
+        if (wasShooed && state.kind === "none") {
+          this.note(now, "i'm back on the screen after a shoo");
+          const thought = this.writtenLine(world, "rest");
+          const script = [doing("sulk", 4), doing("look", 1, "cursor"), doing("sulk", 5)];
+          this.setCurrent({ intent: "sulk", target: "here", approach: "walk", stay_sec: Math.ceil(scriptSeconds(script)), mood: "sulky", script, ...(thought ? { thought } : {}) }, now, "reflex", events);
+          return events;
+        }
       }
     }
     if (state.kind === "meeting" || state.kind === "away") {
       if (!this.current) {
         const plan = respectPlan(state);
-        if (plan) this.setCurrent(plan, now, "respect", events);
+        if (plan) {
+          this.setCurrent(plan, now, "respect", events);
+          this.respectIntent = plan;
+        }
       }
       return events;
     }
@@ -332,7 +387,7 @@ export class Mind {
     if (this.current) return events;
     // It has to go: that doesn't wait for the usual pause between actions.
     if (this.pottyDue(now)) this.pottyCall = true;
-    if (!this.toyCall && !this.pottyCall && (now - this.lastDecisionMs < this.gapMs || now < this.restUntilMs)) return events;
+    if (!this.pottyCall && (now - this.lastDecisionMs < this.gapMs || now < this.restUntilMs)) return events;
     await this.decide(world, events);
     for (const message of this.llmProblems.splice(0)) events.unshift({ type: "llm_problem", message });
     return events;
@@ -387,26 +442,57 @@ export class Mind {
   }
 
   /**
-   * You threw its toy (or put it down) and it came to rest. It is told where, and the next decision is
-   * about the toy: the model (or the rules) picks what to do with it, fetch, carry it off, bury it,
-   * sniff it, bat it, or pretend not to care. A sleeping dog wakes up for it; most others sleep on.
+   * You threw its toy (from the menu, or out of your hand). It reacts at once, by the rules: eyes on
+   * it while it flies, then what it does about it (fetch, carry it off, bury it, sniff it, bat it, or
+   * pretend not to care). Waiting for the model here took 9 to 27 s on Abozar's Mac (7 Nov 2026), so
+   * the model only plans what comes after, when this move is done. A sleeping dog wakes up for it;
+   * most others sleep on.
    */
-  onToy(world: WorldSnapshot, toy: { kind: string; x: number; y: number }): void {
+  onToyThrown(world: WorldSnapshot, toy: { kind: string; x: number; y: number }): MindEvent[] {
     const now = world.nowMs;
+    const events: MindEvent[] = [];
+    this.note(now, `the human threw my ${toyName(toy.kind)}`);
+    if (respectState(world).kind !== "none") return events;
     const pos = this.d.catPos();
-    this.note(now, `the human threw my ${toyName(toy.kind)} and it landed ${spotWords(toy.x - pos.x, pos.y - toy.y)}`);
-    if (respectState(world).kind !== "none") return;
     const d = Math.hypot(toy.x - pos.x, toy.y - pos.y);
     if (this.sleeping) {
       const ins = instinctFor(this.personality.species);
       const wakes = (ins.kind === "dog" ? 0.75 : ins.kind === "squirrel" || ins.kind === "fox" ? 0.35 : 0.2) * (d < 400 ? 1 : 0.5);
-      if (this.impulseRng.next() > wakes) return;
+      if (this.impulseRng.next() > wakes) return events;
       this.wake(now);
     }
+    const intent = this.toyReaction(world);
+    if (!intent) return events;
+    // Whatever the brain was busy planning is out of date now.
     this.epoch++;
-    this.toyCall = true;
-    this.current = null;
     this.restUntilMs = -Infinity;
+    this.lastDecisionMs = now;
+    const ins = instinctFor(this.personality.species);
+    this.bout = { kind: "play", startedMs: now, untilMs: now + boutLengthMs("play", this.settings.chaos, this.d.rng, ins.gap), steps: [], source: "rules" };
+    this.lastBout = "play";
+    const thought = intent.thought ?? this.writtenLine(world, "play");
+    this.d.governor.commit(intent, world);
+    this.setCurrent(thought ? { ...intent, thought } : intent, now, "rules", events);
+    this.d.log?.("bout", { kind: "play", source: "rules", steps: [intent.intent], about: "toy" });
+    return events;
+  }
+
+  /** The toy you threw came to rest: where, for the brain's next plan. */
+  onToyLanded(world: WorldSnapshot, toy: { kind: string; x: number; y: number }): void {
+    const pos = this.d.catPos();
+    this.note(world.nowMs, `my ${toyName(toy.kind)} landed ${spotWords(toy.x - pos.x, pos.y - toy.y)}`);
+  }
+
+  /** What it does about the toy you just threw, picked by the rules (weighted by how it feels about it). */
+  private toyReaction(world: WorldSnapshot): Intent | null {
+    const rulesCtx = this.ctx(world);
+    const gov = this.d.governor;
+    const options = gov.filter(candidates(rulesCtx), world, this.needs).filter((o) => TOY_REACTIONS.has(o.intent));
+    // The toy moves first: a wash only when nothing about the toy is allowed or wanted.
+    const keen = options.filter((o) => o.intent !== "groom");
+    const pick = weighted(keen.length > 0 ? keen : options, this.impulseRng);
+    if (!pick) return null;
+    return gov.validate(intentFromOption(pick, rulesCtx, this.settings.chaos, this.settings.thoughtBubbles), options, world, this.needs);
   }
 
   private ctx(world: WorldSnapshot): RulesContext {
@@ -500,9 +586,7 @@ export class Mind {
     const now = world.nowMs;
     this.lastDecisionMs = now;
     const epoch = this.epoch;
-    const toyCall = this.toyCall;
-    this.toyCall = false;
-    const pottyCall = this.pottyCall && !toyCall;
+    const pottyCall = this.pottyCall;
     this.pottyCall = false;
     const rulesCtx = this.ctx(world);
     const gov = this.d.governor;
@@ -531,10 +615,7 @@ export class Mind {
       catDoing: this.d.catDoing(),
     };
 
-    // The toy you just threw: a play bout about it, planned now.
-    const toyOptions = toyCall ? options.filter((o) => TOY_REACTIONS.has(o.intent)) : [];
     let toyPlanned = false;
-    if (toyOptions.length > 0) toyPlanned = await this.startToyBout(world, toyOptions, brainCtx);
     // It has to go: a short bout that starts with that. Not allowed right now (a meeting, the budget,
     // chill): it holds on and asks again in a bit.
     const pottyOptions = pottyCall ? options.filter((o) => o.intent === "pee" || o.intent === "poop") : [];
@@ -671,30 +752,6 @@ export class Mind {
     return got.added.name;
   }
 
-  /** A play bout about the toy you just threw: what to do with it, planned by the model if it may. */
-  private async startToyBout(world: WorldSnapshot, options: Option[], brainCtx: BrainContext): Promise<boolean> {
-    const now = world.nowMs;
-    const ctx: PlanContext = {
-      ...brainCtx,
-      bouts: [{ kind: "play", weight: 1, options }],
-      fixedBout: "play",
-      happened: this.happenedLines(now),
-      lastBout: this.lastBout,
-      busyForMin: this.busySinceMs === null ? 0 : (now - this.busySinceMs) / 60_000,
-      things: this.d.things?.() ?? [],
-    };
-    const got = await this.askPlan(ctx, world, true);
-    if (!got) return false;
-    const steps = [...got.plan.steps];
-    const thought = got.plan.thought ?? this.writtenLine(world, "play");
-    if (thought && steps[0]) steps[0] = { ...steps[0], thought };
-    const ins = instinctFor(this.personality.species);
-    this.bout = { kind: "play", startedMs: now, untilMs: now + boutLengthMs("play", this.settings.chaos, this.d.rng, ins.gap), steps, source: got.source };
-    this.lastBout = "play";
-    this.d.log?.("bout", { kind: "play", source: got.source, steps: steps.map((x) => x.intent), about: "toy" });
-    return true;
-  }
-
   /**
    * It has to go: the model (or the rules) plans the bout, with the pee or the poop first wherever
    * the plan put it (else where the rules say), and what comes after: zoomies, a wash, a sniff.
@@ -711,7 +768,10 @@ export class Mind {
       busyForMin: this.busySinceMs === null ? 0 : (now - this.busySinceMs) / 60_000,
       things: this.d.things?.() ?? [],
     };
+    const epoch = this.epoch;
     const got = await this.askPlan(ctx, world, true);
+    // Something newer took over while the model thought (the toy, a treat): leave it be.
+    if (this.epoch !== epoch) return true;
     const first = [...potty].sort((a, b) => b.score - a.score)[0] as Option;
     const planned = got?.plan.steps.find((x) => x.intent === first.intent);
     const go = planned ?? intentFromOption(first, this.ctx(world), this.settings.chaos, false);
@@ -728,7 +788,10 @@ export class Mind {
   /** Starts the next bout: asks for a plan and puts the opening move (a stretch, a wash) first. */
   private async startBout(world: WorldSnapshot, options: Option[], brainCtx: BrainContext): Promise<void> {
     const now = world.nowMs;
+    const epoch = this.epoch;
     const got = await this.planBout(world, options, brainCtx);
+    // Something newer took over while the model thought (the toy, a treat): leave it be.
+    if (this.epoch !== epoch) return;
     if (!got) {
       this.bout = null;
       return;
@@ -949,19 +1012,109 @@ export class Mind {
     return events;
   }
 
-  giveTreat(world: WorldSnapshot): MindEvent[] {
+  /**
+   * You hold out a treat (it hangs at the cursor until you click): it comes right under it and begs,
+   * whatever it was doing, and keeps begging until you let go of it.
+   */
+  onTreatOffered(world: WorldSnapshot, kind: string): MindEvent[] {
+    const now = world.nowMs;
+    const events: MindEvent[] = [];
+    this.note(now, `the human is holding out a ${treatName(kind)} for me`);
+    if (respectState(world).kind !== "none") return events;
     this.epoch++;
+    if (this.sleeping) this.wake(now);
+    this.restUntilMs = -Infinity;
+    this.lastDecisionMs = now;
+    const thought = this.writtenLine(world, "social");
+    this.setCurrent({ intent: "follow", target: "cursor", approach: "run", stay_sec: 50, mood: "content", treat: true, ...(thought ? { thought } : {}) }, now, "reflex", events);
+    return events;
+  }
+
+  /** You let go of the treat (a click): it watches it fall and goes straight for it. */
+  onTreatDropped(world: WorldSnapshot, kind: string): MindEvent[] {
+    const now = world.nowMs;
+    const events: MindEvent[] = [];
+    this.note(now, `the human dropped the ${treatName(kind)}`);
+    if (respectState(world).kind !== "none") return events;
+    this.epoch++;
+    if (this.sleeping) this.wake(now);
+    this.restUntilMs = -Infinity;
+    this.lastDecisionMs = now;
+    const thought = this.writtenLine(world, "social");
+    this.setCurrent({ intent: "eat", target: "treat", approach: "run", stay_sec: 30, mood: "content", ...(thought ? { thought } : {}) }, now, "reflex", events);
+    return events;
+  }
+
+  /** The treat came to rest. If it isn't already on its way (it was busy, or held), it goes now. */
+  onTreatLanded(world: WorldSnapshot, treat: { kind: string; x: number; y: number }): MindEvent[] {
+    const pos = this.d.catPos();
+    this.note(world.nowMs, `the ${treatName(treat.kind)} landed ${spotWords(treat.x - pos.x, pos.y - treat.y)}`);
+    if (this.current?.intent === "eat") return [];
+    return this.onTreatDropped(world, treat.kind);
+  }
+
+  /** It ate the last of the treat: a treat as far as its mood goes, and something for later. */
+  ateTreat(world: WorldSnapshot, kind: string): void {
+    const now = world.nowMs;
     this.needsEvent("treat");
     // What goes in comes out, eventually.
     this.potty.poop += 0.03;
-    this.note(world.nowMs, "the human gave me a treat");
-    this.learn(true, world.nowMs);
-    this.d.memory.log({ atMs: world.nowMs, kind: "treat" });
+    this.note(now, `i ate the ${treatName(kind)} the human gave me`);
+    this.learn(true, now);
+    this.d.memory.log({ atMs: now, kind: "treat" });
+  }
+
+  /**
+   * You asked for something from the menu on the animal. It starts in this same frame, from the
+   * rules, never waiting on the model. Your ask beats the chaos level (zoomies at chill, if you want
+   * them), but never a respect mode: in a meeting, on a full-screen app, in panic or shooed it
+   * doesn't come, and in quiet hours or on a low battery only a nap goes.
+   */
+  onAsked(world: WorldSnapshot, ask: Ask): MindEvent[] {
+    const now = world.nowMs;
     const events: MindEvent[] = [];
-    if (respectState(world).kind !== "none") return events;
-    this.sleeping = false;
-    // It eats it, licks its lips, then sticks close to you in case there are more.
-    this.setCurrent({ intent: "follow", target: "cursor", approach: "run", stay_sec: 10, mood: "content", opener: { anim: "lick_lips", sec: 1.6 } }, world.nowMs, "reflex", events);
+    const state = respectState(world).kind;
+    const quietOnly = state === "quiet" || state === "low_battery";
+    if (ask === "pet") {
+      // The same as a pet with the pointer, and it shows it.
+      this.needsEvent("pet");
+      this.note(now, "the human petted me");
+      this.lastPetMs = now;
+      this.learn(true, now);
+      this.d.memory.log({ atMs: now, kind: "pet" });
+    } else this.note(now, ask === "zoomies" ? "the human asked me for zoomies" : "the human told me to take a nap");
+    if (state === "away" || state === "meeting") return events;
+    if (quietOnly && ask !== "nap") return events;
+    this.epoch++;
+    this.restUntilMs = -Infinity;
+    this.lastDecisionMs = now;
+    const ins = instinctFor(this.personality.species);
+    const thought = this.writtenLine(world, ask === "pet" ? "social" : ask === "nap" ? "rest" : "play");
+    if (ask === "nap") {
+      this.sleeping = true;
+      this.napStartMs = now;
+      this.setCurrent({ intent: "nap", target: "here", approach: "walk", stay_sec: 600, mood: "sleepy", ...(thought ? { thought } : {}) }, now, "reflex", events);
+      return events;
+    }
+    if (this.sleeping) this.wake(now);
+    if (ask === "zoomies") {
+      this.needsEvent("play");
+      this.setCurrent({ intent: "zoomies", target: "here", approach: "run", stay_sec: 12, mood: "playful", ...(thought ? { thought } : {}) }, now, "reflex", events);
+      return events;
+    }
+    // A pet: some take it well, some take the chance to swat the hand.
+    const swat = this.d.rng.next() < ins.bite;
+    const script = swat
+      ? [doing("surprise", 0.3, "cursor"), doing("swat", 0.8, "cursor"), doing("sulk", 2)]
+      : ins.kind === "dog"
+        ? [doing("happy", 1.6, "cursor"), doing("love", 1.6, "cursor"), doing("happy", 1.2, "cursor")]
+        : [doing("headbutt", 1.8, "cursor"), doing("purr", 2.4), doing("love", 1.4, "cursor")];
+    this.setCurrent(
+      { intent: "react", target: "here", approach: "walk", stay_sec: Math.ceil(scriptSeconds(script)), mood: swat ? "grumpy" : "content", script, ...(thought ? { thought } : {}) },
+      now,
+      "reflex",
+      events,
+    );
     return events;
   }
 

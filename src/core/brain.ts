@@ -45,7 +45,7 @@ export interface Brain {
 }
 
 /** A weighted pick among options. */
-function weighted(options: Option[], rng: RulesContext["rng"]): Option | undefined {
+export function weighted(options: Option[], rng: RulesContext["rng"]): Option | undefined {
   const total = options.reduce((s, o) => s + o.score, 0);
   let roll = rng.next() * total;
   for (const o of options) {

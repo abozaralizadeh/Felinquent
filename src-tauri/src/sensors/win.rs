@@ -12,7 +12,7 @@ use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, H
 use windows::Win32::System::SystemInformation::GetTickCount;
 use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetCursorPos, GetWindowLongW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
@@ -178,6 +178,11 @@ pub fn displays() -> Vec<Display> {
     list.sort_by_key(|(primary, _)| !*primary);
     let out: Vec<Display> = list.into_iter().map(|(_, d)| d).collect();
     if out.is_empty() { vec![Display { x: 0.0, y: 0.0, w: 1440.0, h: 900.0 }] } else { out }
+}
+
+/// Whether the right mouse button is down. Read only.
+pub fn right_button() -> bool {
+    unsafe { (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16) & 0x8000 != 0 }
 }
 
 /// Where the real cursor is in points, and whether the left mouse button is down. Read only:

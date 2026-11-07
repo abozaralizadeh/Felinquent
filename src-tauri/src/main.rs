@@ -53,6 +53,8 @@ struct Pointer {
     x: f64,
     y: f64,
     down: bool,
+    /// The right button: a right-click on the animal opens its menu.
+    right: bool,
 }
 
 #[derive(Serialize)]
@@ -67,7 +69,7 @@ struct Config {
 }
 
 /// What the page says is current, so the menu can tick it.
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct Choices {
     character: String,
     chaos: String,
@@ -85,9 +87,17 @@ struct Ticks {
     model: CheckMenuItem<Wry>,
 }
 
+/// The last choices the page sent, for the menu a right-click on the animal opens.
+struct Current(std::sync::Mutex<Option<Choices>>);
+
 /// The page calls this after every change, so the ticks match what the cat really does.
 #[tauri::command]
 async fn show_choices(app: AppHandle, choices: Choices) {
+    if let Some(c) = app.try_state::<Current>() {
+        if let Ok(mut g) = c.0.lock() {
+            *g = Some(choices.clone());
+        }
+    }
     let Some(t) = app.try_state::<Ticks>() else { return };
     let current = [format!("character:{}", choices.character), format!("chaos:{}", choices.chaos)];
     for item in &t.picks {
@@ -194,7 +204,66 @@ async fn read_layout(window: WebviewWindow) -> Layout {
 #[tauri::command]
 async fn read_pointer() -> Pointer {
     let (x, y, down) = sensors::pointer();
-    Pointer { x, y, down }
+    Pointer { x, y, down, right: sensors::right_button() }
+}
+
+/// The version this was before, if it just updated itself (once), so the cat can say hello.
+#[tauri::command]
+fn just_updated(app: AppHandle) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    return update::just_updated(&app);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        None
+    }
+}
+
+/// A right-click on the animal: the handy part of the menu bar menu, right there at the cursor.
+/// Same item ids as the menu bar menu, so the same handler answers them.
+/// x and y (in the window, points) put it somewhere else than at the pointer (only the menu test does).
+#[tauri::command]
+async fn pet_menu(app: AppHandle, window: WebviewWindow, x: Option<f64>, y: Option<f64>) {
+    let current = app.try_state::<Current>().and_then(|c| c.0.lock().ok().and_then(|g| g.clone()));
+    match build_pet_menu(&app, current.as_ref()) {
+        Ok(menu) => {
+            logfile::write("pet menu: open");
+            let shown = match (x, y) {
+                (Some(x), Some(y)) => window.popup_menu_at(&menu, tauri::LogicalPosition::new(x, y)),
+                _ => window.popup_menu(&menu),
+            };
+            if let Err(e) = shown {
+                logfile::write(&format!("pet menu: {e}"));
+            }
+        }
+        Err(e) => logfile::write(&format!("pet menu: {e}")),
+    }
+}
+
+fn build_pet_menu(app: &AppHandle, cur: Option<&Choices>) -> tauri::Result<Menu<Wry>> {
+    let on = |id: &str| match cur {
+        Some(c) => id == format!("character:{}", c.character) || id == format!("chaos:{}", c.chaos) || (id == "panic" && c.panic) || (id == "shoo" && c.shoo),
+        None => false,
+    };
+    let check = |id: &str, text: &str| CheckMenuItem::with_id(app, id, text, true, on(id), None::<&str>);
+    let group = |items: &[(&str, &str)]| items.iter().map(|(id, text)| check(id, text)).collect::<tauri::Result<Vec<_>>>();
+    fn as_items(v: &[CheckMenuItem<Wry>]) -> Vec<&dyn IsMenuItem<Wry>> {
+        v.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect()
+    }
+    let characters = group(&CHARACTERS)?;
+    let chaos_levels = group(&CHAOS)?;
+    let character = Submenu::with_items(app, "Character", true, &as_items(&characters))?;
+    let chaos = Submenu::with_items(app, "Chaos level", true, &as_items(&chaos_levels))?;
+    let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
+    let treat = item("treat", "Give a treat")?;
+    let toy = item("toy", "Throw its toy")?;
+    let pet = item("pet", "Pet it")?;
+    let zoomies = item("zoomies", "Zoomies!")?;
+    let nap = item("nap", "Nap time")?;
+    let shoo = check("shoo", "Shoo for 1 hour")?;
+    let panic = check("panic", "Panic: hide the cat")?;
+    let (line1, line2) = (PredefinedMenuItem::separator(app)?, PredefinedMenuItem::separator(app)?);
+    Menu::with_items(app, &[&treat, &toy, &pet, &zoomies, &nap, &line1, &character, &chaos, &line2, &shoo, &panic])
 }
 
 /// true: clicks pass through to whatever is below. false: the cat catches them.
@@ -317,6 +386,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
 
+    app.manage(Current(std::sync::Mutex::new(None)));
     app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone() });
     // The model setup shows its progress in this item's text.
     #[cfg(target_os = "macos")]
@@ -626,9 +696,43 @@ fn main() {
             if std::env::var("FELINQUENT_SELFTEST").is_ok() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    for (secs, msg) in [(12, "character:mochi"), (3, "treat"), (3, "toy"), (3, "panic"), (4, "panic"), (3, "chaos:chill"), (3, "model"), (3, "model"), (3, "character:biscuit"), (3, "shoo")] {
+                    for (secs, msg) in [(12, "character:mochi"), (3, "treat"), (3, "toy"), (3, "panic"), (4, "panic"), (3, "chaos:chill"), (3, "model"), (3, "model"), (3, "character:biscuit"), (3, "pet"), (4, "zoomies"), (6, "nap"), (3, "shoo")] {
                         std::thread::sleep(std::time::Duration::from_secs(secs));
                         control(&handle, msg);
+                    }
+                });
+            }
+
+            // FELINQUENT_PETMENU_TEST=<s> opens the menu on the animal by itself after s seconds, next to
+            // the animal (computer use can't right-click a menu bar app). It only calls the menu; it
+            // never makes a click.
+            if let Some(secs) = std::env::var("FELINQUENT_PETMENU_TEST").ok().and_then(|v| v.parse::<u64>().ok()) {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(secs));
+                    control(&handle, "petmenu-test");
+                });
+            }
+
+            // FELINQUENT_MENU_SCRIPT=<s>:<id>,<s>:<id>... sends those menu ids (toy, zoomies, nap,
+            // character:mochi, panic...) s seconds after launch, the way a pick from the menu does,
+            // for a demo recording. Like the self-test it calls the handler; it never makes a click.
+            if let Ok(script) = std::env::var("FELINQUENT_MENU_SCRIPT") {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let mut steps: Vec<(f64, String)> = script
+                        .split(',')
+                        .filter_map(|s| s.trim().split_once(':').and_then(|(t, id)| Some((t.parse::<f64>().ok()?, id.to_string()))))
+                        .collect();
+                    steps.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    let start = std::time::Instant::now();
+                    for (at, id) in steps {
+                        let wait = at - start.elapsed().as_secs_f64();
+                        if wait > 0.0 {
+                            std::thread::sleep(std::time::Duration::from_secs_f64(wait));
+                        }
+                        logfile::write(&format!("menu script: {id}"));
+                        control(&handle, &id);
                     }
                 });
             }
@@ -658,6 +762,8 @@ fn main() {
             read_windows,
             read_layout,
             read_pointer,
+            pet_menu,
+            just_updated,
             set_click_through,
             overlay_reveal,
             read_config,

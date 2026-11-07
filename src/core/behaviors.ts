@@ -79,6 +79,7 @@ export const BEHAVIORS: readonly BehaviorDef[] = [
   { id: "B-59", intent: "poop", annoy: 1, category: "mischief", minChaos: "normal", perm: "none", maxStay: 60, minStay: 10, combo: true },
   { id: "B-48", intent: "play_cursor", annoy: 1, category: "attention", minChaos: "chill", perm: "none", maxStay: 40, minStay: 10, combo: true },
   { id: "RF-10", intent: "react", annoy: 0, category: "response", minChaos: "chill", perm: "none", maxStay: 60, minStay: 3 },
+  { id: "RF-16", intent: "eat", annoy: 0, category: "response", minChaos: "chill", perm: "none", maxStay: 40, minStay: 3 },
   { id: "C-01", intent: "stalk", annoy: 1, category: "mischief", minChaos: "normal", perm: "none", maxStay: 20, combo: true },
   { id: "C-02", intent: "tour", annoy: 0, category: "ambient", minChaos: "chill", perm: "none", maxStay: 120, combo: true },
   { id: "C-03", intent: "cozy", annoy: 0, category: "ambient", minChaos: "chill", perm: "none", maxStay: 900, combo: true },

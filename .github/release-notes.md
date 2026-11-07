@@ -2,17 +2,15 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-Your pet has to go now and then! Rarely: a few times a day at normal, more at gremlin, never at chill. It sniffs a spot on your window, pees or poops, looks back at it, and a cat covers it up. Click the mess to clean it, or wait and it dries up. All drawn, your windows are fine. And with the local model off every move still happens: the toy, the chase, all of it.
+Give it a treat and one hangs at your pointer, the right one for the animal: a fish for a cat, a bone biscuit for a dog, a strawberry for the rabbit. It begs under it until you click, then eats it bite by bite. Right-click it for a quick menu, grab the mugs too, and it reacts to a thrown toy at once. Jumps stay on the screen. And from now on it updates by itself.
 
-## More about 0.1.9
+## More about 0.1.10
 
-It holds on in a meeting, on a full-screen video and in quiet hours. Each animal does it its own way: the dog kicks back without turning round, the rabbit leaves a few pellets and hops off, and a cat sometimes gets the zoomies right after. Every animal got nine new drawings with smooth in-betweens, and the download is 110 MB (it was 109).
-
-New in 0.1.8 too, if you skipped it: grab its toy and throw it, and its head follows your pointer all the way round.
+Its eyes follow a flying toy or treat, it turns its head toward you from the loaf and the window edge too, and when you come back after a while it comes over to say hello. It's the same size in every pose now, and the toy sits in its mouth. With **Update automatically** on (it is by default) a new version installs itself once you've left the Mac alone for two minutes, never in a call or over a full-screen app. The download is about 110 MB.
 
 ## Updating
 
-Already on 0.1.2 or newer? The app asks you within 12 hours, or pick **Check for updates…** in the menu now. On 0.1.2 and 0.1.3 that question still has the old bug, so if Update now doesn't react, click it again.
+Already on 0.1.2 or newer? The app asks you within 12 hours, or pick **Check for updates…** in the menu now. This is the last time you have to: from 0.1.10 on, updates come by themselves. On 0.1.2 and 0.1.3 that question still has the old bug, so if Update now doesn't react, click it again.
 
 Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned).
 

@@ -40,7 +40,8 @@ ctx.font = "600 13px system-ui";
 // run as they do in the app. ?from=idle_sit is the pose before and ?at=0.5 when it changes;
 // ?start is the first moment kept (default ?at) and ?every=0.1 the time between moments. ?flip=1
 // turns it round at that second. ?zoom=2 sets the size, ?cols=6 the moments in a row. ?ledge=56
-// draws a window top that many pixels above the feet, to line up the hang off a ledge.
+// draws a window top that many pixels above the feet, to line up the hang off a ledge. ?mouth=1
+// rings the mouth, where a carried toy is drawn.
 if (q.has("film") && q.has("anim")) {
   const c = (list[0] ?? CHARACTERS[0]) as (typeof CHARACTERS)[number];
   const n = Number(q.get("film"));
@@ -89,7 +90,15 @@ if (q.has("film") && q.has("anim")) {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(-65, ly + 14, 130, 60);
       }
-      drawCat(ctx, body, { scale: 1, t: ft, character: c.id, slot: "film", cursor: cursorAt(ft) });
+      const mouth = drawCat(ctx, body, { scale: 1, t: ft, character: c.id, slot: "film", cursor: cursorAt(ft) });
+      // ?mouth=1 marks where a carried toy goes (the measured mouth), a green ring the size of a ball.
+      if (q.has("mouth") && mouth) {
+        ctx.strokeStyle = "#1e9e4a";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(mouth.x, mouth.y, 7, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       const cur = cursorAt(ft);
       if (cur) {
         ctx.fillStyle = "#c0392b";

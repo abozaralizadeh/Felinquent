@@ -33,6 +33,13 @@ fn dict(d: &Dict, key: &str) -> Option<Dict> {
     Some(unsafe { CFDictionary::wrap_under_get_rule(v.as_concrete_TypeRef() as _) })
 }
 
+/// `FELINQUENT_ONLY_APP=<owner>`: see only that app's windows (for a demo
+/// recording on a stage of test windows). Unset in normal use.
+fn only_app() -> Option<&'static str> {
+    static ONLY: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    ONLY.get_or_init(|| std::env::var("FELINQUENT_ONLY_APP").ok().filter(|s| !s.is_empty())).as_deref()
+}
+
 /// Normal app windows that are on screen, front to back. Menu bar, Dock and
 /// overlays (layer other than 0) are left out, so are tiny windows.
 pub fn windows(skip_owner: &str) -> Vec<Win> {
@@ -50,6 +57,9 @@ pub fn windows(skip_owner: &str) -> Vec<Win> {
         }
         let app = text(&d, "kCGWindowOwnerName").unwrap_or_default();
         if app == skip_owner || app == "Window Server" {
+            continue;
+        }
+        if only_app().is_some_and(|only| app != only) {
             continue;
         }
         if num(&d, "kCGWindowAlpha").unwrap_or(1.0) < 0.05 {
@@ -332,6 +342,12 @@ pub fn displays() -> Vec<Display> {
 /// Where the real cursor is in global points (top-left of the main display is 0,0), and whether
 /// the primary mouse button is down. Read only.
 #[allow(dead_code)]
+/// Whether the right mouse button is down (a right-click on the animal opens its menu). Read only.
+pub fn right_button() -> bool {
+    use objc2_app_kit::NSEvent;
+    NSEvent::pressedMouseButtons() & 2 == 2
+}
+
 pub fn pointer() -> (f64, f64, bool) {
     use objc2_app_kit::NSEvent;
     let main_h = displays().first().map(|d| d.h).unwrap_or(900.0);

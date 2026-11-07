@@ -20,7 +20,7 @@ interface NativeSpace { id: string; index: number; spans: boolean; app?: boolean
 interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; display_awake?: boolean; space: NativeSpace | null }
 interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null }
 interface Layout { index: number; displays: Rect[]; dock_top: number }
-interface Pointer { x: number; y: number; down: boolean }
+interface Pointer { x: number; y: number; down: boolean; right?: boolean }
 interface Config { demo: boolean; debug: boolean; brain: string; ollama_url: string; ollama_model: string }
 
 /** What the master window tells the others, every frame. */
@@ -30,10 +30,16 @@ interface CatState {
   hit: Rect;
   block: Rect | null;
   cursor: { x: number; y: number };
+  /** Where its eyes go (its toy in the air, else the cursor). */
+  look?: { x: number; y: number };
   held: boolean;
   /** Its toy, where you can grab it, and whether you are holding it (clicks there are ours). */
   toy: Rect | null;
   toyHeld: boolean;
+  /** Everything else you can pick up (a mug, a plant, a treat lying about): clicks there are ours too. */
+  grabs?: Rect[];
+  /** A treat in your hand: the next click anywhere lets it go, so every click is ours until then. */
+  treatHeld?: boolean;
   /** Puddles and piles: a click there cleans one up (clicks there are ours too). */
   spots: Rect[];
   t: number;
@@ -125,8 +131,8 @@ async function main(): Promise<void> {
     ctx.save();
     ctx.translate(-me.x, -me.y);
     drawMessBehind(ctx, st.mess, st.windows, st.scale);
-    drawCat(ctx, st.body, { scale: st.scale, t: st.t, character: st.character, cursor: st.cursor });
-    drawMessFront(ctx, st.mess, st.scale);
+    const mouth = drawCat(ctx, st.body, { scale: st.scale, t: st.t, character: st.character, cursor: st.look ?? st.cursor });
+    drawMessFront(ctx, st.mess, st.scale, mouth);
     drawThought(ctx, st.thought, st.body.x, st.body.y - st.hit.h * 0.95, me, dark());
     // The red box is a debug aid. It only shows with FELINQUENT_DEBUG=1.
     if (config.debug && st.block) {
@@ -139,7 +145,8 @@ async function main(): Promise<void> {
 
   function applyHit(st: CatState): void {
     // A cat that isn't there (it left, or it's on another desktop) catches no clicks.
-    const onToy = st.toyHeld || (st.toy !== null && inside(st.toy, st.cursor, 4)) || (st.spots ?? []).some((r) => inside(r, st.cursor, 0));
+    const onToy =
+      st.toyHeld || !!st.treatHeld || (st.toy !== null && inside(st.toy, st.cursor, 4)) || (st.grabs ?? []).some((r) => inside(r, st.cursor, 4)) || (st.spots ?? []).some((r) => inside(r, st.cursor, 0));
     void setThrough(!onToy && (st.body.hidden || !(inside(st.hit, st.cursor, 8) || st.held)));
   }
 
@@ -379,6 +386,25 @@ async function main(): Promise<void> {
     } else if (msg === "toy") {
       cat.throwToy(world);
       say("toy thrown");
+    } else if (msg === "petmenu-test") {
+      // FELINQUENT_PETMENU_TEST: the menu on the animal, opened next to it with no click, once it
+      // sits still (a minute at most), so a picture shows the two together.
+      const still = new Set(["idle_sit", "loaf", "sleep", "watch", "groom", "blink", "stare", "look"]);
+      const t0 = performance.now();
+      const tryOpen = (): void => {
+        if (!still.has(cat.executor.body.anim) && performance.now() - t0 < 60_000) {
+          setTimeout(tryOpen, 300);
+          return;
+        }
+        const r = cat.executor.hitRect();
+        say(`pet menu: test (${cat.executor.body.anim})`);
+        void invoke("pet_menu", { x: Math.round(r.x + r.w + 6), y: Math.round(r.y - 150) }).catch(() => {});
+      };
+      tryOpen();
+    } else if (msg === "pet" || msg === "zoomies" || msg === "nap") {
+      // From the menu on the animal: it starts now, from the rules.
+      cat.ask(world, msg);
+      say(`asked: ${msg}`);
     } else if (msg === "forget") {
       memory.forgetAll();
       memoryJson = memory.exportJson();
@@ -399,9 +425,36 @@ async function main(): Promise<void> {
   let cursor = { x: -9999, y: -9999 };
   let cursorSpeed = 0;
   let down = false;
+  let rightDown = false;
   let lastDemo = 0;
+  // The menu on the animal opens on a right-click over it. The button is read with the pointer (the
+  // window lets clicks through most of the time), and the webview's own right-click is the backup,
+  // for a click that comes and goes between two reads. Once per click, whichever is first.
+  let petMenuAt = -1e9;
+  const openPetMenu = (how: string): void => {
+    const t = performance.now();
+    if (t - petMenuAt < 800) return;
+    if (!placed || cat.away || cat.executor.body.hidden || !inside(cat.executor.hitRect(), cursor, 8)) return;
+    petMenuAt = t;
+    say(`pet menu: right-click (${how})`);
+    void invoke("pet_menu").catch(() => {});
+  };
+  window.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    openPetMenu("page");
+  });
 
   let thought: { text: string; since: number } | null = null;
+  // It just updated itself: once it has settled in, a hello in a bubble (once per update).
+  void invoke<string | null>("just_updated")
+    .then((was) => {
+      if (!was) return;
+      say(`updated from ${was}`);
+      setTimeout(() => {
+        if (cat.settings.thoughtBubbles) thought = { text: "i got updated. i feel brand new.", since: performance.now() };
+      }, 6000);
+    })
+    .catch(() => {});
   let demoRound = 0;
   function demoStep(now: number): void {
     if (!config.demo || now - lastDemo < 25000) return;
@@ -435,6 +488,15 @@ async function main(): Promise<void> {
       // How fast the cursor moves (px/s, smoothed): a moving cursor is something to watch or play with.
       if (cursor.x > -9000 && dt > 0) cursorSpeed += (Math.hypot(p.x - cursor.x, p.y - cursor.y) / dt - cursorSpeed) * Math.min(1, dt / 0.15);
       cursor = { x: p.x, y: p.y };
+      // A right-click on the animal opens its menu (a treat, its toy, pet it, zoomies, a nap, the
+      // character, the chaos level, shoo, panic).
+      if (p.right && !rightDown) openPetMenu("button");
+      rightDown = !!p.right;
+      if (p.down && !down && placed) {
+        // What a press landed on, so a grab that doesn't take shows in the log (no titles, just shapes).
+        const near = cat.grabRects.map((r) => Math.round(Math.max(0, Math.abs(p.x - (r.x + r.w / 2)) - r.w / 2, Math.abs(p.y - (r.y + r.h / 2)) - r.h / 2)));
+        say(`press: things ${near.length} nearest ${near.length ? Math.min(...near) : -1}px treat ${cat.treatHeld} through ${clickThrough}`);
+      }
       down = p.down;
       world = { ...world, nowMs: Date.now(), cursor, cursorSpeed };
       drawnSeq = worldSeq;
@@ -465,9 +527,12 @@ async function main(): Promise<void> {
         hit: cat.executor.hitRect(),
         block: cat.blockingRect,
         cursor,
+        look: cat.lookAt(cursor),
         held: cat.executor.held,
         toy: cat.toyRect,
         toyHeld: cat.mess.holding,
+        grabs: cat.grabRects,
+        treatHeld: cat.treatHeld,
         spots: cat.spotRects,
         t: now / 1000,
         character: character.id,
@@ -508,4 +573,6 @@ async function main(): Promise<void> {
   void frame();
 }
 
+// The webview's own right-click menu (Reload, Inspect) never shows over the animal: it has its own (pet_menu).
+window.addEventListener("contextmenu", (e) => e.preventDefault());
 void main().catch((e) => say(`fatal: ${String(e)}`));
