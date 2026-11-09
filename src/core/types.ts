@@ -27,6 +27,24 @@ export interface WindowInfo {
   isEmpty?: boolean;
 }
 
+/**
+ * One thing the animal can see on the screen besides itself, its toy and the windows: a mug, a
+ * treat, pieces of something broken, a puddle it left, a crack, the fly (mess.ts Mess.seen). Only
+ * drawings on its own layer, never anything read from your screen. Turned into words for the model
+ * in summary.ts screenView.
+ */
+export interface SeenThing {
+  /** In words: "mug", "biscuit", "pieces of a broken mug", "my puddle", "a crack". */
+  what: string;
+  state: "standing" | "teetering" | "sliding" | "flying" | "rolling" | "lying" | "in_hand" | "in_mouth" | "mark" | "buzzing";
+  /** Bottom centre, screen coordinates. */
+  x: number;
+  y: number;
+  windowId: string | null;
+  /** Your human picked it up, put it there or threw it. */
+  byHuman?: boolean;
+}
+
 /** One reading of everything the cat can sense. No screenshots, no key contents. */
 export interface WorldSnapshot {
   nowMs: number;

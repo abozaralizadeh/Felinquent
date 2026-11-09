@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The overlay only calls our own commands.",
-  "windows": ["overlay", "overlay-*"],
+  "description": "The overlay and the About window only call our own commands.",
+  "windows": ["overlay", "overlay-*", "about"],
   "permissions": ["core:default"]
 }

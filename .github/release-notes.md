@@ -2,15 +2,15 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-Felinquent runs on Windows now. Get **Felinquent-setup.exe** below (Windows 10 or 11, 64-bit): the cat stands on your taskbar, follows you to every virtual desktop and goes outside while a video or a game runs full screen. Its menu is the icon by the clock, with everything the Mac menu has, and it updates itself like the Mac app. On the Mac nothing changes in this version.
+Throw things at it! Pick up a mug, a plant or a vase off your windows and throw it: its eyes follow it through the air, and when it lands the animal jumps, runs off, goes over to sniff it or pretends it saw nothing. With the local model on, the model now hears everything the animal can see (what you threw, where it smashed, the pieces, its puddles, the fly) and plans its next move about it right away. And the version at the top of the menu opens a little About window.
 
-## More about 0.1.12
+## More about 0.1.13
 
-On Windows the installer puts it in your user folder, no admin needed. The installer isn't signed with a Windows certificate yet, so SmartScreen may ask once (More info, then Run anyway), or use the one-line PowerShell installer below, which doesn't trigger it. The local model setup works on Windows too: it gets Ollama's own installer (about 1.7 GB) after you say yes.
+A rabbit or a squirrel mostly bolts when something crashes next to it, a dog sneaks over for a sniff, a cat stares or turns its back. In a meeting or with a video full screen it only takes note. The model gets more room for all this (a 4096-token context), and it all still runs on your computer only.
 
 ## Updating
 
-Already on 0.1.2 or newer? The app asks you within 12 hours, or pick **Check for updates…** in the menu now. This is the last time you have to: from 0.1.10 on, updates come by themselves. On 0.1.2 and 0.1.3 that question still has the old bug, so if Update now doesn't react, click it again.
+On 0.1.10 or newer it updates itself the next time you leave the computer alone for a couple of minutes, or pick **Check for updates…** in the menu now. On 0.1.2 to 0.1.9 the app asks you within 12 hours (if Update now doesn't react on 0.1.2 or 0.1.3, click it again).
 
 Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned).
 

@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "src/playground/index.html"),
         overlay: resolve(__dirname, "src/playground/overlay.html"),
+        about: resolve(__dirname, "src/playground/about.html"),
         characters: resolve(__dirname, "src/playground/characters.html"),
       },
     },

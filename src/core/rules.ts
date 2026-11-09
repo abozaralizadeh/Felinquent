@@ -4,7 +4,7 @@ import type { Personality } from "./personality";
 import { instinctFor } from "./species";
 import type { Rng } from "./rng";
 import type { TrickBook } from "./tricks";
-import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, WindowInfo, WorldSnapshot } from "./types";
+import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, SeenThing, WindowInfo, WorldSnapshot } from "./types";
 
 /** The animal's toy, as the brain sees it (mess.ts). */
 export interface ToyView {
@@ -39,6 +39,8 @@ export interface RulesContext {
   propWindows?: string[];
   /** Its toy, if it is out (or buried). */
   toy?: ToyView | null;
+  /** Everything else of the mess it can see (Mess.seen), for the model's screen block. */
+  scene?: SeenThing[];
   /** How badly it has to pee and to poop (mind.ts, ADR-048): from 1 it has to go. */
   potty?: { pee: number; poop: number };
 }

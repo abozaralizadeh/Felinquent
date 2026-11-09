@@ -169,6 +169,7 @@ export class Cat {
       propWindows: () => this.mess.windowsWithProps(),
       things: () => this.mess.thingsOnWindows(),
       toy: () => this.toyView(),
+      scene: () => this.mess.seen(),
       log: opts.log,
       minDecisionGapMs: opts.minDecisionGapMs,
     });
@@ -499,8 +500,15 @@ export class Cat {
     const now = world.nowMs;
     const doing = this.executor.intent?.intent;
     const mine = doing === "knock_off" || doing === "zoomies" || this.executor.body.anim === "run";
-    if (ev.type === "broke") this.mind.note(now, mine ? `i knocked the ${ev.kind} off. it broke.` : `the ${ev.kind} fell and broke`);
-    else if (ev.type === "fell" && mine) this.mind.note(now, doing === "knock_off" ? `i pushed the ${ev.kind} off the edge` : `i ran into the ${ev.kind} and it went flying`);
+    // Something you threw that broke is said once, by thing_landed.
+    if (ev.type === "broke" && !ev.thrown) this.mind.note(now, mine ? `i knocked the ${ev.kind} off. it broke.` : `the ${ev.kind} fell and broke`);
+    else if (ev.type === "fell") this.mind.note(now, !mine ? `the ${ev.kind} fell off a window` : doing === "knock_off" ? `i pushed the ${ev.kind} off the edge` : `i ran into the ${ev.kind} and it went flying`);
+    else if (ev.type === "thing_grabbed") this.mind.onThingGrabbed(world, ev);
+    else if (ev.type === "thing_thrown") this.mind.onThingThrown(world, ev);
+    else if (ev.type === "thing_landed") {
+      // On another desktop it doesn't see it (the note still says what happened).
+      this.apply(this.mind.onThingLanded(world, ev, this.executor.held || this.executor.airborne || !!this.homeWorld));
+    }
     else if (ev.type === "cracked") this.mind.note(now, "i landed so hard a window cracked");
     else if (ev.type === "fly") this.mind.note(now, ev.caught ? "i caught a fly" : "a fly got away from me");
     else if (ev.type === "flung") this.mind.note(now, `the human moved a window so hard the ${ev.kind} flew off it`);
@@ -637,9 +645,13 @@ export class Cat {
     return this.mess.grabbable.map((p) => this.mess.toyBox(p));
   }
 
-  /** Where its eyes go: its toy or a treat flying through the air or rolling away, else the pointer. */
+  /**
+   * Where its eyes go: anything flying through the air (a thing you threw, a mug it knocked off, its
+   * toy, a treat), its toy or a treat rolling away, else the pointer (which is where a thing waved
+   * in your hand is too).
+   */
   lookAt(cursor: { x: number; y: number }): { x: number; y: number } {
-    const t = this.mess.props.find((p) => (p.toy || p.treat) && p.alpha > 0.5 && (p.state === "fall" || (p.state === "roll" && Math.abs(p.vx) > 40)));
+    const t = this.mess.props.find((p) => p.alpha > 0.5 && (p.state === "fall" || ((p.toy || p.treat) && p.state === "roll" && Math.abs(p.vx) > 40)));
     return t ? { x: t.x, y: t.y - 8 * this.mess.scale } : cursor;
   }
 

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About Felinquent</title>
+  <style>
+    /* Local only: system fonts, nothing loaded from the internet. */
+    :root {
+      --bg: #FFF8EF;
+      --surface: #FFFFFF;
+      --ink: #2B1D14;
+      --ink-soft: #6B5444;
+      --line: #EEDDC8;
+      --ginger: #E8862A;
+      --ginger-deep: #C8641A;
+      --nose: #D9574C;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16100C;
+        --surface: #251C16;
+        --ink: #FBF1E4;
+        --ink-soft: #C9B3A0;
+        --line: #3A2C21;
+        --ginger: #F59A45;
+        --ginger-deep: #F59A45;
+        --nose: #F2A39B;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 26px 26px 20px;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: default;
+    }
+    img { width: 96px; height: 96px; filter: drop-shadow(0 10px 18px rgba(110, 55, 15, .25)); }
+    h1 { font: 600 26px/1.1 "New York", Georgia, "Times New Roman", serif; margin: 12px 0 2px; letter-spacing: -.01em; }
+    .version { color: var(--ink-soft); font-size: 12.5px; margin: 0; font-variant-numeric: tabular-nums; }
+    .tag { margin: 12px 0 0; color: var(--ink-soft); max-width: 280px; }
+    .love { margin: 16px 0 0; font-size: 15px; }
+    .love .heart { color: var(--nose); }
+    .buttons { display: grid; gap: 10px; width: 100%; max-width: 280px; margin-top: 20px; }
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--ginger); }
+    button:focus-visible { outline: 2px solid var(--ginger); outline-offset: 2px; }
+    button.star { background: var(--ginger); border-color: var(--ginger-deep); color: #fff; }
+    @media (prefers-color-scheme: dark) { button.star { color: #1B120C; } }
+    button.star:hover { filter: brightness(1.06); }
+    .ask { margin: 10px 0 0; color: var(--ink-soft); font-size: 12.5px; max-width: 280px; }
+    .small { margin-top: auto; padding-top: 14px; color: var(--ink-soft); font-size: 11.5px; }
+  </style>
+</head>
+<body>
+  <img src="./about-icon.png" alt="" width="96" height="96" />
+  <h1>Felinquent</h1>
+  <p class="version" id="version"></p>
+  <p class="tag">A desktop pet that does whatever it wants.</p>
+  <p class="love">Made with <span class="heart">&#9829;</span> by Abozar</p>
+  <div class="buttons">
+    <button class="star" id="repo" type="button">&#9733; Star it on GitHub</button>
+    <button id="site" type="button">Visit the website</button>
+  </div>
+  <p class="ask">If it made you smile, a star on GitHub really helps, and so does telling a friend.</p>
+  <p class="small">Free for non-commercial use.<br />Runs on your computer only.</p>
+  <script type="module" src="./about.ts"></script>
+</body>
+</html>

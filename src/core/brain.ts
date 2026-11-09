@@ -4,6 +4,9 @@ import { buildPlanPrompt, buildPlanSchema, buildPlanSummary, buildSchema, buildS
 import type { Approach, Intent, IntentName, Mood, Needs, Option, Settings, WorldSnapshot } from "./types";
 import type { Personality } from "./personality";
 
+/** The model's context window in tokens (prompt plus answer). */
+export const NUM_CTX = 4096;
+
 export interface BrainContext {
   rules: RulesContext;
   options: Option[];
@@ -298,6 +301,7 @@ export class LlmBrain implements Brain {
       things: ctx.things ?? [],
       catPos: ctx.rules.catPos,
       toy: ctx.rules.toy ?? null,
+      scene: ctx.rules.scene ?? [],
     });
     const req: LlmRequest = {
       system: buildPlanPrompt(ctx.personality, ctx.rules.needs.trust),
@@ -386,7 +390,9 @@ export class OllamaClient implements LlmClient {
           stream: false,
           format: req.schema,
           keep_alive: "5m",
-          options: { temperature: 0.8, num_predict: req.maxTokens ?? 120, num_ctx: 2048 },
+          // 4096: the whole screen in words (ADR-061) plus the answer fit with room to spare. Ollama
+          // cuts a prompt that doesn't fit from the front, which would lose the instructions.
+          options: { temperature: 0.8, num_predict: req.maxTokens ?? 120, num_ctx: NUM_CTX },
           messages: [
             { role: "system", content: req.system },
             { role: "user", content: req.user },

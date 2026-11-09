@@ -2,7 +2,8 @@ import { GRIP, type WinMotion } from "./motion";
 import { buildPlatforms, segmentsOf, type Platform } from "./platforms";
 import { PROP_ASPECT } from "./prop-aspect";
 import type { Rng } from "./rng";
-import type { ChaosLevel, WindowInfo, WorldSnapshot } from "./types";
+import { toyName, treatName } from "./summary";
+import type { ChaosLevel, SeenThing, WindowInfo, WorldSnapshot } from "./types";
 
 /**
  * The mess a gremlin makes, drawn over the desktop and never touching another app (hard rules 2
@@ -18,6 +19,10 @@ export const TREAT_KINDS: readonly TreatKind[] = ["fish_treat", "biscuit", "egg"
 export type PropKind = "mug" | "glass" | "plant" | "vase" | "yarn" | "pencils" | "teacup" | "duck" | "mouse" | ToyKind | TreatKind;
 /** What stands about on window tops to be knocked off. */
 export const PROP_KINDS: readonly PropKind[] = ["mug", "glass", "plant", "vase", "yarn", "pencils", "teacup", "duck", "mouse"];
+/** Those things in words, for the model. */
+export const THING_NAME: Partial<Record<string, string>> = {
+  mug: "mug", glass: "glass of water", plant: "potted plant", vase: "vase", yarn: "ball of yarn", pencils: "cup of pencils", teacup: "teacup", duck: "rubber duck", mouse: "toy mouse",
+};
 /** Each animal's own toy (Personality.toy): the yarn is the tabby's, the others belong to one animal each. */
 export const TOY_KINDS: readonly ToyKind[] = ["yarn", "jingle", "fish", "sock", "foil", "tennis", "bone", "carrot", "acorn"];
 /** Toys that roll. The fish, the bone and the carrot skid and come to a stop lying flat. */
@@ -101,6 +106,8 @@ export interface Shard {
   /** Lying on a window top: it rides along, kept as an offset from the window's left edge. */
   windowId?: string;
   offset?: number;
+  /** A piece of something you threw. */
+  byHuman?: boolean;
 }
 
 /** A mark on a window: it rides with the window and fades away. dx, dy are from the window's top left. */
@@ -192,8 +199,15 @@ export interface MessState {
 }
 
 export type MessEvent =
-  | { type: "broke"; kind: PropKind; x: number; y: number }
+  /** thrown: it was you who threw it (a thing_landed event says the same). */
+  | { type: "broke"; kind: PropKind; x: number; y: number; thrown?: boolean }
   | { type: "fell"; kind: PropKind }
+  /** You picked up something that is neither its toy nor a treat (a mug, a plant), from a window or the floor. */
+  | { type: "thing_grabbed"; kind: PropKind; x: number; y: number; windowId: string | null }
+  /** You let go of it: vx, vy is your hand's speed, so a throw, or about 0 when you just put it down. */
+  | { type: "thing_thrown"; kind: PropKind; x: number; y: number; vx: number; vy: number }
+  /** What you threw or put down came down: where, and whether it broke. */
+  | { type: "thing_landed"; kind: PropKind; x: number; y: number; windowId: string | null; broke: boolean }
   | { type: "cracked"; windowId: string }
   | { type: "fly"; caught: boolean }
   /** A window moved so hard that what stood on it flew off (the human did it). */
@@ -420,6 +434,68 @@ export class Mess {
     return this.props.filter((p) => p.state === "rest" && p.windowId && p.alpha > 0.9).map((p) => `${p.kind} on ${p.windowId}`);
   }
 
+  /**
+   * Everything of the mess the animal can see, for the model: things standing, sliding, falling or
+   * lying about (also one in your hand or its mouth), pieces of what broke, spills, the puddles and
+   * piles it left, cracks and claw marks, torn strips and the fly. Its own toy is left out (the
+   * screen block has a line of its own for it). Screen coordinates; summary.ts puts it in words.
+   */
+  seen(): SeenThing[] {
+    const out: SeenThing[] = [];
+    for (const p of this.props) {
+      if (p.toy || p.state === "stashed" || p.alpha < 0.4) continue;
+      const name = p.treat ? `${(p.bites ?? 0) > 0 ? "half-eaten " : ""}${treatName(p.kind)}` : (THING_NAME[p.kind] ?? toyName(p.kind));
+      const state: SeenThing["state"] =
+        p.state === "rest"
+          ? p.windowId
+            ? "standing"
+            : "lying"
+          : p.state === "slide"
+            ? "sliding"
+            : p.state === "teeter"
+              ? "teetering"
+              : p.state === "fall"
+                ? "flying"
+                : p.state === "roll"
+                  ? Math.abs(p.vx) > 25
+                    ? "rolling"
+                    : "lying"
+                  : p.state === "held"
+                    ? "in_hand"
+                    : p.state === "carried"
+                      ? "in_mouth"
+                      : "lying";
+      out.push({ what: name, state, x: p.x, y: p.y, windowId: p.windowId, ...(p.handled || p.treat ? { byHuman: true } : {}) });
+    }
+    // Pieces and spills, one entry per heap (by what broke, where, and roughly how far along).
+    const heaps = new Map<string, { what: string; xs: number; ys: number; n: number; windowId: string | null; flying: boolean; byHuman: boolean }>();
+    for (const s of this.shards) {
+      const what = s.kind === "water" ? "spilled water" : s.kind === "soil" ? "spilled soil" : s.kind === "sliver" ? "bits of glass" : `pieces of a broken ${THING_NAME[s.kind] ?? s.kind}`;
+      const key = `${what}|${s.windowId ?? ""}|${Math.round(s.x / 160)}`;
+      const h = heaps.get(key) ?? { what, xs: 0, ys: 0, n: 0, windowId: s.windowId ?? null, flying: false, byHuman: false };
+      h.byHuman ||= !!s.byHuman;
+      h.xs += s.x;
+      h.ys += s.y;
+      h.n += 1;
+      h.flying ||= !s.settled;
+      heaps.set(key, h);
+    }
+    for (const h of heaps.values()) out.push({ what: h.what, state: h.flying ? "flying" : "lying", x: h.xs / h.n, y: h.ys / h.n, windowId: h.windowId, ...(h.byHuman ? { byHuman: true } : {}) });
+    for (const s of this.spots) {
+      if (s.cleanedMs !== undefined) continue;
+      out.push({ what: s.kind === "puddle" ? "my puddle" : s.kind === "pellets" || s.kind === "pellets_row" ? "my droppings" : "my poop", state: "lying", x: s.x, y: s.y, windowId: s.windowId });
+    }
+    const wins = new Map((this.world?.windows ?? []).map((w) => [w.id, w]));
+    for (const d of this.decals) {
+      const w = wins.get(d.windowId);
+      if (!w) continue;
+      out.push({ what: d.kind === "crack" ? "a crack" : d.kind === "claw" ? "my claw marks" : "a chip", state: "mark", x: w.bounds.x + d.dx, y: w.bounds.y + d.dy, windowId: d.windowId });
+    }
+    for (const s of this.strips) out.push({ what: "a strip torn off a title bar", state: s.settled ? "lying" : "flying", x: s.x, y: s.y, windowId: null });
+    if (this.fly && this.fly.state !== "caught") out.push({ what: "a fly", state: "buzzing", x: this.fly.x, y: this.fly.y, windowId: null });
+    return out;
+  }
+
   windowsWithProps(): string[] {
     return [...new Set(this.props.filter((p) => p.state === "rest" && p.windowId && p.alpha > 0.9).map((p) => p.windowId as string))];
   }
@@ -644,6 +720,7 @@ export class Mess {
     const p = this.props.find((q) => q.id === id);
     if (!p) return;
     const h = PROP_HEIGHT[p.kind] * this.scale;
+    const from = p.windowId;
     p.state = "held";
     p.windowId = null;
     p.slip = undefined;
@@ -653,6 +730,7 @@ export class Mess {
     p.grip = { dx: p.x - x, dy: p.y - h / 2 - y, vx: 0, vy: 0 };
     if (!p.toy && !p.treat) p.handled = true;
     if (p.toy) this.outbox.push({ type: "toy_grabbed", kind: p.kind as ToyKind, x: p.x, y: p.y });
+    else if (!p.treat) this.outbox.push({ type: "thing_grabbed", kind: p.kind, x: p.x, y: p.y, windowId: from });
   }
 
   /** Where your hand is now, every frame while you hold the toy. */
@@ -692,9 +770,11 @@ export class Mess {
       p.vy = Math.max(-150, p.vy * 0.3);
       p.vr *= 0.3;
     }
-    p.thrown = !!(p.toy || p.treat);
+    // Whatever you let go of, the animal hears where it comes down (cameToRest, or the landing in stepProps).
+    p.thrown = true;
     if (p.toy) this.outbox.push({ type: "toy_thrown", kind: p.kind as ToyKind, x: p.x, y: p.y });
-    if (p.treat) this.outbox.push({ type: "treat_dropped", kind: p.kind as TreatKind, x: p.x, y: p.y });
+    else if (p.treat) this.outbox.push({ type: "treat_dropped", kind: p.kind as TreatKind, x: p.x, y: p.y });
+    else this.outbox.push({ type: "thing_thrown", kind: p.kind, x: p.x, y: p.y, vx: p.vx, vy: p.vy });
     return p;
   }
 
@@ -956,6 +1036,7 @@ export class Mess {
     const h = PROP_HEIGHT[p.kind] * this.scale;
     const w = h * (PROP_ASPECT[p.kind] ?? 1);
     const pieces = shatterPieces(p.kind === "glass" ? 9 : p.kind === "pencils" ? 5 : 7, this.rng, { x: 0.5, y: 0.95 });
+    const byHuman = !!p.thrown && !p.toy && !p.treat;
     for (const poly of pieces) {
       if (this.shards.length >= MAX_SHARDS) break;
       const c = centroid(poly);
@@ -976,6 +1057,7 @@ export class Mess {
         h,
         settled: false,
         bornMs: nowMs,
+        ...(byHuman ? { byHuman } : {}),
       });
     }
     // A glass spills its water, a pot its soil.
@@ -983,10 +1065,10 @@ export class Mess {
     if (spill) {
       for (let i = 0; i < 10 && this.shards.length < MAX_SHARDS; i++) {
         const s = this.rng.range(2, 5) * this.scale;
-        this.shards.push({ kind: spill, x: p.x + this.rng.range(-6, 6), y: p.y - 4, vx: this.rng.range(-160, 160), vy: -this.rng.range(60, 220), rot: 0, vr: 0, poly: [], cx: 0, cy: 0, w: s, h: s, settled: false, bornMs: nowMs });
+        this.shards.push({ kind: spill, x: p.x + this.rng.range(-6, 6), y: p.y - 4, vx: this.rng.range(-160, 160), vy: -this.rng.range(60, 220), rot: 0, vr: 0, poly: [], cx: 0, cy: 0, w: s, h: s, settled: false, bornMs: nowMs, ...(byHuman ? { byHuman } : {}) });
       }
     }
-    this.outbox.push({ type: "broke", kind: p.kind, x: p.x, y: p.y });
+    this.outbox.push({ type: "broke", kind: p.kind, x: p.x, y: p.y, ...(byHuman ? { thrown: true } : {}) });
   }
 
   /** Runs one frame: new clutter now and then, things riding their windows, falling, breaking and fading. */
@@ -1139,6 +1221,8 @@ export class Mess {
         if (FRAGILE.has(p.kind) && p.vy > (p.handled ? 1100 : 520)) {
           this.breakProp(p, now);
           p.alpha = 0;
+          if (p.thrown && !p.toy && !p.treat) this.outbox.push({ type: "thing_landed", kind: p.kind, x: p.x, y: p.y, windowId: hit.windowId ?? null, broke: true });
+          p.thrown = false;
           continue;
         }
         // Bounces: less each time, until it lies there.
@@ -1165,6 +1249,11 @@ export class Mess {
             p.state = "rest";
             p.windowId = hit.windowId;
             p.offset = p.x - (win?.bounds.x ?? 0);
+          }
+          // You threw it or put it down: the animal hears where it ended up.
+          if (p.thrown && !p.toy && !p.treat) {
+            p.thrown = false;
+            this.outbox.push({ type: "thing_landed", kind: p.kind, x: p.x, y: p.y, windowId: hit.windowId ?? null, broke: false });
           }
         }
         continue;

@@ -34,6 +34,7 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 
 | Item | What it does |
 |---|---|
+| Felinquent 0.x.y… | The version at the top. Opens the About window, with links to the website and to the code on GitHub (a star there really helps) |
 | Check for updates… | Looks for a new version right now. Shows "Update to 0.x.y…" when one is waiting |
 | Give a treat | A treat hangs at your pointer and the animal comes to beg under it. Click anywhere to drop it and it eats it. Also calls it over and ends a shoo |
 | Throw its toy | Drops its toy at your pointer. You can also grab the toy (or a mug, a plant) with the mouse and throw it |

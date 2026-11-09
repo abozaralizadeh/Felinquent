@@ -3,6 +3,7 @@
 // A GUI app on Windows: without this a release build opens a console window next to the cat.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 #[cfg(any(target_os = "macos", windows))]
+mod about;
 mod alert;
 mod logfile;
 #[cfg(any(target_os = "macos", windows))]
@@ -434,6 +435,11 @@ pub fn open_url(url: &str) {
 /// Sends a control message (panic, shoo, chaos level) to the window that runs the cat.
 fn control(app: &AppHandle, msg: &str) {
     logfile::write(&format!("menu: {msg}"));
+    // The About window is the app's, not the page's (FELINQUENT_MENU_SCRIPT=2:version opens it too).
+    if msg == "version" {
+        about::show(app);
+        return;
+    }
     let _ = app.emit_to("overlay", "ctl", msg.to_string());
 }
 
@@ -463,7 +469,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let character = Submenu::with_items(app, "Character", true, &as_items(&characters))?;
     let chaos = Submenu::with_items(app, "Chaos level", true, &as_items(&chaos_levels))?;
 
-    let version = MenuItem::with_id(app, "version", format!("Felinquent {}", app.package_info().version), false, None::<&str>)?;
+    // The version line opens the About window (ADR-062).
+    let version = MenuItem::with_id(app, "version", format!("Felinquent {}\u{2026}", app.package_info().version), true, None::<&str>)?;
     let treat = MenuItem::with_id(app, "treat", "Give a treat", true, None::<&str>)?;
     // Drops its toy at the cursor (it comes out of hiding if it was buried). You can also drag it.
     let toy = MenuItem::with_id(app, "toy", "Throw its toy", true, None::<&str>)?;
@@ -507,6 +514,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     tray.on_menu_event(move |app, event| match event.id().as_ref() {
         "quit" => app.exit(0),
         "logs" => logfile::open_folder(),
+        "version" => about::show(app),
         #[cfg(any(target_os = "macos", windows))]
         "login" => {
             let on = login::set(!login::is_on());
@@ -877,6 +885,7 @@ fn main() {
             pet_menu,
             just_updated,
             ollama_http,
+            about::about_action,
             set_click_through,
             overlay_reveal,
             read_config,

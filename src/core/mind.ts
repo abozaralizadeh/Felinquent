@@ -13,9 +13,11 @@ import { lineFor } from "./lines";
 import { seeded, type Rng } from "./rng";
 import { candidates, focusedWindow, intentFromOption, type RulesContext, type ToyView } from "./rules";
 import { spotWords, thoughtTopic, toyName, treatName } from "./summary";
+import { THING_NAME } from "./mess";
+import type { Beat } from "./executor";
 
 export { spotWords, toyName, treatName };
-import type { ChaosLevel, Intent, IntentName, Needs, Option, Settings, WorldSnapshot } from "./types";
+import type { ChaosLevel, Intent, IntentName, Mood, Needs, Option, SeenThing, Settings, WorldSnapshot } from "./types";
 
 export type MindEvent =
   | { type: "intent"; intent: Intent; source: "llm" | "rules" | "respect" | "reflex" | "safe" }
@@ -40,6 +42,8 @@ export interface MindDeps {
   things?: () => string[];
   /** Its toy, where it is and what state it is in (mess.ts). */
   toy?: () => ToyView | null;
+  /** Everything else of the mess it can see (Mess.seen): what the model gets in screen.things. */
+  scene?: () => SeenThing[];
   /** Never receives window titles. */
   log?: (message: string, fields?: Record<string, unknown>) => void;
   minDecisionGapMs?: number;
@@ -73,6 +77,79 @@ const LIVELY: ReadonlySet<IntentName> = new Set<IntentName>(["chase_cursor", "fe
 
 /** What it may do about its toy when you throw it: the toy jobs, a bat, or a wash to show it doesn't care. */
 const TOY_REACTIONS: ReadonlySet<IntentName> = new Set<IntentName>(["fetch", "carry_toy", "stash_toy", "nose_toy", "knock_toy", "groom"]);
+/** A hand moving faster than this (px/s) threw the thing; slower, it put it down. */
+const THROW_SPEED = 400;
+/** After a reaction to news, the pause before the next plan (instead of a whole rest). */
+const NEWS_PAUSE_MS = 1500;
+/** What a thing you threw doesn't interrupt: eating, going. */
+const KEEP_ON_THROW: ReadonlySet<IntentName> = new Set<IntentName>(["eat", "pee", "poop"]);
+const BROKE_LINES = ["you broke it. not me. noted.", "that was yours. now it's pieces.", "and they say i'm the menace."];
+
+interface ThingReaction {
+  name: "startle" | "bolt" | "sniff" | "watch" | "ignore";
+  mood: Mood;
+  script: Beat[];
+  lines: string[];
+  effect?: "annoy";
+}
+
+/**
+ * How it reacts to a thing you threw landing (ADR-061), the rules' pick: close by, or breaking
+ * near it, it jumps (a rabbit or a squirrel bolts); further off a nosy dog, fox or raccoon goes to
+ * sniff it, a cat mostly stares or pretends it saw nothing. dir is the side the thing is on.
+ */
+export function thingReaction(a: { dir: 1 | -1; dist: number; d: number; shock: boolean; broke: boolean; kind: string; curiosity: number; aloofness: number; rng: Rng }): ThingReaction {
+  const dir = a.dir;
+  const away = (-dir) as 1 | -1;
+  const skittish = a.kind === "rabbit" || a.kind === "squirrel";
+  const nosy = a.kind === "dog" || a.kind === "raccoon" || a.kind === "fox";
+  const all: (ThingReaction & { w: number })[] = [
+    {
+      name: "startle",
+      w: a.shock ? (skittish ? 2 : 3) : 0,
+      mood: "grumpy",
+      effect: "annoy",
+      script: [{ do: "startled", sec: 0.5, face: dir }, { do: "puffed", sec: 1.4, face: dir }, { do: "stare", sec: 1.8, face: dir }],
+      lines: ["rude.", "that nearly hit me.", "why would you do that."],
+    },
+    {
+      name: "bolt",
+      w: a.shock ? (skittish ? 3 : 0.4) : 0,
+      mood: "grumpy",
+      effect: "annoy",
+      script: [{ do: "startled", sec: 0.4, face: dir }, { go: away, by: 260, speed: "run" }, { do: "stare", sec: 1.6, face: dir }],
+      lines: ["nope. nope.", "i'm out.", "not near me, thanks."],
+    },
+    {
+      name: "sniff",
+      w: (a.d < 1000 ? 1 : 0.3) * (0.6 + a.curiosity) * (nosy ? 1.6 : 1) * (a.shock ? 0.5 : 1),
+      mood: "curious",
+      script: [{ do: "stare", sec: 1, face: dir }, { go: dir, by: Math.max(0, a.dist - 70), speed: "sneak" }, { do: "sniff", sec: 1.8, face: dir }, { do: "curious", sec: 1, face: dir }],
+      lines: ["what did you throw. checking.", "is it food. it is not food.", "smells like your desk."],
+    },
+    {
+      name: "watch",
+      w: 1,
+      mood: "curious",
+      script: [{ do: "stare", sec: 2, face: dir }, { do: "blink", sec: 1.2 }],
+      lines: ["i saw that.", "interesting choice."],
+    },
+    {
+      name: "ignore",
+      w: a.aloofness * (a.kind === "cat" ? 1.6 : 0.6) * (a.shock ? 0.3 : 1),
+      mood: "smug",
+      script: [{ do: "stare", sec: 0.6, face: dir }, { do: "turn_away", sec: 1.4, face: away }, { do: "groom", sec: 2.6 }],
+      lines: ["i saw nothing.", "throw things. see if i care."],
+    },
+  ];
+  const total = all.reduce((t, x) => t + x.w, 0);
+  let roll = a.rng.next() * total;
+  for (const x of all) {
+    roll -= x.w;
+    if (x.w > 0 && roll <= 0) return x;
+  }
+  return all[3] as ThingReaction;
+}
 /** What may follow when it has been: a race about (mostly after a poop), a wash, a sniff. */
 const POTTY_AFTER: ReadonlySet<IntentName> = new Set<IntentName>(["zoomies", "groom", "sniff", "scratch", "look_around", "wander"]);
 /**
@@ -149,6 +226,13 @@ export class Mind {
    * desktop). A plan the model was still working on when it changed is dropped.
    */
   private epoch = 0;
+  /**
+   * Something just happened that the model should plan about (a thing you threw): the next plan is
+   * asked at once (not held back by the 15 s gap) and after a short pause, not a whole rest.
+   */
+  private news = false;
+  /** What you picked up and from where, until you let go of it (said in one note when it lands). */
+  private inHand: { kind: string; app?: string; fast?: boolean } | null = null;
   /** You threw the toy: the next decision is about it. */
   /** How badly it has to pee and to poop (ADR-048). From 1 it has to go, and that comes first. */
   potty = { pee: 0, poop: 0 };
@@ -210,7 +294,7 @@ export class Mind {
     if (this.sleeping) return;
     const was = this.current?.intent;
     this.current = null;
-    this.restUntilMs = (this.lastTickMs ?? 0) + this.restMs(was);
+    this.restUntilMs = (this.lastTickMs ?? 0) + (this.news ? NEWS_PAUSE_MS : this.restMs(was));
   }
 
   private restMs(was: IntentName | undefined): number {
@@ -483,6 +567,86 @@ export class Mind {
     this.note(world.nowMs, `my ${toyName(toy.kind)} landed ${spotWords(toy.x - pos.x, pos.y - toy.y)}`);
   }
 
+  /** You picked something up (a mug, a plant). Said in one note when it comes down (onThingLanded). */
+  onThingGrabbed(world: WorldSnapshot, thing: { kind: string; windowId: string | null }): void {
+    const app = thing.windowId ? world.windows.find((w) => w.id === thing.windowId)?.app : undefined;
+    this.inHand = { kind: thing.kind, ...(app ? { app } : {}) };
+  }
+
+  /** You let go of it: thrown, or just put down. Its eyes follow it (Cat.lookAt); the rest when it lands. */
+  onThingThrown(_world: WorldSnapshot, thing: { kind: string; vx: number; vy: number }): void {
+    const fast = Math.hypot(thing.vx, thing.vy) > THROW_SPEED;
+    this.inHand = { ...(this.inHand?.kind === thing.kind ? this.inHand : { kind: thing.kind }), fast };
+  }
+
+  /**
+   * What you threw (or put down) came down: one note for the model with what, from where, where it
+   * landed and whether it broke, and a reaction at once from the rules (ADR-061): a start, a bolt, a
+   * careful sniff, a long look, or a cat pretending it saw nothing. Then the model plans what comes
+   * next, right away, with all of it in "happened" and the pieces in screen.things. A respect mode or
+   * a busy animal (eating, going, held by you) only gets the note.
+   */
+  onThingLanded(world: WorldSnapshot, thing: { kind: string; x: number; y: number; windowId: string | null; broke: boolean }, busy = false): MindEvent[] {
+    const now = world.nowMs;
+    const events: MindEvent[] = [];
+    const pos = this.d.catPos();
+    const dx = thing.x - pos.x;
+    const d = Math.hypot(dx, thing.y - pos.y);
+    const held = this.inHand?.kind === thing.kind ? this.inHand : null;
+    this.inHand = null;
+    const name = THING_NAME[thing.kind] ?? thing.kind;
+    const app = thing.windowId ? world.windows.find((w) => w.id === thing.windowId)?.app : undefined;
+    const where = app ? `on their ${app} window` : Math.abs(thing.y - world.dockTop) < 16 ? "on the Dock" : "on the floor";
+    const spot = spotWords(dx, pos.y - thing.y);
+    const from = held?.app ? ` off their ${held.app} window` : "";
+    let text =
+      held?.fast === false
+        ? `the human took the ${name}${from} and put it down ${where}, ${spot}${thing.broke ? ". it broke" : ""}`
+        : `the human threw the ${name}${from}. it ${thing.broke ? "smashed" : "landed"} ${where}, ${spot}`;
+    const close = d < 260;
+    const shock = close || (thing.broke && d < 650);
+    const ins = instinctFor(this.personality.species);
+    const keep = this.current && (KEEP_ON_THROW.has(this.current.intent) || (!shock && (this.current.intent === "react" || this.current.intent === "sulk")));
+    if (respectState(world).kind !== "none") {
+      this.note(now, text);
+      return events;
+    }
+    // In the air, in your hand, eating: no reaction now, but what it does next is planned about it.
+    if (busy || keep) {
+      this.note(now, text);
+      this.news = true;
+      if (this.bout) this.bout.untilMs = now;
+      return events;
+    }
+    if (this.sleeping) {
+      const chance = Math.min(0.95, (shock ? (thing.broke ? 0.85 : 0.6) : d < 700 ? 0.25 : 0.05) * (ins.kind === "dog" ? 1.2 : 1));
+      if (this.impulseRng.next() > chance) {
+        this.note(now, `${text}. i slept through it`);
+        return events;
+      }
+      this.wake(now);
+    }
+    const r = thingReaction({ dir: dx >= 0 ? 1 : -1, dist: Math.abs(dx), d, shock, broke: thing.broke, kind: ins.kind, curiosity: this.personality.curiosity, aloofness: this.personality.aloofness, rng: this.impulseRng });
+    text += `, my reaction: ${r.name}`;
+    this.note(now, text);
+    // Whatever the brain was planning is out of date now, and the next plan is the model's, soon.
+    this.epoch++;
+    this.news = true;
+    if (this.bout) this.bout.untilMs = now;
+    this.restUntilMs = -Infinity;
+    this.lastDecisionMs = now;
+    if (r.effect === "annoy") this.needsEvent("annoy");
+    const thought = this.settings.thoughtBubbles ? (this.lineRng.pick(thing.broke && r.name !== "bolt" && r.name !== "startle" ? BROKE_LINES : r.lines) as string) : undefined;
+    this.setCurrent(
+      { intent: "react", target: "here", approach: "walk", stay_sec: Math.ceil(scriptSeconds(r.script)), mood: r.mood, script: r.script, ...(thought ? { thought } : {}) },
+      now,
+      "reflex",
+      events,
+    );
+    this.d.log?.("thing landed", { kind: thing.kind, broke: thing.broke, d: Math.round(d), reaction: r.name });
+    return events;
+  }
+
   /** What it does about the toy you just threw, picked by the rules (weighted by how it feels about it). */
   private toyReaction(world: WorldSnapshot): Intent | null {
     const rulesCtx = this.ctx(world);
@@ -510,6 +674,7 @@ export class Mind {
       rng: this.d.rng,
       propWindows: this.d.propWindows?.() ?? [],
       toy: this.d.toy?.() ?? null,
+      scene: this.d.scene?.() ?? [],
       potty: { ...this.potty },
     };
   }
@@ -626,6 +791,7 @@ export class Mind {
     if (!toyPlanned && options.length > 0 && (!this.bout || now >= this.bout.untilMs || worn)) await this.startBout(world, options, brainCtx);
     // Something changed its mind while the model was thinking (a click, a treat, the toy): that plan is stale.
     if (this.epoch !== epoch) return;
+    this.news = false;
 
     // The next planned step, checked again now: the world may have changed since it was planned.
     // The opening moves (a stretch, a wash) are always on the menu.
@@ -686,7 +852,9 @@ export class Mind {
       busyForMin: this.busySinceMs === null ? 0 : (now - this.busySinceMs) / 60_000,
       things: this.d.things?.() ?? [],
     };
-    return this.askPlan(ctx, world, false);
+    const urgent = this.news;
+    this.news = false;
+    return this.askPlan(ctx, world, urgent);
   }
 
   /** Asks the model for a plan when it may (urgent: right now, whatever the gap), else the rules. */

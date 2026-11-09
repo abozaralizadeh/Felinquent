@@ -79,9 +79,10 @@ export interface ToySpot {
  * not one pose, so it is a list of beats. Where a beat goes is worked out when it starts, from where
  * the cat and the cursor are then.
  */
+/** face and go also take 1 or -1: right or left, toward something that isn't the cursor (a thing you threw). */
 export type Beat =
-  | { do: Anim; sec: number; face?: "cursor" | "away" }
-  | { go: "cursor" | "away" | "stroll"; by: number; speed: Approach; anim?: Anim }
+  | { do: Anim; sec: number; face?: "cursor" | "away" | 1 | -1 }
+  | { go: "cursor" | "away" | "stroll" | 1 | -1; by: number; speed: Approach; anim?: Anim }
   | { leap: "cursor" | "away" | "ahead" | "stroll"; by: number; h: number; anim?: Anim };
 
 export interface CatBody {
@@ -1842,8 +1843,8 @@ export class Executor {
     if ("do" in beat) return { k: "do", anim: beat.do, sec: beat.sec, face: beat.face };
     if (!p) return { k: "do", anim: "idle_sit", sec: 0.2 };
     const room = (dir: 1 | -1): number => (dir === 1 ? p.x2 - 20 - b.x : b.x - (p.x1 + 20));
-    const goDir = (to: "cursor" | "away" | "ahead" | "stroll"): 1 | -1 =>
-      to === "cursor" ? toward : to === "away" ? (-toward as 1 | -1) : to === "ahead" ? b.facing : this.rng.next() < 0.5 ? -1 : 1;
+    const goDir = (to: "cursor" | "away" | "ahead" | "stroll" | 1 | -1): 1 | -1 =>
+      typeof to === "number" ? to : to === "cursor" ? toward : to === "away" ? (-toward as 1 | -1) : to === "ahead" ? b.facing : this.rng.next() < 0.5 ? -1 : 1;
     if ("leap" in beat) {
       let dir = goDir(beat.leap);
       if (room(dir) < 30) dir = (-dir) as 1 | -1;
@@ -1852,7 +1853,8 @@ export class Executor {
       return { k: "leap", dx, h: beat.h, anim: beat.anim ?? "leap", face: beat.leap === "away" ? toward : undefined };
     }
     let dir = goDir(beat.go);
-    if (beat.go !== "cursor" && room(dir) < 50 && room((-dir) as 1 | -1) > room(dir)) dir = (-dir) as 1 | -1;
+    // Toward the cursor or toward a spot: no room that way, no walk. Otherwise it turns round.
+    if (beat.go !== "cursor" && typeof beat.go !== "number" && room(dir) < 50 && room((-dir) as 1 | -1) > room(dir)) dir = (-dir) as 1 | -1;
     // Going to the cursor stops a little short of it.
     const reach = beat.go === "cursor" ? Math.max(0, Math.abs(cursorX - b.x) - 60) : room(dir);
     const dist = Math.min(beat.by, reach, Math.max(0, room(dir)));

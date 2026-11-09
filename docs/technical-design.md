@@ -202,11 +202,18 @@ Run it with `npm run eval -- --brain ollama --mode plan --n 30`. It prints the t
   "pointer": "a little way off to my left (321 px), moving",   // still, creeping, moving, darting about fast
   "pointer_on": "the Code window they are using",               // or "me", "the Dock", "the empty desktop"
   "toy": "my tennis ball is lying a little way off to my right (they threw it 2 s ago)",
+  "things": [                                                    // everything else it can see, nearest first, up to 10
+    "pieces of a broken mug lying on the Dock, right next to me (my human broke it)",
+    "vase standing on the Code window, a little way off to my left above me",
+    "my puddle lying on the Safari window, far away to my right above me"
+  ],
   "near_me": ["Code window right next to me (they are using it)", "Safari window a little way off to my right"]
 }
 ```
 
-App names only, never titles. The bout it is most likely to plan lists each move with a few words of what it means (`MOVE_MEANING`); the others list just the names. A whole plan request is about 950 tokens, inside `num_ctx` 2048 with room for the answer.
+App names only, never titles. The bout it is most likely to plan lists each move with a few words of what it means (`MOVE_MEANING`); the others list just the names. `things` (`Mess.seen`, `thingWords`) is every drawing of the mess on its own layer: things standing, teetering, sliding, flying, rolling or lying about, one in your hand or its mouth, pieces and spills, its puddles and piles, cracks and claw marks, torn strips and the fly, with who put it there. Nothing in it is read from your screen. A whole plan request is about 1,000 to 1,300 tokens, inside `num_ctx` 4096 with plenty of room for the answer (ADR-061).
+
+**Things you throw** (ADR-061). The mess sends `thing_grabbed` (from which window), `thing_thrown` (your hand's speed: over 400 px/s is a throw) and `thing_landed` (where, and whether it broke) for anything that isn't its toy or a treat. Its eyes follow anything in the air (`Cat.lookAt`). On landing, `Mind.onThingLanded` writes one line to `happened` and plays a reaction in the same frame, picked by the rules (`thingReaction`: startle, bolt, sniff, watch or ignore, by distance, breakage, kind of animal, curiosity and aloofness), facing the thing and walking toward it if it sniffs. A respect mode gets only the line. Then the next plan is asked of the model at once, with the throw as the thought's topic.
 
 ### 6.4 Intent (output, JSON schema built per request)
 

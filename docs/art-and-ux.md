@@ -180,6 +180,24 @@ Shoo for 1 hour      (ticked while it lasts)
 Panic: hide the cat  (ticked while hidden)
 ```
 
+**The About window (0.1.13).** The version line at the top of the menu is clickable ("Felinquent 0.1.13…") and opens a small window, 360 by 510 points, in the site's colours, light or dark with the system:
+
+```text
+        [app icon]
+        Felinquent
+      Version 0.1.13
+A desktop pet that does whatever it wants.
+   Made with ♥ by Abozar
+ [ ★ Star it on GitHub ]     (ginger, the main button)
+ [  Visit the website  ]
+If it made you smile, a star on GitHub really helps,
+     and so does telling a friend.
+   Free for non-commercial use.
+   Runs on your computer only.
+```
+
+System fonts only, nothing loaded from the internet. The buttons open the repo and the site in your browser; Escape closes it.
+
 ### 6.2 Settings window
 
 These tabs match the product spec §7: General · Cat · Behavior · Brain · Privacy · About. It's a small native-looking window: no big dashboards, no stats charts.
