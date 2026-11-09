@@ -127,6 +127,11 @@ pub fn space() -> Option<super::Space> {
     Some(super::Space { id, index, spans: true, app: fullscreen_in_front(), hidden: false })
 }
 
+/// A Windows desktop spans every display, so there is no desktop per display.
+pub fn display_spaces() -> Vec<super::DisplaySpace> {
+    vec![]
+}
+
 fn virtual_desktop() -> Option<(String, i32)> {
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
     use winreg::RegKey;

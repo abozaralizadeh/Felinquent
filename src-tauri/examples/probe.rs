@@ -30,6 +30,12 @@ fn main() {
         if n == 3 {
             println!("timing: windows {:.2} ms, mic {:.2} ms, camera {:.2} ms, desktop {:.2} ms", t_win.as_secs_f64() * 1e3, t_mic.as_secs_f64() * 1e3, t_cam.as_secs_f64() * 1e3, t_space.as_secs_f64() * 1e3);
             println!("desktop: {space:?}");
+            let t4 = Instant::now();
+            let each = sensors::display_spaces();
+            println!("each display's desktop ({:.2} ms):", t4.elapsed().as_secs_f64() * 1e3);
+            for d in each {
+                println!("  {} #{}{} on the display at x={:.0} y={:.0} {:.0}x{:.0}", d.id, d.index, if d.app { " (full-screen app)" } else { "" }, d.x, d.y, d.w, d.h);
+            }
         }
         n += 1;
         if n == 1 {

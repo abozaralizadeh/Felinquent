@@ -34,6 +34,8 @@ struct Sensors {
     /// A video playing or a presentation running keeps the display awake.
     display_awake: bool,
     space: Option<sensors::Space>,
+    /// Each display's own desktop, when displays have separate desktops (the Mac's default).
+    spaces: Vec<sensors::DisplaySpace>,
 }
 
 /// Only the windows and the desktop: read every frame while a window is being dragged.
@@ -41,6 +43,7 @@ struct Sensors {
 struct Windows {
     windows: Vec<sensors::Win>,
     space: Option<sensors::Space>,
+    spaces: Vec<sensors::DisplaySpace>,
 }
 
 #[derive(Serialize)]
@@ -227,6 +230,7 @@ async fn read_sensors() -> Sensors {
         camera_in_use: sensors::camera_in_use(),
         display_awake: sensors::display_kept_awake(),
         space: space_now(),
+        spaces: spaces_now(),
     }
 }
 
@@ -240,11 +244,19 @@ fn space_now() -> Option<sensors::Space> {
     Some(s)
 }
 
+/// The desktop each display shows (when each has its own), hidden like `space_now`.
+fn spaces_now() -> Vec<sensors::DisplaySpace> {
+    let all = sensors::display_spaces();
+    #[cfg(target_os = "macos")]
+    let all = all.into_iter().map(|s| sensors::DisplaySpace { hidden: s.app && !follows_spaces(), ..s }).collect();
+    all
+}
+
 /// The windows and the desktop only, cheap enough for every frame while a window moves, so what
 /// stands on it rides along in real time.
 #[tauri::command]
 async fn read_windows() -> Windows {
-    Windows { windows: sensors::windows("felinquent"), space: space_now() }
+    Windows { windows: sensors::windows("felinquent"), space: space_now(), spaces: spaces_now() }
 }
 
 #[tauri::command]

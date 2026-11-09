@@ -9,7 +9,7 @@ import { PROP_ASPECT } from "../src/core/prop-aspect";
 import { WindowMotion } from "../src/core/motion";
 import { seeded } from "../src/core/rng";
 import type { WindowInfo, WorldSnapshot } from "../src/core/types";
-import { makeWorld } from "../src/core/world";
+import { makeWindows, makeWorld } from "../src/core/world";
 import { T0, at } from "./helpers";
 
 const DT = 1 / 60;
@@ -411,6 +411,111 @@ describe("desktops", () => {
     await step({ space: spaceB, windows: other }, 0.2);
     expect(cat.mess.props.some((p) => p.kind === "mug")).toBe(false);
     await step({}, 0.2);
+    expect(cat.mess.props.some((p) => p.kind === "mug")).toBe(true);
+  });
+});
+
+describe("a desktop per display (a Mac's default with two displays)", () => {
+  // The second display to the right of the main one, like a monitor next to a laptop.
+  const D2 = { x: 1440, y: 0, w: 1920, h: 1080 };
+  const MAIN = { x: 0, y: 0, w: 1440, h: 900 };
+  const onD2: WindowInfo = { id: "d2", app: "Notes", bounds: { x: 1500, y: 700, w: 900, h: 300 }, focused: false, cpu: "low", z: 3 };
+  const fullD2: WindowInfo = { id: "f2", app: "Safari", bounds: { ...D2 }, focused: true, cpu: "low", z: 0 };
+  const other: WindowInfo[] = [{ id: "x1", app: "Mail", bounds: { x: 300, y: 300, w: 600, h: 400 }, focused: true, cpu: "low", z: 0 }];
+  const spaces = (main: string, second: string, app = false) => [
+    { id: main, index: main === "m1" ? 0 : 1, ...MAIN },
+    { id: second, index: second === "s1" ? 0 : 1, app, ...D2 },
+  ];
+  /** You on the main display's first desktop and the second display's first desktop. */
+  const home: Partial<WorldSnapshot> = { space: { id: "m1", index: 0, spans: false }, spaces: spaces("m1", "s1"), windows: [...makeWindows(), onD2] };
+  /** The second display went to an app in full screen; the main display is as it was. */
+  const fullOnD2: Partial<WorldSnapshot> = { space: { id: "m1", index: 0, spans: false }, spaces: spaces("m1", "s2", true), windows: [fullD2, ...makeWindows()] };
+  /** The main display went to its next desktop; the second display is as it was. */
+  const mainNext: Partial<WorldSnapshot> = { space: { id: "m2", index: 1, spans: false }, spaces: spaces("m2", "s1"), windows: [...other, onD2] };
+
+  async function setup() {
+    const base = makeWorld({ nowMs: T0, displays: [D2], ...home });
+    const cat = new Cat({ rng: seeded(12), minDecisionGapMs: 600_000 });
+    cat.place(base, 300);
+    let t = 0;
+    let wasAway = false;
+    const step = async (over: Partial<WorldSnapshot>, sec: number, until?: () => boolean): Promise<void> => {
+      for (let i = 0; i < sec * 60 && !until?.(); i++) {
+        t += DT;
+        await cat.step(at(base, T0 + Math.round(t * 1000), over), DT);
+        wasAway ||= cat.away;
+      }
+    };
+    const wait = async (over: Partial<WorldSnapshot>, sec: number, until: () => boolean): Promise<number> => {
+      const from = t;
+      while (t - from < sec && !until()) {
+        t += 0.25;
+        await cat.step(at(base, T0 + Math.round(t * 1000), over), 0.25);
+      }
+      return t - from;
+    };
+    /** It walks and jumps over to the window on the second display. */
+    const toSecond = async (): Promise<void> => {
+      await step(home, 0.5);
+      cat.executor.start({ intent: "sit_on", target: "d2", approach: "walk", stay_sec: 600, mood: "smug" });
+      await step(home, 40, () => cat.executor.windowId === "d2" && cat.executor.phase === "doing");
+    };
+    return { cat, step, wait, base, toSecond, get wasAway() { return wasAway; } };
+  }
+
+  it("walking over to the other display is not a desktop switch", async () => {
+    const s = await setup();
+    await s.toSecond();
+    expect(s.cat.executor.windowId).toBe("d2");
+    expect(s.wasAway).toBe(false);
+  });
+
+  it("a full-screen app on its display leaves it behind, and later it walks in on that display", async () => {
+    const { cat, step, wait, toSecond } = await setup();
+    await toSecond();
+    expect(cat.executor.windowId).toBe("d2");
+    // The bug: the main display didn't change, so it showed up on the full-screen app where it sat.
+    await step(fullOnD2, 0.5);
+    expect(cat.away).toBe(true);
+    const took = await wait(fullOnD2, 400, () => !cat.away);
+    expect(cat.away).toBe(false);
+    expect(took).toBeGreaterThan(2);
+    // In along the second display's floor, from the side its desktop is on (to the left).
+    expect(cat.executor.body.platformId).toBe("floor1");
+    expect(cat.executor.body.x).toBeLessThan(D2.x);
+    await step(fullOnD2, 4);
+    expect(cat.executor.body.x).toBeGreaterThan(D2.x);
+  });
+
+  it("back on its desktop on that display before it came over: there it is", async () => {
+    const { cat, step, toSecond } = await setup();
+    await toSecond();
+    await step(fullOnD2, 1);
+    expect(cat.away).toBe(true);
+    await step(home, 1);
+    expect(cat.away).toBe(false);
+    expect(cat.executor.windowId).toBe("d2");
+  });
+
+  it("a switch on the other display is none of its business", async () => {
+    const { cat, step, toSecond } = await setup();
+    await toSecond();
+    await step(mainNext, 2);
+    expect(cat.away).toBe(false);
+    expect(cat.executor.windowId).toBe("d2");
+  });
+
+  it("only what lies on the display that switched is put away", async () => {
+    const { cat, step, base, toSecond } = await setup();
+    await toSecond();
+    cat.mess.place("mug", "w1", 400, base.nowMs);
+    cat.mess.place("plant", "d2", 2300, base.nowMs);
+    await step(home, 0.2);
+    await step(fullOnD2, 0.2);
+    expect(cat.mess.props.some((p) => p.kind === "plant")).toBe(false);
+    expect(cat.mess.props.some((p) => p.kind === "mug")).toBe(true);
+    await step(home, 0.2);
+    expect(cat.mess.props.some((p) => p.kind === "plant")).toBe(true);
     expect(cat.mess.props.some((p) => p.kind === "mug")).toBe(true);
   });
 });

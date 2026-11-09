@@ -30,6 +30,21 @@ pub struct Space {
     pub hidden: bool,
 }
 
+/// When each display has its own row of desktops (the Mac's "Displays have separate Spaces", on by
+/// default): the desktop one display shows, with that display's rect in global points. A switch on
+/// a second display never shows in `Space`, which is the main display's.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct DisplaySpace {
+    pub id: String,
+    pub index: i32,
+    pub app: bool,
+    pub hidden: bool,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct Display {
     pub x: f64,
@@ -51,9 +66,12 @@ pub use win::*;
 /// Other systems (Linux) get an empty desktop, so the code at least compiles.
 #[cfg(not(any(target_os = "macos", windows)))]
 mod other {
-    use super::{Display, Space, Win};
+    use super::{Display, DisplaySpace, Space, Win};
     pub fn space() -> Option<Space> {
         None
+    }
+    pub fn display_spaces() -> Vec<DisplaySpace> {
+        vec![]
     }
     pub fn windows(_skip: &str) -> Vec<Win> {
         vec![]

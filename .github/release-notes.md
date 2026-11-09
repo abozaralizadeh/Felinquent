@@ -2,11 +2,11 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-Throw things at it! Pick up a mug, a plant or a vase off your windows and throw it: its eyes follow it through the air, and when it lands the animal jumps, runs off, goes over to sniff it or pretends it saw nothing. With the local model on, the model now hears everything the animal can see (what you threw, where it smashed, the pieces, its puddles, the fly) and plans its next move about it right away. And the version at the top of the menu opens a little About window.
+Two monitors on a Mac? Go to a full-screen app or another desktop on your second monitor and the animal now stays behind on its own desktop, then walks in a little later, like it already did on the main display. Before, it just showed up on the full-screen app where it had been sitting. A switch on the display it isn't on leaves it alone, and walking over to the other display is not a switch.
 
-## More about 0.1.13
+## More about 0.1.14
 
-A rabbit or a squirrel mostly bolts when something crashes next to it, a dog sneaks over for a sniff, a cat stares or turns its back. In a meeting or with a video full screen it only takes note. The model gets more room for all this (a 4096-token context), and it all still runs on your computer only.
+Each display keeps its own mess: switch one and only what lies there is put away until you come back. Nothing changes on Windows, where one virtual desktop covers every display.
 
 ## Updating
 

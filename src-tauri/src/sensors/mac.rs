@@ -11,7 +11,7 @@ use core_graphics::window::{
     copy_window_info, kCGNullWindowID, kCGWindowListExcludeDesktopElements,
     kCGWindowListOptionOnScreenOnly,
 };
-use super::{Display, Space, Win};
+use super::{Display, DisplaySpace, Space, Win};
 use std::os::raw::{c_char, c_void};
 
 type Dict = CFDictionary<CFString, CFType>;
@@ -221,15 +221,15 @@ fn space_id(d: &Dict) -> Option<i64> {
     num(d, "id64").or_else(|| num(d, "ManagedSpaceID")).map(|n| n as i64)
 }
 
-/// The main display's UUID, as the desktop list names displays when each has its own desktops.
-fn main_display_uuid() -> Option<String> {
+/// A display's UUID, as the desktop list names displays when each has its own desktops.
+fn display_uuid(display: u32) -> Option<String> {
     let f = symbol(c"CGDisplayCreateUUIDFromDisplayID");
     if f.is_null() {
         return None;
     }
     // SAFETY: CGDisplayCreateUUIDFromDisplayID(CGDirectDisplayID) -> CFUUIDRef (+1, may be NULL).
     let create: extern "C" fn(u32) -> *const c_void = unsafe { std::mem::transmute(f) };
-    let uuid = create(unsafe { CGMainDisplayID() });
+    let uuid = create(display);
     if uuid.is_null() {
         return None;
     }
@@ -242,6 +242,11 @@ fn main_display_uuid() -> Option<String> {
         }
         Some(CFString::wrap_under_create_rule(s as _).to_string())
     }
+}
+
+/// The main display's UUID.
+fn main_display_uuid() -> Option<String> {
+    display_uuid(unsafe { CGMainDisplayID() })
 }
 
 /// The window server's list of displays and their desktops, or None if macOS doesn't say.
@@ -289,6 +294,21 @@ extern "C" {
     fn IOPMCopyAssertionsStatus(status: *mut core_foundation::dictionary::CFDictionaryRef) -> i32;
 }
 
+/// The desktop one entry of the desktop list shows now: its id, its place in the row, and whether
+/// it's an app in full screen.
+fn current_of(entry: &Dict) -> Option<(i64, i32, bool)> {
+    let now = dict(entry, "Current Space")?;
+    let current = space_id(&now)?;
+    // type 0 is a desktop, 4 an app in full screen.
+    let app = num(&now, "type").is_some_and(|t| t as i64 == 4);
+    let k = CFString::new("Spaces");
+    let list = entry.find(&k)?;
+    // SAFETY: "Spaces" is an array of dictionaries; get rule, the entry owns it.
+    let list: CFArray<CFDictionary<CFString, CFType>> = unsafe { CFArray::wrap_under_get_rule(list.as_concrete_TypeRef() as _) };
+    let index = list.iter().position(|d| space_id(&d.clone()) == Some(current)).map(|i| i as i32).unwrap_or(-1);
+    Some((current, index, app))
+}
+
 /// The desktop the main display shows now, or None if macOS doesn't say.
 pub fn space() -> Option<Space> {
     let arr = managed_spaces()?;
@@ -304,16 +324,30 @@ pub fn space() -> Option<Space> {
         })
         .or(entries.first())?;
     let spans = text(pick, "Display Identifier").as_deref() == Some("Main");
-    let now = dict(pick, "Current Space")?;
-    let current = space_id(&now)?;
-    // type 0 is a desktop, 4 an app in full screen.
-    let app = num(&now, "type").is_some_and(|t| t as i64 == 4);
-    let k = CFString::new("Spaces");
-    let list = pick.find(&k)?;
-    // SAFETY: "Spaces" is an array of dictionaries; get rule, the entry owns it.
-    let list: CFArray<CFDictionary<CFString, CFType>> = unsafe { CFArray::wrap_under_get_rule(list.as_concrete_TypeRef() as _) };
-    let index = list.iter().position(|d| space_id(&d.clone()) == Some(current)).map(|i| i as i32).unwrap_or(-1);
+    let (current, index, app) = current_of(pick)?;
     Some(Space { id: current.to_string(), index, spans, app, hidden: false })
+}
+
+/// The desktop each display shows now, with the display's rect, when each display has its own
+/// desktops. Empty when one row of desktops covers every display (or macOS doesn't say): then
+/// `space()` alone tells a switch.
+pub fn display_spaces() -> Vec<DisplaySpace> {
+    use core_graphics::display::CGDisplay;
+    let Some(arr) = managed_spaces() else { return vec![] };
+    let entries: Vec<Dict> = arr.iter().map(|d| d.clone()).collect();
+    if entries.iter().any(|d| text(d, "Display Identifier").as_deref() == Some("Main")) {
+        return vec![];
+    }
+    let ids = CGDisplay::active_displays().unwrap_or_default();
+    let mut out = vec![];
+    for id in ids {
+        let Some(uuid) = display_uuid(id) else { continue };
+        let Some(entry) = entries.iter().find(|d| text(d, "Display Identifier").is_some_and(|i| i.eq_ignore_ascii_case(&uuid))) else { continue };
+        let Some((current, index, app)) = current_of(entry) else { continue };
+        let b = CGDisplay::new(id).bounds();
+        out.push(DisplaySpace { id: current.to_string(), index, app, hidden: false, x: b.origin.x, y: b.origin.y, w: b.size.width, h: b.size.height });
+    }
+    out
 }
 
 // ---- Displays ----------------------------------------------------------------

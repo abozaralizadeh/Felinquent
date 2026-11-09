@@ -78,6 +78,21 @@ export interface WorldSnapshot {
    * (on a Mac set up to keep the overlay on every desktop at once). Unknown on systems without them.
    */
   space?: { id: string; index: number; spans: boolean; app?: boolean; hidden?: boolean };
+  /**
+   * When each display has its own row of desktops (the Mac's default): the desktop each display
+   * shows, with that display's rect. The animal goes by the one its own display shows, so a switch
+   * on a second display (to a full-screen app there, say) leaves it behind too. Empty or missing
+   * when one row of desktops covers every display (Windows, or a Mac set up that way).
+   */
+  spaces?: DisplaySpace[];
+}
+
+/** One display's own desktop, with the display's rect (see WorldSnapshot.spaces). */
+export interface DisplaySpace extends Rect {
+  id: string;
+  index: number;
+  app?: boolean;
+  hidden?: boolean;
 }
 
 export interface Needs {

@@ -3,7 +3,7 @@ import { buildPlatforms, segmentsOf, type Platform } from "./platforms";
 import { PROP_ASPECT } from "./prop-aspect";
 import type { Rng } from "./rng";
 import { toyName, treatName } from "./summary";
-import type { ChaosLevel, SeenThing, WindowInfo, WorldSnapshot } from "./types";
+import type { ChaosLevel, Rect, SeenThing, WindowInfo, WorldSnapshot } from "./types";
 
 /**
  * The mess a gremlin makes, drawn over the desktop and never touching another app (hard rules 2
@@ -344,24 +344,58 @@ export class Mess {
     this.spots = [];
   }
 
-  /** Everything lying about on one desktop, put away while you are on another one (Spaces on the Mac). */
-  stash(): MessState {
-    const st: MessState = { props: this.props, shards: this.shards, decals: this.decals, strips: this.strips, fly: this.fly, spots: this.spots };
-    this.clear();
+  /**
+   * Everything lying about on one desktop, put away while you are on another one (Spaces on the
+   * Mac). With `area`, only what lies on that display (each display has its own desktops): the
+   * rest stays out. Something in your hand or in its mouth is never put away.
+   */
+  stash(area?: Rect): MessState {
+    if (!area) {
+      const st: MessState = { props: this.props, shards: this.shards, decals: this.decals, strips: this.strips, fly: this.fly, spots: this.spots };
+      this.clear();
+      return st;
+    }
+    const inside = (x: number, y: number): boolean => x >= area.x && x < area.x + area.w && y >= area.y && y <= area.y + area.h;
+    const win = (id: string): Rect | undefined => this.world?.windows.find((w) => w.id === id)?.bounds;
+    const propAway = (p: Prop): boolean => p.state !== "held" && p.state !== "carried" && inside(p.x, p.y);
+    const decalAway = (d: Decal): boolean => {
+      const b = win(d.windowId);
+      return !!b && inside(b.x + d.dx, b.y);
+    };
+    const st: MessState = {
+      props: this.props.filter(propAway),
+      shards: this.shards.filter((s) => inside(s.x, s.y)),
+      decals: this.decals.filter(decalAway),
+      strips: this.strips.filter((s) => inside(s.x, s.y)),
+      fly: this.fly && inside(this.fly.x, this.fly.y) ? this.fly : null,
+      spots: this.spots.filter((s) => inside(s.x, s.y)),
+    };
+    this.props = this.props.filter((p) => !propAway(p));
+    this.shards = this.shards.filter((s) => !inside(s.x, s.y));
+    this.decals = this.decals.filter((d) => !decalAway(d));
+    this.strips = this.strips.filter((s) => !inside(s.x, s.y));
+    if (st.fly) this.fly = null;
+    this.spots = this.spots.filter((s) => !inside(s.x, s.y));
     return st;
   }
 
-  /** Puts back what was lying about on the desktop you came back to. */
-  unstash(st: MessState | undefined): void {
-    this.clear();
+  /**
+   * Puts back what was lying about on the desktop you came back to. `add`: one display's desktop
+   * came back, so it joins what lies on the other displays instead of replacing it.
+   */
+  unstash(st: MessState | undefined, add = false): void {
+    if (!add) this.clear();
     if (!st) return;
-    // Another animal's toy, left there before you switched animals, is put away.
-    this.props = st.props.filter((p) => !p.toy || p.kind === this.ownToy);
-    this.shards = st.shards;
-    this.decals = st.decals;
-    this.strips = st.strips;
-    this.fly = st.fly;
-    this.spots = st.spots ?? [];
+    // Another animal's toy, left there before you switched animals, is put away, and so is a
+    // second toy (it has one, and it is out on another display already).
+    const hasToy = this.props.some((p) => p.toy);
+    const props = st.props.filter((p) => !p.toy || (p.kind === this.ownToy && !hasToy));
+    this.props = [...this.props, ...props];
+    this.shards = [...this.shards, ...st.shards];
+    this.decals = [...this.decals, ...st.decals];
+    this.strips = [...this.strips, ...st.strips];
+    this.fly = this.fly ?? st.fly;
+    this.spots = [...this.spots, ...(st.spots ?? [])];
   }
 
   /**

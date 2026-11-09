@@ -17,8 +17,10 @@ import { onSpriteSet, setSpriteUrl, SPRITE_URL } from "./sprites";
 
 interface NativeWin { id: string; app: string; x: number; y: number; w: number; h: number; z: number }
 interface NativeSpace { id: string; index: number; spans: boolean; app?: boolean; hidden?: boolean }
-interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; display_awake?: boolean; space: NativeSpace | null }
-interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null }
+/** One display's own desktop (a Mac with a desktop per display), with the display's rect. */
+interface NativeDisplaySpace { id: string; index: number; app?: boolean; hidden?: boolean; x: number; y: number; w: number; h: number }
+interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; display_awake?: boolean; space: NativeSpace | null; spaces?: NativeDisplaySpace[] }
+interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null; spaces?: NativeDisplaySpace[] }
 interface Layout { index: number; displays: Rect[]; dock_top: number }
 interface Pointer { x: number; y: number; down: boolean; right?: boolean }
 /** A model name as Ollama writes it (gemma3:1b, library/llama3.2:3b-instruct), nothing else. */
@@ -217,6 +219,14 @@ async function main(): Promise<void> {
     }));
   }
   const spaceOf = (s: NativeSpace | null): WorldSnapshot["space"] => (s ? { id: s.id, index: s.index, spans: s.spans, app: s.app, hidden: s.hidden } : undefined);
+  const spacesOf = (all: NativeDisplaySpace[] | undefined): WorldSnapshot["spaces"] =>
+    all?.length ? all.map((d) => ({ id: d.id, index: d.index, app: d.app, hidden: d.hidden, x: d.x, y: d.y, w: d.w, h: d.h })) : undefined;
+  /** Is the desktop under the animal an app in full screen? With a desktop per display, its own display's. */
+  const appUnderCat = (s: NativeSensors): boolean => {
+    const b = cat.executor.body;
+    const mine = s.spaces?.find((d) => b.x >= d.x && b.x < d.x + d.w && b.y - 4 >= d.y && b.y - 4 <= d.y + d.h);
+    return !!(mine ?? s.space)?.app;
+  };
 
   /** Everything the cat senses, four times a second. Not awaited by the frame, so a slow read never stalls the drawing. */
   async function pollSensors(): Promise<void> {
@@ -240,8 +250,9 @@ async function main(): Promise<void> {
         inMeeting: s.mic_in_use || s.camera_in_use,
         // A full-screen app keeping the display awake is a video or a presentation: it goes outside
         // (respect mode RM-02). A full-screen app you just work in is fine.
-        fullscreen: !!s.space?.app && !!s.display_awake,
+        fullscreen: appUnderCat(s) && !!s.display_awake,
         space: stale ? world.space : spaceOf(s.space),
+        spaces: stale ? world.spaces : spacesOf(s.spaces),
       };
     } finally {
       lastSensorsAt = performance.now();
@@ -257,7 +268,7 @@ async function main(): Promise<void> {
     const windows = toWindows(s.windows);
     windowCount = windows.length;
     worldSeq++;
-    world = { ...world, windows, frontApp: windows[0]?.app ?? "", space: spaceOf(s.space) };
+    world = { ...world, windows, frontApp: windows[0]?.app ?? "", space: spaceOf(s.space), spaces: spacesOf(s.spaces) };
   }
 
   // The Mac moved the windows to another desktop and made them see-through (main.rs follow_spaces):
@@ -638,7 +649,7 @@ async function main(): Promise<void> {
         const cur = cat.mind.current;
         const b = st.body;
         say(
-          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} desktop=${world.space ? `${world.space.id}#${world.space.index}${world.space.app ? " (full-screen app)" : ""}${world.fullscreen ? " (video or slides: outside)" : ""}` : "-"}${cat.away ? " (cat on its own desktop)" : ""} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms shown=${document.visibilityState === "visible" ? "yes" : "no"}`,
+          `cat x=${b.x.toFixed(0)} y=${b.y.toFixed(0)} anim=${b.anim} platform=${b.platformId ?? "-"} intent=${cur?.intent ?? (cat.mind.sleeping ? "asleep" : "deciding")} windows=${windowCount} desktop=${world.space ? `${world.space.id}#${world.space.index}${world.space.app ? " (full-screen app)" : ""}${world.fullscreen ? " (video or slides: outside)" : ""}` : "-"}${world.spaces ? ` displays=${world.spaces.map((d) => `${d.id}#${d.index}${d.app ? "(app)" : ""}`).join(",")}` : ""}${cat.away ? " (cat on its own desktop)" : ""} clickThrough=${clickThrough} down=${down} fps=${fps.toFixed(0)} gap=${worstGap.toFixed(0)}ms shown=${document.visibilityState === "visible" ? "yes" : "no"}`,
         );
         frames = 0;
         worstGap = 0;

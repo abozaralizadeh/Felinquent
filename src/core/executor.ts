@@ -384,11 +384,16 @@ export class Executor {
   }
 
   /**
-   * Comes in from the desktop next door: from beyond the left (-1) or right (1) edge of the main
-   * display, walking along the Dock, then a look round and a look at you.
+   * Comes in from the desktop next door: from beyond the left (-1) or right (1) edge of the display
+   * (`area`, the main one when not given), walking along its Dock or floor, then a look round and a
+   * look at you.
    */
-  enterFrom(side: 1 | -1): void {
-    const dock = this.platforms.find((p) => p.id === "dock");
+  enterFrom(side: 1 | -1, area?: Rect): void {
+    const main = this.world?.screen;
+    const isMain = !area || !main || (Math.abs(area.x - main.x) < 1 && Math.abs(area.y - main.y) < 1);
+    const dock =
+      (isMain ? undefined : this.platforms.find((p) => p.kind === "floor" && Math.abs(p.x1 - area.x) < 1 && Math.abs(p.x2 - (area.x + area.w)) < 1)) ??
+      this.platforms.find((p) => p.id === "dock");
     if (!dock) return;
     this.interrupt();
     this.mode = "ground";
@@ -402,7 +407,7 @@ export class Executor {
     this.slipped = false;
     const b = this.body;
     b.hidden = false;
-    b.platformId = "dock";
+    b.platformId = dock.id;
     this.ridingWindow = null;
     b.vx = 0;
     b.vy = 0;

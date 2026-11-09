@@ -70,6 +70,28 @@ export interface StepResult {
   reflexes: ReflexEvent[];
 }
 
+/** A display, by where it is and its size, to tell its desktop apart from the other displays'. */
+function displayKey(d: Rect): string {
+  return `${Math.round(d.x)},${Math.round(d.y)},${Math.round(d.w)},${Math.round(d.h)}`;
+}
+
+/** Every display's desktop at once: a change is a switch somewhere. */
+function desktopsOf(w: WorldSnapshot): string {
+  return w.spaces?.length ? w.spaces.map((d) => d.id).join(",") : (w.space?.id ?? "");
+}
+
+/** A window is on the display its top edge's middle is on. */
+function onDisplay(b: Rect, d: Rect): boolean {
+  const cx = b.x + b.w / 2;
+  return cx >= d.x && cx < d.x + d.w && b.y >= d.y - 1 && b.y <= d.y + d.h;
+}
+
+/** The display nearest to a point (one that is off every display: thrown, or hidden outside). */
+function nearestDisplay<T extends Rect>(all: readonly T[], x: number, y: number): T {
+  const gap = (d: Rect): number => Math.hypot(Math.max(d.x - x, 0, x - (d.x + d.w)), Math.max(d.y - y, 0, y - (d.y + d.h)));
+  return all.reduce((a, b) => (gap(b) < gap(a) ? b : a));
+}
+
 /**
  * The whole cat in one object: Mind (slow brain), Governor, Executor (fast brain) and the reflex detector.
  * The playground, the simulation tests and the future native shell all drive this.
@@ -97,10 +119,12 @@ export class Cat {
    * behind and goes on with its life there (its desktop's windows as you left them), and comes over
    * a while later, walking in from the side its desktop is on. What lies about stays on each desktop.
    */
-  private home: { id: string; index: number } | null = null;
+  private home: { id: string; index: number; display: string } | null = null;
   private homeWorld: WorldSnapshot | null = null;
   private comeAtMs: number | null = null;
   private shownSpace: string | null = null;
+  /** With a desktop per display: the desktop each display showed last (by the display's rect). */
+  private shownBy = new Map<string, string>();
   private messBySpace = new Map<string, MessState>();
   private desktopRng: Rng = seeded(4243);
   /**
@@ -343,7 +367,11 @@ export class Cat {
    */
   private steadied(live: WorldSnapshot): WorldSnapshot {
     const prev = this.steady;
-    if (prev && live.space && prev.space?.id === live.space.id && looksLikeSwipe(prev.windows, live.windows)) {
+    // With a desktop per display, only its own display's windows slide away on a swipe there.
+    const rect = this.spaceHere(live)?.rect;
+    const mine = (ws: readonly WindowInfo[]): readonly WindowInfo[] => (rect ? ws.filter((w) => onDisplay(w.bounds, rect)) : ws);
+    const known = !!live.space || !!live.spaces?.length;
+    if (prev && known && desktopsOf(prev) === desktopsOf(live) && looksLikeSwipe(mine(prev.windows), mine(live.windows))) {
       this.shakySince ??= live.nowMs;
       if (live.nowMs - this.shakySince < SWIPE_HOLD_MS) return { ...live, windows: prev.windows, frontApp: prev.frontApp };
     }
@@ -358,32 +386,75 @@ export class Cat {
   }
 
   /**
+   * What lies about stays on each desktop. One row of desktops for every display: all of it is put
+   * away when you switch. A desktop per display: only what lies on the display that switched.
+   */
+  private swapMess(live: WorldSnapshot): void {
+    const all = live.spaces;
+    if (all && all.length > 0) {
+      for (const d of all) {
+        const key = displayKey(d);
+        const was = this.shownBy.get(key);
+        if (was !== undefined && was !== d.id) {
+          this.messBySpace.set(was, this.mess.stash(d));
+          this.mess.unstash(this.messBySpace.get(d.id), true);
+          this.messBySpace.delete(d.id);
+        }
+        this.shownBy.set(key, d.id);
+      }
+    } else if (live.space) {
+      const sp = live.space;
+      if (this.shownSpace !== null && sp.id !== this.shownSpace) {
+        this.messBySpace.set(this.shownSpace, this.mess.stash());
+        this.mess.unstash(this.messBySpace.get(sp.id));
+        this.messBySpace.delete(sp.id);
+      }
+      this.shownSpace = sp.id;
+    }
+    // Only a few desktops are remembered.
+    while (this.messBySpace.size > 8) this.messBySpace.delete(this.messBySpace.keys().next().value as string);
+  }
+
+  /**
+   * The desktop the animal goes by, and the display it is on. With a desktop per display (a Mac's
+   * default) that is the one its own display shows, so a switch on a second display leaves it
+   * behind too, and one on a display it isn't on is none of its business. Away on its own desktop,
+   * it is the display it stayed behind on. With one row of desktops, it is that row.
+   */
+  private spaceHere(live: WorldSnapshot): { sp: NonNullable<WorldSnapshot["space"]>; display: string; rect?: Rect } | null {
+    const all = live.spaces;
+    if (all && all.length > 0) {
+      const b = this.executor.body;
+      // A little above the paws: on the floor of a display above the main one, the paws are on the edge between the two.
+      const y = b.y - 4;
+      const home = this.homeWorld && this.home ? all.find((d) => displayKey(d) === this.home?.display) : undefined;
+      const mine = home ?? all.find((d) => b.x >= d.x && b.x < d.x + d.w && y >= d.y && y <= d.y + d.h) ?? nearestDisplay(all, b.x, y);
+      return { sp: { id: mine.id, index: mine.index, spans: false, app: mine.app, hidden: mine.hidden }, display: displayKey(mine), rect: mine };
+    }
+    return live.space ? { sp: live.space, display: "all" } : null;
+  }
+
+  /**
    * You went to another desktop: the animal stays where it was, and the mess of each desktop stays
    * on it. Back before it came over: there it is. Otherwise it comes over after a while (a needy
    * one soon, an aloof one when it feels like it, a sleeping one when it wakes up), from the side
    * its desktop is on: you swiped right, so it was to the left, so it comes in from the left.
    */
   private desktops(live: WorldSnapshot): void {
-    const sp = live.space;
-    if (!sp) return;
+    this.swapMess(live);
+    const here = this.spaceHere(live);
+    if (!here) return;
+    const { sp, display } = here;
     const now = live.nowMs;
-    if (this.shownSpace !== null && sp.id !== this.shownSpace) {
-      this.messBySpace.set(this.shownSpace, this.mess.stash());
-      this.mess.unstash(this.messBySpace.get(sp.id));
-      this.messBySpace.delete(sp.id);
-      // Only a few desktops are remembered.
-      while (this.messBySpace.size > 8) this.messBySpace.delete(this.messBySpace.keys().next().value as string);
-    }
-    this.shownSpace = sp.id;
     if (!this.home) {
-      this.home = { id: sp.id, index: sp.index };
+      this.home = { id: sp.id, index: sp.index, display };
       return;
     }
     if (sp.id === this.home.id) {
       if (this.homeWorld) {
         // Back on its desktop before it came over. The list may still be mid-swipe, so the windows it
         // knows are the ones to hold on to for a moment (steadied()).
-        this.steady = { ...this.homeWorld, space: sp, nowMs: now };
+        this.steady = { ...this.homeWorld, space: live.space, spaces: live.spaces, nowMs: now };
         this.shakySince = null;
         this.homeWorld = null;
         this.comeAtMs = null;
@@ -392,14 +463,18 @@ export class Cat {
     }
     if (!this.homeWorld) {
       const b = this.executor.body;
-      const onMain = b.x >= live.screen.x && b.x <= live.screen.x + live.screen.w;
-      // Each display has its own desktops and it's on another display: this switch isn't its business.
-      if ((!sp.spans && !onMain) || b.hidden || !this.lastWorld) {
-        this.home = { id: sp.id, index: sp.index };
+      const s = live.screen;
+      const onMain = b.x >= s.x && b.x <= s.x + s.w && b.y - 4 >= s.y && b.y - 4 <= s.y + s.h;
+      // It went over to another display (walked, jumped or was carried there): that display's
+      // desktop is simply where it is now. Without a desktop per display known, a switch while
+      // it's on another display than the main one isn't its business either.
+      const moved = display !== this.home.display;
+      if (moved || (!sp.spans && display === "all" && !onMain) || b.hidden || !this.lastWorld) {
+        this.home = { id: sp.id, index: sp.index, display };
         return;
       }
       // Its desktop's windows as they were before the swipe began, not a list from half way through.
-      this.homeWorld = this.steady && this.steady.space?.id === this.home.id ? this.steady : this.lastWorld;
+      this.homeWorld = this.steady && this.steadyHome() ? this.steady : this.lastWorld;
       this.comeAtMs = null;
       this.mind.onDesktop(now, false);
     }
@@ -426,13 +501,23 @@ export class Cat {
       this.mind.wake(now);
     }
     const side: 1 | -1 = sp.index > this.home.index ? -1 : sp.index < this.home.index ? 1 : this.desktopRng.next() < 0.5 ? -1 : 1;
-    this.home = { id: sp.id, index: sp.index };
+    this.home = { id: sp.id, index: sp.index, display };
     this.homeWorld = null;
     this.comeAtMs = null;
     this.executor.interrupt();
     this.syncWorld(live, true);
-    this.executor.enterFrom(side);
+    // On the display you are on: its floor, or the Dock on the main display.
+    this.executor.enterFrom(side, here.rect);
     this.mind.onDesktop(now, true);
+  }
+
+  /** The last window list it believed was read on its own desktop (not on the one you went to). */
+  private steadyHome(): boolean {
+    const st = this.steady;
+    const home = this.home;
+    if (!st || !home) return false;
+    if (home.display === "all") return st.space?.id === home.id;
+    return (st.spaces ?? []).some((d) => displayKey(d) === home.display && d.id === home.id);
   }
 
   /** The paw, the claws and the leap reach the things around the animal. */
