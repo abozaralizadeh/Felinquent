@@ -65,7 +65,10 @@ struct Config {
     /// "auto", "rules" or "ollama".
     brain: String,
     ollama_url: String,
+    /// The model to use when nothing was picked in the menu (gemma3:1b, or FELINQUENT_OLLAMA_MODEL).
     ollama_model: String,
+    /// FELINQUENT_OLLAMA_MODEL is set: it wins over the model picked in the menu (for test runs).
+    ollama_model_env: bool,
     /// How long one model answer may take, in ms (FELINQUENT_LLM_TIMEOUT_MS, 8000 unless set; for
     /// slow test machines and demo recordings).
     llm_timeout_ms: u32,
@@ -79,6 +82,11 @@ struct Choices {
     model: bool,
     panic: bool,
     shoo: bool,
+    /// The local model it uses, and the models Ollama has (empty when Ollama doesn't answer).
+    #[serde(default)]
+    llm: String,
+    #[serde(default)]
+    models: Vec<String>,
 }
 
 /// The menu items that carry a tick. The page owns the state and the menu only shows it.
@@ -88,6 +96,33 @@ struct Ticks {
     panic: CheckMenuItem<Wry>,
     shoo: CheckMenuItem<Wry>,
     model: CheckMenuItem<Wry>,
+    /// "Model": one item per model Ollama has, rebuilt when that list changes (`listed`).
+    llm: Submenu<Wry>,
+    listed: std::sync::Mutex<Option<Vec<String>>>,
+}
+
+/// A model name as Ollama writes it (gemma3:1b, library/llama3.2:3b-instruct), nothing else.
+fn model_name_ok(name: &str) -> bool {
+    !name.is_empty() && name.len() <= 100 && name.chars().all(|c| c.is_ascii_alphanumeric() || "._:/-".contains(c))
+}
+
+/// Fills the Model submenu with the models Ollama has: picking one uses it (`llm:<name>`, the page
+/// handles it). Any model the user pulled is there, not only the one the app suggests.
+fn fill_models(app: &AppHandle, menu: &Submenu<Wry>, models: &[String]) -> tauri::Result<()> {
+    for item in menu.items()? {
+        menu.remove(&item)?;
+    }
+    let names: Vec<&String> = models.iter().filter(|m| model_name_ok(m)).collect();
+    if names.is_empty() {
+        menu.append(&MenuItem::with_id(app, "llm-none", "No models found. Is Ollama running?", false, None::<&str>)?)?;
+    }
+    for name in names {
+        menu.append(&CheckMenuItem::with_id(app, format!("llm:{name}"), name, true, false, None::<&str>)?)?;
+    }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "llm-hint", "Get more with: ollama pull <name>", false, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "llm-hint2", "Small ones (1 to 4B) answer in time", false, None::<&str>)?)?;
+    Ok(())
 }
 
 /// The last choices the page sent, for the menu a right-click on the animal opens.
@@ -109,9 +144,30 @@ async fn show_choices(app: AppHandle, choices: Choices) {
     let _ = t.panic.set_checked(choices.panic);
     let _ = t.shoo.set_checked(choices.shoo);
     let _ = t.model.set_checked(choices.model);
+    // The Model submenu: rebuilt only when Ollama's list changed, then the one in use ticked.
+    if let Ok(mut listed) = t.listed.lock() {
+        if listed.as_ref() != Some(&choices.models) {
+            match fill_models(&app, &t.llm, &choices.models) {
+                Ok(()) => *listed = Some(choices.models.clone()),
+                Err(e) => logfile::write(&format!("menu: model list: {e}")),
+            }
+        }
+    }
+    let using = format!("llm:{}", choices.llm);
+    let mut on_model = None;
+    for item in t.llm.items().unwrap_or_default() {
+        if let Some(c) = item.as_check_menuitem() {
+            let here = c.id().as_ref() == using;
+            let _ = c.set_checked(here);
+            if here {
+                on_model = Some(using.clone());
+            }
+        }
+    }
+    let _ = t.llm.set_text(if choices.llm.is_empty() { "Model".to_string() } else { format!("Model: {}", choices.llm) });
     // Read the ticks back from the menu itself, so the log shows what the user sees.
-    let on: Vec<String> = t.picks.iter().chain([&t.panic, &t.shoo, &t.model]).filter(|i| i.is_checked().unwrap_or(false)).map(|i| i.id().as_ref().to_string()).collect();
-    logfile::write(&format!("menu ticks: {}", on.join(" ")));
+    let on: Vec<String> = t.picks.iter().chain([&t.panic, &t.shoo, &t.model]).filter(|i| i.is_checked().unwrap_or(false)).map(|i| i.id().as_ref().to_string()).chain(on_model).collect();
+    logfile::write(&format!("menu ticks: {} (models: {})", on.join(" "), choices.models.len()));
 }
 
 /// Builds before 0.1.0 used the identifier app.felinquent.spike. Bring their settings and memory along once.
@@ -306,6 +362,7 @@ fn read_config() -> Config {
         brain: std::env::var("FELINQUENT_BRAIN").unwrap_or_else(|_| "auto".into()),
         ollama_url,
         ollama_model,
+        ollama_model_env: std::env::var_os("FELINQUENT_OLLAMA_MODEL").is_some(),
         llm_timeout_ms: std::env::var("FELINQUENT_LLM_TIMEOUT_MS").ok().and_then(|v| v.parse().ok()).filter(|ms| (1000..=60000).contains(ms)).unwrap_or(8000),
     }
 }
@@ -368,9 +425,16 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let treat = MenuItem::with_id(app, "treat", "Give a treat", true, None::<&str>)?;
     // Drops its toy at the cursor (it comes out of hiding if it was buried). You can also drag it.
     let toy = MenuItem::with_id(app, "toy", "Throw its toy", true, None::<&str>)?;
+    // The same asks as the menu on the animal (build_pet_menu).
+    let pet = MenuItem::with_id(app, "pet", "Pet it", true, None::<&str>)?;
+    let zoomies = MenuItem::with_id(app, "zoomies", "Zoomies!", true, None::<&str>)?;
+    let nap = MenuItem::with_id(app, "nap", "Nap time", true, None::<&str>)?;
     let panic = check("panic", "Panic: hide the cat (Cmd+Opt+Shift+P)")?;
     let shoo = check("shoo", "Shoo for 1 hour")?;
     let model = check("model", "Use the local model (needs Ollama)")?;
+    // Filled with the models Ollama has once the page has asked it (show_choices).
+    let looking = MenuItem::with_id(app, "llm-none", "Looking for models\u{2026}", false, None::<&str>)?;
+    let llm = Submenu::with_items(app, "Model", true, &[&looking])?;
     #[cfg(target_os = "macos")]
     let login = CheckMenuItem::with_id(app, "login", "Start at login", true, login::is_on(), None::<&str>)?;
     #[cfg(target_os = "macos")]
@@ -384,14 +448,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version];
     #[cfg(target_os = "macos")]
     items.push(&update);
-    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &character, &chaos, &panic, &shoo, &line2, &model]);
+    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &line2, &model, &llm]);
     #[cfg(target_os = "macos")]
     items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
 
     app.manage(Current(std::sync::Mutex::new(None)));
-    app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone() });
+    app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone(), llm: llm.clone(), listed: std::sync::Mutex::new(None) });
     // The model setup shows its progress in this item's text.
     #[cfg(target_os = "macos")]
     ollama::menu_item(app, &model);

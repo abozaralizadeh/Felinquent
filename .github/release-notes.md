@@ -2,11 +2,11 @@ A desktop cat for your Mac. It naps on your windows, sits on what you care about
 
 ## What's new
 
-Give it a treat and one hangs at your pointer, the right one for the animal: a fish for a cat, a bone biscuit for a dog, a strawberry for the rabbit. It begs under it until you click, then eats it bite by bite. Right-click it for a quick menu, grab the mugs too, and it reacts to a thrown toy at once. Jumps stay on the screen. And from now on it updates by itself.
+Pick your own model. The menu has a Model list with every model your Ollama has, so pull whatever you like (`ollama pull <name>`) and choose it there. Small ones answer in time, a big one gets more time and the rules fill in meanwhile. The animals also sit on their paws now: a tail curled lower than the paws, or hanging off a window edge, no longer lifts them into the air. And Pet it, Zoomies! and Nap time are in the menu bar menu too, not only on the animal.
 
-## More about 0.1.10
+## More about 0.1.11
 
-Its eyes follow a flying toy or treat, it turns its head toward you from the loaf and the window edge too, and when you come back after a while it comes over to say hello. It's the same size in every pose now, and the toy sits in its mouth. With **Update automatically** on (it is by default) a new version installs itself once you've left the Mac alone for two minutes, never in a call or over a full-screen app. The download is about 110 MB.
+gemma3:1b stays the default and the one the app offers to set up. Your pick is saved and comes back after a restart. The download is about 110 MB.
 
 ## Updating
 
@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scri
 
 ## Optional: the local model
 
-The cat thinks with simple rules out of the box. Turn on **Use the local model** in the menu and it uses [Ollama](https://ollama.com) with `gemma3:1b` as its slow brain. If Ollama or the model isn't there yet, the app asks first and then sets it up for you (about 1 GB in total). Everything stays on your Mac.
+The cat thinks with simple rules out of the box. Turn on **Use the local model** in the menu and it uses [Ollama](https://ollama.com) with `gemma3:1b` as its slow brain, or any other model you pick in the menu's **Model** list. If Ollama or the model isn't there yet, the app asks first and then sets it up for you (about 1 GB in total). Everything stays on your Mac.
 
 ## Check the download
 

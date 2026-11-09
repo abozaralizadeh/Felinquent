@@ -1,6 +1,7 @@
 import { TURN_SEC, type Anim } from "../core/executor";
 import { SCRATCH_SEC } from "../core/scenes";
 import { GAIT_STRIDE } from "./gaits";
+import { GROUND } from "./ground";
 import { HEADS } from "./heads";
 
 /**
@@ -1342,12 +1343,44 @@ export function mouthOf(id: string, key: string, depth = 0): { x: number; y: num
   return null;
 }
 
-/** A frame's drawn width and height in cat units, with the size fix. */
-function drawnSize(set: SpriteSet, key: SpriteKey): { w: number; h: number; fix: number; img: HTMLImageElement } {
+/**
+ * How far a frame's paws (or its seat, on a ledge) are above its bottom edge, in its own pixels before
+ * the size fix. The bottom edge is the lowest pixel, and in many drawings that is the tail: curled round
+ * in front of a sitting cat it is drawn a little lower than the paws, and off a ledge it hangs far
+ * lower. Measured per drawing by tools/measure-ground.py (ground.ts); an in-between takes it from the
+ * two drawings it sits between, a rigged gait frame from the standing drawing.
+ */
+const grounds = new Map<string, number>();
+/** `?noground=1` puts every frame down on its bottom edge, as before, to compare. */
+const NO_GROUND = typeof location !== "undefined" && new URLSearchParams(location.search).has("noground");
+export function groundOf(id: string, key: string): number {
+  if (NO_GROUND) return 0;
+  const at = `${id}/${key}`;
+  let v = grounds.get(at);
+  if (v === undefined) grounds.set(at, (v = groundFor(id, key, 0)));
+  return v;
+}
+function groundFor(id: string, key: string, depth: number): number {
+  const row = GROUND[id];
+  if (!row) return 0;
+  const b = depth <= 3 ? BETWEEN.get(key) : undefined;
+  if (b) return groundFor(id, b[0], depth + 1) * (1 - b[2]) + groundFor(id, b[1], depth + 1) * b[2];
+  if (/^g[wtr]\d/.test(key)) return groundFor(id, "stand", depth + 1);
+  // A lick nod (nodOf, which adds itself to BETWEEN only when first played) keeps its drawing's ground.
+  const nod = /^(.+)n[1-5]$/.exec(key);
+  if (nod && !(key in row) && depth <= 3) return groundFor(id, nod[1] as string, depth + 1);
+  return row[key] ?? 0;
+}
+
+/**
+ * A frame's drawn width and height in cat units, with the size fix, and how far below the ground its
+ * bottom edge goes (`lift`, cat units: the paws are on the ground, the tail lower).
+ */
+function drawnSize(set: SpriteSet, key: SpriteKey): { w: number; h: number; fix: number; lift: number; img: HTMLImageElement } {
   const k = frameKey(set, key);
   const img = set.img[k] as HTMLImageElement;
   const fix = sizeFix(set.id, k);
-  return { w: img.naturalWidth * K * fix, h: img.naturalHeight * K * fix, fix, img };
+  return { w: img.naturalWidth * K * fix, h: img.naturalHeight * K * fix, fix, lift: groundOf(set.id, k) * K * fix, img };
 }
 
 const strideOf = (set: SpriteSet, g: "walk" | "trot" | "run"): number => GAIT_STRIDE[set.id]?.[g] ?? 90;
@@ -1394,16 +1427,20 @@ interface Layer {
   flip: boolean;
   /** The size fix of its frame (ADR-056). */
   fix: number;
+  /** How far its bottom edge goes below the ground, in cat units (a tail lower than the paws). */
+  lift: number;
 }
 
 /**
- * Frames mixed by weight, feet on the bottom edge and centred like a single frame. They are added in
- * premultiplied colour ("lighter"), so where all are solid the result is solid too: a cross-fade
- * with no see-through moment in the middle. A flipped layer is mirrored round the middle.
+ * Frames mixed by weight, each with its paws on one ground line and centred like a single frame. They
+ * are added in premultiplied colour ("lighter"), so where all are solid the result is solid too: a
+ * cross-fade with no see-through moment in the middle. A flipped layer is mirrored round the middle.
+ * `top` is how far the ground line is below the top of the result.
  */
-function blend(set: SpriteSet, layers: readonly Layer[], ppu: number): { src: CanvasImageSource; w: number; h: number } {
+function blend(set: SpriteSet, layers: readonly Layer[], ppu: number): { src: CanvasImageSource; w: number; h: number; top: number } {
   const w = Math.max(...layers.map((l) => l.img.naturalWidth * K * l.fix));
-  const h = Math.max(...layers.map((l) => l.img.naturalHeight * K * l.fix));
+  const top = Math.max(...layers.map((l) => l.img.naturalHeight * K * l.fix - l.lift));
+  const h = top + Math.max(...layers.map((l) => l.lift));
   let c = blendCanvas.get(set);
   if (!c) blendCanvas.set(set, (c = document.createElement("canvas")));
   const cw = Math.max(1, Math.ceil(w * ppu));
@@ -1425,12 +1462,12 @@ function blend(set: SpriteSet, layers: readonly Layer[], ppu: number): { src: Ca
     cx.setTransform(l.flip ? -1 : 1, 0, 0, 1, l.flip ? cw : 0, 0);
     cx.globalCompositeOperation = i === 0 ? "source-over" : "lighter";
     cx.globalAlpha = l.w;
-    cx.drawImage(scaledFor(l.img, lw * ppu), ((w - lw) / 2) * ppu, (h - lh) * ppu, lw * ppu, lh * ppu);
+    cx.drawImage(scaledFor(l.img, lw * ppu), ((w - lw) / 2) * ppu, (top - lh + l.lift) * ppu, lw * ppu, lh * ppu);
   });
   cx.setTransform(1, 0, 0, 1, 0, 0);
   cx.globalCompositeOperation = "source-over";
   cx.globalAlpha = 1;
-  return { src: c, w, h };
+  return { src: c, w, h, top };
 }
 
 /** Draws the sprite with its feet at body.x, body.y. Returns the head position in cat units. */
@@ -1524,12 +1561,12 @@ export function drawSprite(
       // Where the head is, from the looking-ahead drawing, and which way the cursor is from it.
       const look = drawnSize(set, plan.key);
       const hx = x + drawDir * plan.head.x * look.w * scale;
-      const hy = y - plan.head.y * look.h * scale;
+      const hy = y - (plan.head.y * look.h - look.lift) * scale;
       follow = gazeShot(slot, anim === "watch_stand", poseAt, t, gazeTarget((d.cursor.x - hx) * drawDir, hy - d.cursor.y), TILTY[set.id] ?? 0.35);
     } else if (REST_GROUPS.has(plan.group) && d.cursor) {
       const look = drawnSize(set, plan.key);
       const hx = x + drawDir * plan.head.x * look.w * scale;
-      const hy = y - plan.head.y * look.h * scale;
+      const hy = y - (plan.head.y * look.h - look.lift) * scale;
       const dx = (d.cursor.x - hx) * drawDir;
       const dy = hy - d.cursor.y;
       follow = restShot(slot, plan.group as RestGroup, poseAt, t, dx, dy, d.cursor, Math.hypot(dx, dy) < 420 * scale);
@@ -1538,7 +1575,7 @@ export function drawSprite(
     else if (d.cursor) {
       const look = drawnSize(set, plan.key);
       const hx = x + drawDir * plan.head.x * look.w * scale;
-      const hy = y - plan.head.y * look.h * scale;
+      const hy = y - (plan.head.y * look.h - look.lift) * scale;
       follow = blushShot(slot, Math.hypot(d.cursor.x - hx, d.cursor.y - hy) < 180 * scale, t, e > 1.8);
     }
     shot = sequenceShot(anim, plan, sh.prev, e) ?? follow ?? poseShot(anim, set.id, e - settle) ?? { key: plan.key, next: plan.next ?? null, mix: plan.mix ?? 0 };
@@ -1572,7 +1609,7 @@ export function drawSprite(
   sh.dir = drawDir;
   const k = sh.from !== null && t - sh.fadeAt < sh.fade ? smooth(Math.max(0, (t - sh.fadeAt) / sh.fade)) : 1;
   if (k >= 1) sh.from = null;
-  const { w, h } = drawnSize(set, shot.key);
+  const { w, h, lift } = drawnSize(set, shot.key);
 
   // Breathing, steps, rocking and the occasional fidget. A fast tremble or a quick hop of more than a
   // few pixels reads as flicker on the real screen (frames come from a timer and are not perfectly
@@ -1618,7 +1655,7 @@ export function drawSprite(
   const layers: Layer[] = [];
   const layer = (key: SpriteKey, wt: number, flip: boolean): Layer => {
     const f = drawnSize(set, key);
-    return { img: f.img, w: wt, flip, fix: f.fix };
+    return { img: f.img, w: wt, flip, fix: f.fix, lift: f.lift };
   };
   if (k < 1 && sh.from !== null) layers.push(layer(sh.from, 1 - k, sh.fromDir !== drawDir));
   const mix = shot.next ? shot.mix : 0;
@@ -1637,7 +1674,7 @@ export function drawSprite(
     if (!mo) continue;
     if (typeof DOMPoint === "undefined") break;
     const f = sizeFix(set.id, fk);
-    const at = deviceScale.inverse().multiply(ctx.getTransform()).transformPoint(new DOMPoint(mo.x * K * f, -mo.y * K * f));
+    const at = deviceScale.inverse().multiply(ctx.getTransform()).transformPoint(new DOMPoint(mo.x * K * f, -(mo.y - groundOf(set.id, fk)) * K * f));
     mouth = { x: at.x, y: at.y };
     break;
   }
@@ -1645,14 +1682,14 @@ export function drawSprite(
     const only = layers[0] as Layer;
     const ow = only.img.naturalWidth * K * only.fix;
     const oh = only.img.naturalHeight * K * only.fix;
-    ctx.drawImage(scaledFor(only.img, ow * ppu), -ow / 2, -oh, ow, oh);
+    ctx.drawImage(scaledFor(only.img, ow * ppu), -ow / 2, -oh + only.lift, ow, oh);
   } else {
     const b = blend(set, layers, ppu);
-    ctx.drawImage(b.src, -b.w / 2, -b.h, b.w, b.h);
+    ctx.drawImage(b.src, -b.w / 2, -b.top, b.w, b.h);
   }
   ctx.restore();
   // The head, upright and in the direction the cat is facing, for hearts and other effects.
-  return { x: plan.head.x * w, y: -plan.head.y * h, mouth };
+  return { x: plan.head.x * w, y: -(plan.head.y * h - lift), mouth };
 }
 
 /** The width of the current sprite in cat units (for the soft shadow). */

@@ -21,7 +21,10 @@ interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec:
 interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null }
 interface Layout { index: number; displays: Rect[]; dock_top: number }
 interface Pointer { x: number; y: number; down: boolean; right?: boolean }
-interface Config { demo: boolean; debug: boolean; brain: string; ollama_url: string; ollama_model: string; llm_timeout_ms?: number }
+/** A model name as Ollama writes it (gemma3:1b, library/llama3.2:3b-instruct), nothing else. */
+const isModelName = (name: string): boolean => /^[A-Za-z0-9._:/-]{1,100}$/.test(name);
+
+interface Config { demo: boolean; debug: boolean; brain: string; ollama_url: string; ollama_model: string; ollama_model_env?: boolean; llm_timeout_ms?: number }
 
 /** What the master window tells the others, every frame. */
 interface CatState {
@@ -249,7 +252,7 @@ async function main(): Promise<void> {
   });
 
   // What the user chose and what the cat remembers survive a restart (local files only).
-  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number } = {};
+  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number; ollamaModel?: string } = {};
   try {
     const text = await invoke<string | null>("load_state", { name: "settings.json" });
     if (text) saved = JSON.parse(text) as typeof saved;
@@ -276,12 +279,25 @@ async function main(): Promise<void> {
   let useModel = saved.model ?? true;
   // When the app last offered to set up the local model, so "Not now" isn't asked again at every launch.
   let modelAskedMs = saved.modelAskedMs ?? 0;
+  // Which Ollama model: gemma3:1b unless another one was picked in the menu's Model list (any model
+  // the user has pulled). FELINQUENT_OLLAMA_MODEL wins over the pick, for test runs.
+  let ollamaModel = !config.ollama_model_env && saved.ollamaModel && isModelName(saved.ollamaModel) ? saved.ollamaModel : config.ollama_model;
+  // The models Ollama has, for that list (empty when it doesn't answer).
+  let models: { name: string; size: number }[] = [];
   const saveSettings = (): void =>
-    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel, modelAskedMs }) }).catch(() => {});
+    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel, modelAskedMs, ollamaModel }) }).catch(() => {});
   // The menu bar ticks what is current. This page owns that state, so it tells the menu after every change.
   const showChoices = (): void =>
     void invoke("show_choices", {
-      choices: { character: character.id, chaos: cat.settings.chaos, model: useModel, panic: world.panic, shoo: world.shooedUntilMs > Date.now() },
+      choices: {
+        character: character.id,
+        chaos: cat.settings.chaos,
+        model: useModel,
+        panic: world.panic,
+        shoo: world.shooedUntilMs > Date.now(),
+        llm: ollamaModel,
+        models: models.map((m) => m.name),
+      },
     }).catch(() => {});
   let memoryJson = memory.exportJson();
   setInterval(() => {
@@ -304,27 +320,62 @@ async function main(): Promise<void> {
     if (!asked && now - modelAskedMs < 3 * 86_400_000) return;
     modelAskedMs = now;
     saveSettings();
-    void invoke<boolean>("model_setup", { reason, model: config.ollama_model, url: config.ollama_url })
+    void invoke<boolean>("model_setup", { reason, model: ollamaModel, url: config.ollama_url })
       .then((started) => say(`model setup ${started ? "offered" : "not started"} (${reason})`))
       .catch((e) => say(`model setup: ${String(e)}`));
   }
 
+  /**
+   * Asks Ollama which models it has, for the Model list in the menu (and tells the menu when the list
+   * changed). null when Ollama doesn't answer.
+   */
+  async function listModels(): Promise<{ name: string; size: number }[] | null> {
+    let found: { name: string; size: number }[] | null = null;
+    if (isLocalUrl(config.ollama_url)) {
+      try {
+        const r = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(2000) });
+        if (r.ok) {
+          const tags = (await r.json()) as { models?: { name?: unknown; size?: unknown }[] };
+          found = (tags.models ?? [])
+            .filter((m): m is { name: string; size?: unknown } => typeof m.name === "string" && isModelName(m.name))
+            .map((m) => ({ name: m.name, size: typeof m.size === "number" ? m.size : 0 }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        }
+      } catch {
+        found = null;
+      }
+    }
+    const changed = (found ?? []).map((m) => m.name).join() !== models.map((m) => m.name).join();
+    models = found ?? [];
+    if (changed) showChoices();
+    return found;
+  }
+  // A model pulled or removed while the app runs shows up in the list within two minutes.
+  setInterval(() => void listModels(), 120_000);
+
   async function chooseBrain(asked = false): Promise<string> {
     if (config.brain === "rules") return "rules (asked for)";
-    if (!useModel) return "rules (the local model is off in the menu)";
+    if (!useModel) {
+      void listModels();
+      return "rules (the local model is off in the menu)";
+    }
     if (!isLocalUrl(config.ollama_url)) return "rules (the model address is not local)";
     try {
-      const r = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(2000) });
-      const tags = (await r.json()) as { models?: { name: string }[] };
-      if (!tags.models?.some((m) => m.name === config.ollama_model || m.name.startsWith(`${config.ollama_model}:`))) {
+      const have = await listModels();
+      if (!have) throw new Error("Ollama did not answer");
+      const name = ollamaModel;
+      const m = have.find((x) => x.name === name || x.name.startsWith(`${name}:`));
+      if (!m) {
         offerSetup("no-model", asked);
-        return `rules (model ${config.ollama_model} is not installed)`;
+        return `rules (model ${name} is not installed)`;
       }
-      // The menu may have turned the model off while we waited for Ollama.
-      if (!useModel) return "rules (the local model is off in the menu)";
-      cat.setBrain(new LlmBrain(new OllamaClient(config.ollama_url, config.ollama_model), config.llm_timeout_ms ?? 8000));
-      cat.updateSettings({ brain: "llm", llmUrl: config.ollama_url, llmModel: config.ollama_model });
-      return `llm ${config.ollama_model} with rules as the fallback`;
+      // The menu may have turned the model off, or picked another one, while we waited for Ollama.
+      if (!useModel || name !== ollamaModel) return "rules (changed while asking Ollama)";
+      // A bigger model takes longer to answer: give it 20 s, not 8 (the animal keeps moving meanwhile).
+      const timeout = Math.max(config.llm_timeout_ms ?? 8000, m.size > 2.5e9 ? 20_000 : 0);
+      cat.setBrain(new LlmBrain(new OllamaClient(config.ollama_url, m.name), timeout));
+      cat.updateSettings({ brain: "llm", llmUrl: config.ollama_url, llmModel: m.name });
+      return `llm ${m.name} with rules as the fallback (${Math.round(timeout / 1000)} s to answer)`;
     } catch {
       // Not running, or not installed: the setup looks and asks the right question.
       offerSetup("not-running", asked);
@@ -365,6 +416,16 @@ async function main(): Promise<void> {
         cat.setBrain(new RulesBrain());
         cat.updateSettings({ brain: "rules" });
         say("brain: rules (the local model is off in the menu)");
+      }
+    } else if (msg.startsWith("llm:")) {
+      // Picked in the menu's Model list: use that model from now on (and the local model at all).
+      const name = msg.slice(4);
+      if (isModelName(name)) {
+        ollamaModel = name;
+        useModel = true;
+        saveSettings();
+        say(`model ${name} picked`);
+        void chooseBrain(true).then((b) => say(`brain: ${b}`));
       }
     } else if (msg.startsWith("chaos:")) {
       const level = msg.slice(6);

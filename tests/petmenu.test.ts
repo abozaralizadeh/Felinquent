@@ -59,6 +59,26 @@ describe("the menu on the animal (right-click)", () => {
     expect(ids.length + 2).toBeLessThanOrEqual(10);
   });
 
+  it("everything on the menu on the animal is in the menu bar menu too", () => {
+    const rust = fs.readFileSync("src-tauri/src/main.rs", "utf8");
+    const pet = rust.slice(rust.indexOf("fn build_pet_menu"), rust.indexOf("fn set_click_through"));
+    const petIds = [...pet.matchAll(/(?:item|check)\("([a-z_]+)"/g)].map((m) => m[1] as string);
+    const tray = rust.slice(rust.indexOf("fn build_tray"), rust.indexOf("fn tune_ns_window"));
+    const trayIds = new Set([...tray.matchAll(/(?:with_id\(app, |check\()"([a-z_]+)"/g)].map((m) => m[1]));
+    for (const id of petIds) expect(trayIds.has(id), id).toBe(true);
+    expect(tray).toContain("&pet, &zoomies, &nap");
+  });
+
+  it("the menu bar's Model list picks any model Ollama has, and the page takes it", () => {
+    const rust = fs.readFileSync("src-tauri/src/main.rs", "utf8");
+    expect(rust).toContain('format!("llm:{name}")');
+    const page = fs.readFileSync("src/playground/overlay.ts", "utf8");
+    expect(page).toContain('msg.startsWith("llm:")');
+    // The pick is saved and wins over the default, unless FELINQUENT_OLLAMA_MODEL is set.
+    expect(page).toContain("ollamaModel }");
+    expect(page).toContain("config.ollama_model_env");
+  });
+
   for (const id of CHARACTERS.map((c) => c.id)) {
     it(`${id}: Pet it, Zoomies! and Nap time start in the same frame, with the model off`, async () => {
       const s = await setup(id);

@@ -37,17 +37,19 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 | Check for updates… | Looks for a new version right now. Shows "Update to 0.x.y…" when one is waiting |
 | Give a treat | A treat hangs at your pointer and the animal comes to beg under it. Click anywhere to drop it and it eats it. Also calls it over and ends a shoo |
 | Throw its toy | Drops its toy at your pointer. You can also grab the toy (or a mug, a plant) with the mouse and throw it |
+| Pet it, Zoomies!, Nap time | The same as on the animal's own menu: it starts at once, with or without the local model |
 | Character | Tabby, Inky, Pearl, Mochi, Bandit, Biscuit, Chili, Clover or Hazel. The current one has a tick |
 | Chaos level | Chill, Normal or Gremlin |
 | Panic: hide the cat | Hides it until you click again. Also Cmd+Opt+Shift+P |
 | Shoo for 1 hour | Keeps it away for an hour. Click again to call it back early |
 | Use the local model | Lets a small local model pick what the cat wants to do. Needs [Ollama](https://ollama.com) with `gemma3:1b`. If they're missing when you turn it on, the app offers to set them up: it asks first, shows the sizes (Ollama about 230 MB, the model about 815 MB), checks the download and shows the progress right here in the menu. Without it, or with this off, a rules brain does the same job |
+| Model | Every model your Ollama has, the one in use ticked. Pick any of them: `ollama pull <name>` in Terminal, and it shows up here within two minutes. Small ones (1 to 4B) answer in time; a big one gets 20 s per answer and the rules fill in while it thinks |
 | Start at login | Opens Felinquent when you log in |
 | Update automatically | Looks for a new version at launch and every 3 hours and puts it in place by itself when you leave the Mac alone for a couple of minutes. On by default |
 | Forget everything it learned | Wipes its memory of you |
 | Open logs folder | The logs are size-limited and kept in `~/Library/Logs/Felinquent/` |
 
-Right-click the animal for a shorter menu right there: Give a treat, Throw its toy, Pet it, Zoomies!, Nap time, Character, Chaos level, Shoo for 1 hour and Panic. They start at once, with or without the local model. The click stays with the animal: the app under it doesn't get it and keeps the keyboard. In the browser playground the same menu opens on a right-click too.
+Right-click the animal for a shorter menu right there (its actions are in the menu bar menu too): Give a treat, Throw its toy, Pet it, Zoomies!, Nap time, Character, Chaos level, Shoo for 1 hour and Panic. They start at once, with or without the local model. The click stays with the animal: the app under it doesn't get it and keeps the keyboard. In the browser playground the same menu opens on a right-click too.
 
 No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. The only thing it fetches from the internet on its own is the update check, one small file from GitHub, and you can turn that off. Setting up the local model downloads Ollama and the model, but only after you say yes. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
 

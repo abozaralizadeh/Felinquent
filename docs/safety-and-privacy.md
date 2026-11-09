@@ -44,7 +44,7 @@ These are rules in the code and in CI, not settings.
 | Diary | Fun, sharing | Local | Only if you share a card |
 | Logs | Fixing bugs | Local, max 15 MB, no titles | Only if you send them |
 | What the cat did lately ("the human poked me", "i knocked the mug off") | So the model and the thought bubble can react to it | In memory only, gone after 45 min | Only to the brain, on your Mac |
-| Settings (character, chaos level, local model on or off, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
+| Settings (character, chaos level, local model on or off and which model, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
 | Which desktop (Space) is showing, as an id and a number in the row, and whether it's an app in full screen | So the animal stays on its own desktop, walks in from the right side and knows when a full-screen app is in front | No, live only. The log has the id and the number (just numbers, no names) | No |
 | Whether something keeps the display awake (one system-wide yes or no: a video playing or a presentation running). Not which app, not what it shows | On a full-screen app, the cat goes outside while a video plays or slides are shown (RM-02) | No, live only | No |
 | How fast each window moves (worked out from the window list) | Things on a dragged window ride along or fall off | No | No |

@@ -36,7 +36,7 @@ Or skip that step and paste this in Terminal. It downloads the same app, checks 
 curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash
 ```
 
-After that it lives in the menu bar. Pick a character, set the chaos level, give it a treat, throw its toy, hide it, shoo it for an hour, turn the local model on or off, make it start at login. A tick shows what's on. From 0.1.10 it checks GitHub for a new version at launch and every 3 hours and updates itself when you leave the Mac alone for a couple of minutes (turn off "Update automatically" in the menu if you'd rather not; "Check for updates…" asks first). More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
+After that it lives in the menu bar. Pick a character, set the chaos level, give it a treat, throw its toy, pet it, set off the zoomies, send it for a nap, hide it, shoo it for an hour, turn the local model on or off and pick which Ollama model it uses (any you have pulled), make it start at login. A tick shows what's on. From 0.1.10 it checks GitHub for a new version at launch and every 3 hours and updates itself when you leave the Mac alone for a couple of minutes (turn off "Update automatically" in the menu if you'd rather not; "Check for updates…" asks first). More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
 
 ## What it will and won't do
 

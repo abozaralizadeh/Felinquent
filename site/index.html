@@ -764,7 +764,7 @@
             <li>Open it. The first time, macOS says it can't check the app, because it isn't signed with an Apple Developer ID yet. Click <b>Done</b>.</li>
             <li>Go to <b>System Settings &rsaquo; Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>. You only do this once.</li>
           </ol>
-          <p class="note">Then it lives in the menu bar. Pick a character, set the chaos level, turn the local model on or off, start it at login. A tick shows what's on. To remove it, drag it to the Trash.</p>
+          <p class="note">Then it lives in the menu bar. Pick a character, set the chaos level, turn the local model on or off and pick its model, start it at login. A tick shows what's on. To remove it, drag it to the Trash.</p>
           <h4>Or skip the warning</h4>
           <p>Paste this in Terminal. It downloads the same app, checks it against the checksum on the release, puts it in Applications and starts it. macOS only questions apps a browser downloaded, so there's no Open Anyway step. Run it again any time to update.</p>
           <div class="code"><div class="code-bar">Terminal<button class="copy" type="button" aria-label="Copy the install command"><svg><use href="#copy"/></svg><span>Copy</span></button></div><pre><code><span class="p">$ </span>curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash</code></pre></div>
@@ -805,7 +805,7 @@
         </details>
         <details>
           <summary>Do I need the AI model?</summary>
-          <p>No. The rules brain does the whole job. The model is an extra: <code>gemma3:1b</code> through Ollama, a download of about 815 MB (plus about 230 MB for Ollama if you don't have it) that runs on your own Mac. Turn it on in the menu and the app offers to set both up. It unloads itself while the cat naps.</p>
+          <p>No. The rules brain does the whole job. The model is an extra: <code>gemma3:1b</code> through Ollama, a download of about 815 MB (plus about 230 MB for Ollama if you don't have it) that runs on your own Mac. Turn it on in the menu and the app offers to set both up. It unloads itself while the cat naps. Want a bigger one? Pull any model with Ollama and pick it in the menu's Model list.</p>
           <p>If your Mac is short on memory, leave it out. You won't miss much.</p>
         </details>
         <details>
