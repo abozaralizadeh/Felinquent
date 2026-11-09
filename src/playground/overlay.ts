@@ -2,7 +2,7 @@
 // of the Mac. Runs inside the Tauri windows (src-tauri), one per display.
 // The window on the main display runs the cat and broadcasts its state. The others only draw it.
 // Reads geometry and idle time only. No screenshots, no titles, no key contents.
-import { isLocalUrl, LlmBrain, OllamaClient, RulesBrain } from "../core/brain";
+import { isLocalUrl, LlmBrain, OllamaClient, RulesBrain, type FetchLike } from "../core/brain";
 import { Cat } from "../core/cat";
 import type { CatBody } from "../core/executor";
 import type { Activity, Rect, WindowInfo, WorldSnapshot } from "../core/types";
@@ -67,6 +67,27 @@ const invoke = <T>(cmd: string, args?: object): Promise<T> => {
   return tauri.core.invoke<T>(cmd, args);
 };
 const say = (line: string): void => void invoke("debug_log", { line }).catch(() => {});
+
+/**
+ * Requests to the local Ollama. On Windows this page's address is http://tauri.localhost, and
+ * Ollama's CORS rules turn that away (on the Mac it's tauri://localhost, which Ollama lets in), so
+ * there the page asks through the app. The app only talks to the local Ollama address from the
+ * settings, and only to the paths the cat uses.
+ */
+const ollamaFetch: FetchLike = async (url, init) => {
+  if (!tauri || (location.protocol !== "http:" && location.protocol !== "https:")) return fetch(url, init);
+  const body = typeof init?.body === "string" ? init.body : null;
+  // The app drops the request when the time is up, so Ollama stops working on an answer nobody waits for.
+  const asked = invoke<[number, string]>("ollama_http", { path: new URL(url).pathname, body, timeoutMs: init?.timeoutMs ?? 10_000 });
+  const signal = init?.signal;
+  const stopped = new Promise<never>((_, reject) => {
+    const stop = (): void => reject(new DOMException("The request was stopped", "AbortError"));
+    if (signal?.aborted) stop();
+    signal?.addEventListener("abort", stop, { once: true });
+  });
+  const [status, text] = await Promise.race([asked, stopped]);
+  return new Response(text, { status, headers: { "content-type": "application/json" } });
+};
 
 // The app keeps the drawings once, in its Resources folder, and loads them from there. Built into
 // the program they'd be in it twice: a universal Mac app is one program per chip. The dev server
@@ -333,7 +354,7 @@ async function main(): Promise<void> {
     let found: { name: string; size: number }[] | null = null;
     if (isLocalUrl(config.ollama_url)) {
       try {
-        const r = await fetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(2000) });
+        const r = await ollamaFetch(`${config.ollama_url}/api/tags`, { signal: AbortSignal.timeout(2000), timeoutMs: 2000 });
         if (r.ok) {
           const tags = (await r.json()) as { models?: { name?: unknown; size?: unknown }[] };
           found = (tags.models ?? [])
@@ -372,8 +393,11 @@ async function main(): Promise<void> {
       // The menu may have turned the model off, or picked another one, while we waited for Ollama.
       if (!useModel || name !== ollamaModel) return "rules (changed while asking Ollama)";
       // A bigger model takes longer to answer: give it 20 s, not 8 (the animal keeps moving meanwhile).
-      const timeout = Math.max(config.llm_timeout_ms ?? 8000, m.size > 2.5e9 ? 20_000 : 0);
-      cat.setBrain(new LlmBrain(new OllamaClient(config.ollama_url, m.name), timeout));
+      // So does any model on most Windows PCs, where Ollama often has no fast graphics chip to use:
+      // 12 to 24 s per plan on a four-core PC with none.
+      const slow = m.size > 2.5e9 || navigator.userAgent.includes("Windows");
+      const timeout = Math.max(config.llm_timeout_ms ?? 8000, slow ? 20_000 : 0);
+      cat.setBrain(new LlmBrain(new OllamaClient(config.ollama_url, m.name, ollamaFetch), timeout));
       cat.updateSettings({ brain: "llm", llmUrl: config.ollama_url, llmModel: m.name });
       return `llm ${m.name} with rules as the fallback (${Math.round(timeout / 1000)} s to answer)`;
     } catch {

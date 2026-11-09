@@ -1,12 +1,12 @@
-A desktop cat for your Mac. It naps on your windows, sits on what you care about and ignores you when called.
+A desktop cat for your Mac, and now your Windows PC. It naps on your windows, sits on what you care about and ignores you when called.
 
 ## What's new
 
-Pick your own model. The menu has a Model list with every model your Ollama has, so pull whatever you like (`ollama pull <name>`) and choose it there. Small ones answer in time, a big one gets more time and the rules fill in meanwhile. The animals also sit on their paws now: a tail curled lower than the paws, or hanging off a window edge, no longer lifts them into the air. And Pet it, Zoomies! and Nap time are in the menu bar menu too, not only on the animal.
+Felinquent runs on Windows now. Get **Felinquent-setup.exe** below (Windows 10 or 11, 64-bit): the cat stands on your taskbar, follows you to every virtual desktop and goes outside while a video or a game runs full screen. Its menu is the icon by the clock, with everything the Mac menu has, and it updates itself like the Mac app. On the Mac nothing changes in this version.
 
-## More about 0.1.11
+## More about 0.1.12
 
-gemma3:1b stays the default and the one the app offers to set up. Your pick is saved and comes back after a restart. The download is about 110 MB.
+On Windows the installer puts it in your user folder, no admin needed. The installer isn't signed with a Windows certificate yet, so SmartScreen may ask once (More info, then Run anyway), or use the one-line PowerShell installer below, which doesn't trigger it. The local model setup works on Windows too: it gets Ollama's own installer (about 1.7 GB) after you say yes.
 
 ## Updating
 
@@ -14,7 +14,7 @@ Already on 0.1.2 or newer? The app asks you within 12 hours, or pick **Check for
 
 Coming from 0.1.1? Download the DMG below and drag it into Applications once more, or run the one-line installer below (it replaces the old copy and keeps what the cat learned).
 
-## Install
+## Install on a Mac
 
 1. Download **Felinquent.dmg** below and open it.
 2. Drag Felinquent into Applications.
@@ -30,10 +30,23 @@ Or skip step 3 and paste this in Terminal. It downloads the same DMG, checks it 
 curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash
 ```
 
+## Install on Windows
+
+1. Download **Felinquent-setup.exe** below and open it.
+2. If SmartScreen says it protected your PC, click **More info**, then **Run anyway**. You only do this once.
+
+The cat shows up on your taskbar and its icon sits by the clock. Panic is Ctrl+Alt+Shift+P. To remove it, use Settings > Apps.
+
+Or paste this in PowerShell. It downloads the same installer, checks it against the checksum below, installs it and starts it, with no SmartScreen question:
+
+```powershell
+irm https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-windows.ps1 | iex
+```
+
 ## Optional: the local model
 
-The cat thinks with simple rules out of the box. Turn on **Use the local model** in the menu and it uses [Ollama](https://ollama.com) with `gemma3:1b` as its slow brain, or any other model you pick in the menu's **Model** list. If Ollama or the model isn't there yet, the app asks first and then sets it up for you (about 1 GB in total). Everything stays on your Mac.
+The cat thinks with simple rules out of the box. Turn on **Use the local model** in the menu and it uses [Ollama](https://ollama.com) with `gemma3:1b` as its slow brain, or any other model you pick in the menu's **Model** list. If Ollama or the model isn't there yet, the app asks first and then sets it up for you (about 1 GB in total on a Mac, 2.5 GB on Windows, where Ollama's installer is bigger). Everything stays on your computer.
 
 ## Check the download
 
-`Felinquent.dmg.sha256` holds the SHA-256 of the DMG. Compare it with `shasum -a 256 Felinquent.dmg`.
+`Felinquent.dmg.sha256` holds the SHA-256 of the DMG. Compare it with `shasum -a 256 Felinquent.dmg`. `Felinquent-setup.exe.sha256` is the same for the Windows installer: `Get-FileHash Felinquent-setup.exe` in PowerShell.

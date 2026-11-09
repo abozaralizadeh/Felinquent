@@ -1,12 +1,14 @@
-# Builds the Mac app as one DMG that runs on both Apple Silicon and Intel Macs.
-# Started by hand, it keeps the DMG as a build file to try out. Nothing is published.
-# Pushing a tag like v0.1.0 also puts the DMG on a GitHub Release as Felinquent.dmg,
-# so https://github.com/abozaralizadeh/Felinquent/releases/latest/download/Felinquent.dmg always works.
-# Signed ad hoc, with no Apple Developer ID, so the first launch needs "Open Anyway" (see docs/INSTALL.md).
-# The release also carries the update: Felinquent.app.tar.gz, signed with the updater key, and
-# latest.json, which the app reads from releases/latest to see if it is out of date.
+# Builds the Mac app as one DMG that runs on both Apple Silicon and Intel Macs, and the Windows
+# installer (64-bit). Started by hand, it keeps them as build files to try out. Nothing is published.
+# Pushing a tag like v0.1.0 also puts them on a GitHub Release as Felinquent.dmg and
+# Felinquent-setup.exe, so .../releases/latest/download/Felinquent.dmg (and -setup.exe) always work.
+# Signed ad hoc on the Mac, with no Apple Developer ID, so the first launch needs "Open Anyway",
+# and not signed with a Windows certificate, so SmartScreen asks once (see docs/INSTALL.md).
+# The release also carries the updates: Felinquent.app.tar.gz and the Windows installer, each
+# signed with the updater key, and latest.json, which the app reads from releases/latest to see if
+# it is out of date.
 # Secrets: TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the updater key).
-# A tag needs them; a run by hand without them builds the DMG only.
+# A tag needs them; a run by hand without them builds the DMG and the installer only.
 name: release
 
 on:
@@ -18,6 +20,47 @@ permissions:
   contents: write
 
 jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - name: Build the installer and the update
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          EXTRA=()
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            EXTRA=(-- --config '{"bundle":{"createUpdaterArtifacts":true}}')
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set, so this release could not update anyone"; exit 1
+          else
+            echo "::warning::No updater key, building the installer only"
+          fi
+          npm run bundle:win "${EXTRA[@]}"
+      - name: Check it and name it
+        shell: bash
+        run: |
+          B=src-tauri/target/release/bundle/nsis
+          ls -la "$B"
+          mkdir -p out
+          cp "$B"/*-setup.exe out/Felinquent-setup.exe
+          (cd out && sha256sum Felinquent-setup.exe | tee Felinquent-setup.exe.sha256)
+          # The update is the installer itself, signed with the updater key.
+          if ls "$B"/*-setup.exe.sig >/dev/null 2>&1; then cp "$B"/*-setup.exe.sig out/Felinquent-setup.exe.sig; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Felinquent-windows
+          path: out/*
+          if-no-files-found: error
+
   mac:
     runs-on: macos-latest
     steps:
@@ -58,31 +101,59 @@ jobs:
           mkdir -p out
           cp "$B"/dmg/*.dmg out/Felinquent.dmg
           (cd out && shasum -a 256 Felinquent.dmg | tee Felinquent.dmg.sha256)
-          # The update: one universal app for both kinds of Mac, and the file that announces it.
-          # Its notes are the "What's new" part of the release notes, shown in the app's question.
+          # The update: one universal app for both kinds of Mac.
           if [ -f "$B/macos/Felinquent.app.tar.gz.sig" ]; then
             cp "$B/macos/Felinquent.app.tar.gz" "$B/macos/Felinquent.app.tar.gz.sig" out/
-            VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-            URL="https://github.com/abozaralizadeh/Felinquent/releases/download/v$VERSION/Felinquent.app.tar.gz"
-            NOTES=$(awk '/^## What.s new/{on=1;next} /^## /{on=0} on' .github/release-notes.md | sed '/^$/d')
-            jq -n --arg v "$VERSION" --arg notes "$NOTES" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --arg url "$URL" --arg sig "$(cat out/Felinquent.app.tar.gz.sig)" \
-              '{version: $v, notes: $notes, pub_date: $date, platforms: {"darwin-aarch64": {url: $url, signature: $sig}, "darwin-x86_64": {url: $url, signature: $sig}}}' > out/latest.json
-            jq '.version, .notes, (.platforms | keys)' out/latest.json
-            if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
-              echo "::error::The tag $GITHUB_REF_NAME does not match the app version $VERSION"; exit 1
-            fi
           fi
       - uses: actions/upload-artifact@v4
         with:
           name: Felinquent-mac
           path: out/*
           if-no-files-found: error
+
+  # Both builds together: the file that announces the updates, and the release itself (tags only).
+  publish:
+    needs: [mac, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Write latest.json
+        run: |
+          ls -la out
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match the app version $VERSION"; exit 1
+          fi
+          if [ ! -f out/Felinquent.app.tar.gz.sig ] || [ ! -f out/Felinquent-setup.exe.sig ]; then
+            echo "::warning::No update signatures (no updater key), so no latest.json"; exit 0
+          fi
+          # Its notes are the "What's new" part of the release notes, shown in the app's question.
+          BASE="https://github.com/abozaralizadeh/Felinquent/releases/download/v$VERSION"
+          NOTES=$(awk '/^## What.s new/{on=1;next} /^## /{on=0} on' .github/release-notes.md | sed '/^$/d')
+          jq -n --arg v "$VERSION" --arg notes "$NOTES" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg mac "$BASE/Felinquent.app.tar.gz" --arg macsig "$(cat out/Felinquent.app.tar.gz.sig)" \
+            --arg win "$BASE/Felinquent-setup.exe" --arg winsig "$(cat out/Felinquent-setup.exe.sig)" \
+            '{version: $v, notes: $notes, pub_date: $date, platforms: {
+              "darwin-aarch64": {url: $mac, signature: $macsig},
+              "darwin-x86_64": {url: $mac, signature: $macsig},
+              "windows-x86_64": {url: $win, signature: $winsig}}}' > out/latest.json
+          jq '.version, .notes, (.platforms | keys)' out/latest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Felinquent-latest
+          path: out/latest.json
+          if-no-files-found: ignore
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" out/Felinquent.dmg out/Felinquent.dmg.sha256 \
-            out/Felinquent.app.tar.gz out/Felinquent.app.tar.gz.sig out/latest.json \
+            out/Felinquent.app.tar.gz out/Felinquent.app.tar.gz.sig \
+            out/Felinquent-setup.exe out/Felinquent-setup.exe.sha256 out/Felinquent-setup.exe.sig \
+            out/latest.json \
             --title "Felinquent $GITHUB_REF_NAME" --notes-file .github/release-notes.md

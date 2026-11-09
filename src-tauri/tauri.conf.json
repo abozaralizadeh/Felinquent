@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Felinquent",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "identifier": "app.felinquent",
   "build": {
     "frontendDist": "../dist",
@@ -57,7 +57,7 @@
     "category": "Entertainment",
     "shortDescription": "A desktop pet that does whatever it wants.",
     "copyright": "Copyright (c) 2026 Abozar Alizadeh. Free for non-commercial use.",
-    "longDescription": "A desktop cat for macOS that does whatever it wants. It naps on your windows, sits on what you care about and ignores you when called. Runs on your Mac only.",
+    "longDescription": "A desktop pet for macOS and Windows that does whatever it wants. It naps on your windows, sits on what you care about and ignores you when called. Runs on your computer only.",
     "macOS": {
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",
@@ -78,7 +78,8 @@
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "windows/hooks.nsh"
       }
     }
   },
@@ -87,7 +88,10 @@
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDNkRFNEYwNDFFMDY1NUMKUldSY1plQkI4T1J0Zk9zYThnSXVXNGJrUmhrVHR1a3diSW12azFxNm5WeHhqckRxRmtSUzg1MEEK",
       "endpoints": [
         "https://github.com/abozaralizadeh/Felinquent/releases/latest/download/latest.json"
-      ]
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

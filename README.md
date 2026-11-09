@@ -4,7 +4,7 @@ A cat that lives on your desktop and does whatever it wants.
 
 ![Tabby walks along the top of a code window and lies down, gets petted, gets poked, then gets carried over to a video window](docs/assets/demo.gif)
 
-**Website: [abozaralizadeh.github.io/Felinquent](https://abozaralizadeh.github.io/Felinquent/)**. The clip above is the browser playground, which runs the same brain and animals as the Mac app on pretend windows.
+**Website: [abozaralizadeh.github.io/Felinquent](https://abozaralizadeh.github.io/Felinquent/)**. The clip above is the browser playground, which runs the same brain and animals as the Mac and Windows app on pretend windows.
 
 It walks along the tops of your windows, naps on the Dock, sits on the thing you're reading and ignores you when you call it. Pet it and it purrs, for a while. Poke it and it reacts like the animal it is. It's not useful, and that's the point.
 
@@ -22,7 +22,7 @@ There are nine characters: three cats (Tabby, Inky, Pearl), a fox (Mochi), a rac
 
 ![Eight moments of the walk cycle over the same patch of floor](docs/assets/rigged-walk-film.jpg)
 
-**Status: early.** The brain, rules, movement and animation are built and tested, and a browser playground runs all of it on pretend windows. The Mac app is a working prototype: a transparent overlay where the cat stands on your real windows. Windows support is written but has never been run.
+**Status: early.** The brain, rules, movement and animation are built and tested, and a browser playground runs all of it on pretend windows. The Mac and Windows app is a working prototype: a transparent overlay where the cat stands on your real windows.
 
 ## Install on a Mac
 
@@ -37,6 +37,18 @@ curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scri
 ```
 
 After that it lives in the menu bar. Pick a character, set the chaos level, give it a treat, throw its toy, pet it, set off the zoomies, send it for a nap, hide it, shoo it for an hour, turn the local model on or off and pick which Ollama model it uses (any you have pulled), make it start at login. A tick shows what's on. From 0.1.10 it checks GitHub for a new version at launch and every 3 hours and updates itself when you leave the Mac alone for a couple of minutes (turn off "Update automatically" in the menu if you'd rather not; "Check for updates…" asks first). More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
+
+## Install on Windows
+
+[Download Felinquent-setup.exe](https://github.com/abozaralizadeh/Felinquent/releases/latest/download/Felinquent-setup.exe) and open it. It needs Windows 10 or 11 (64-bit) and installs for you only, no admin. SmartScreen may say it protected your PC, because the installer isn't signed with a Windows certificate yet: click More info, then Run anyway. You only do this once.
+
+Or skip that and paste this in PowerShell. It downloads the same installer, checks it against the checksum on the release, installs it and starts it, with no SmartScreen question:
+
+```powershell
+irm https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-windows.ps1 | iex
+```
+
+The cat stands on your taskbar, and its menu is the icon by the clock: the same menu as on the Mac. Panic is Ctrl+Alt+Shift+P. It updates itself the same way too.
 
 ## What it will and won't do
 
@@ -89,7 +101,7 @@ The cat's day comes in bouts: a long rest, a stroll, some play, a visit to you, 
 | [docs/art-and-ux.md](docs/art-and-ux.md) | The look, the animation list, the art tools |
 | [docs/safety-and-privacy.md](docs/safety-and-privacy.md) | The hard lines and the data it touches |
 | [docs/spikes/](docs/spikes/README.md) | Notes from the prototype runs on a real Mac |
-| [docs/INSTALL.md](docs/INSTALL.md) | Install on a Mac, Windows (untested) or a Linux server for the demo |
+| [docs/INSTALL.md](docs/INSTALL.md) | Install on a Mac, on Windows or on a Linux server for the demo |
 
 ## Contributing
 

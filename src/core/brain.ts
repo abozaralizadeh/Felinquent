@@ -357,22 +357,30 @@ export function isLocalUrl(url: string): boolean {
   }
 }
 
+/**
+ * The part of fetch the Ollama client uses, so an app can send the request its own way.
+ * `timeoutMs` is how long the caller waits; fetch itself ignores it.
+ */
+export type FetchLike = (url: string, init?: RequestInit & { timeoutMs?: number }) => Promise<Response>;
+
 /** Talks to a local Ollama server. Needs no key. Not used by the tests (no model is installed here). */
 export class OllamaClient implements LlmClient {
   readonly name = "ollama";
   constructor(
     private baseUrl: string,
     private model: string,
+    private send: FetchLike = (url, init) => fetch(url, init),
   ) {}
 
   async generate(req: LlmRequest): Promise<string> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), req.timeoutMs);
     try {
-      const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}/api/chat`, {
+      const res = await this.send(`${this.baseUrl.replace(/\/$/, "")}/api/chat`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         signal: ctrl.signal,
+        timeoutMs: req.timeoutMs,
         body: JSON.stringify({
           model: this.model,
           stream: false,

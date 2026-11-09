@@ -1,4 +1,4 @@
-//! Updates (macOS). A minute after launch and then every 3 hours the app fetches one small file
+//! Updates (macOS and Windows). A minute after launch and then every 3 hours the app fetches one small file
 //! from GitHub Releases (latest.json) to see if a newer Felinquent is out. Nothing about the user
 //! goes with it. With "Update automatically" on (the default) a newer version is downloaded,
 //! checked against the public key in tauri.conf.json and put in place by itself the next time
@@ -9,6 +9,10 @@
 //! Before 0.1.10 it checked every 12 hours counted from the last check of any kind, so a check by
 //! hand pushed the next one back, and it always asked: Abozar's log shows every update so far
 //! came from a click, and 0.1.7 and 0.1.8 were never offered (ADR-050).
+//!
+//! On Windows the update is the installer itself (signed like the Mac one): it runs with a small
+//! progress window, puts the new version in place and starts the cat again, and the app quits to
+//! let it (ADR-060).
 //!
 //! FELINQUENT_UPDATE_URL points the check at another latest.json, to try an update locally.
 //! FELINQUENT_UPDATE_TEST=<n>[@seconds] is for trying the questions without a mouse: 5 seconds
@@ -102,9 +106,13 @@ fn change(app: &AppHandle, f: impl FnOnce(&mut Prefs)) {
     save(app, &p);
 }
 
-/// Updates replace the .app bundle, so they only work in the installed app, not in a dev build.
+/// Updates replace the installed app, so they only work there, not in a dev build: the .app
+/// bundle on the Mac, the folder the installer made (it has uninstall.exe) on Windows.
 fn in_bundle() -> bool {
     let exe = std::env::current_exe().unwrap_or_default();
+    if cfg!(windows) {
+        return exe.parent().is_some_and(|d| d.join("uninstall.exe").is_file());
+    }
     exe.ancestors().nth(3).is_some_and(|a| a.extension().is_some_and(|e| e == "app"))
 }
 
@@ -200,6 +208,8 @@ fn check(app: &AppHandle, by_hand: bool) {
         if let Ok(url) = std::env::var("FELINQUENT_UPDATE_URL") {
             builder = builder.endpoints(vec![url.parse().map_err(|e| format!("{e}"))?]).map_err(|e| e.to_string())?;
         }
+        // Windows: the installer takes over from here and the app quits.
+        builder = builder.on_before_exit(|| logfile::write("update: the installer takes over, quitting"));
         builder.build().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())
     });
     *u.busy.lock().unwrap() = false;
@@ -226,7 +236,7 @@ fn check(app: &AppHandle, by_hand: bool) {
             }
             if by_hand {
                 if !in_bundle() && std::env::var("FELINQUENT_UPDATE_URL").is_err() {
-                    ask(app, "Updates work in the installed app", "This is a build from source. Updates only replace the app installed from the DMG.", &["OK"]);
+                    ask(app, "Updates work in the installed app", "This is a build from source. Updates only replace the installed app.", &["OK"]);
                 } else {
                     ask(app, "You're up to date", &format!("Felinquent {current} is the newest version."), &["OK"]);
                 }
@@ -353,7 +363,7 @@ fn install(app: &AppHandle, update: Update, asked: bool) {
             }
             let text = format!("{}\n\nThe app you have still works. You can also get the new one from the download page.", short(&e.to_string(), 300));
             if ask(app, "The update didn't work", &text, &["Open the download page", "Close"]) == 0 {
-                let _ = std::process::Command::new("/usr/bin/open").arg(PAGE).spawn();
+                crate::open_url(PAGE);
             }
         }
     }

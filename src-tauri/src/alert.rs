@@ -1,4 +1,8 @@
-//! Native questions (macOS), shared by the updater (update.rs) and the model setup (ollama.rs).
+//! Native questions (macOS and Windows), shared by the updater (update.rs) and the model setup
+//! (ollama.rs).
+//!
+//! Windows: a task dialog (the Windows question box with real button names), shown on the
+//! asking thread, on top of the cat's windows. The rest of this note is about the Mac.
 //!
 //! An alert runs as a modal session that is looked at every 50 ms, so between looks the app goes
 //! on as normal and the cat doesn't freeze while the question waits. A look never runs in the
@@ -8,21 +12,31 @@
 //! anything; Escape presses the button the caller names. Only one question shows at a time: a
 //! second one waits until the first is answered.
 
+#[cfg(target_os = "macos")]
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::Mutex;
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
 use tauri::AppHandle;
 
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
-/// Shows a Mac alert and returns which button was clicked (0 is the first, usize::MAX if it
+/// Shows a native question and returns which button was clicked (0 is the first, usize::MAX if it
 /// couldn't show). Call it off the main thread. `escape` is the button Escape presses (only
 /// when there is more than one button). `press` is for tests: press button n after s seconds,
 /// with `performClick:` on the alert's own button, so no input event is made.
 pub fn ask(app: &AppHandle, title: &str, text: &str, buttons: &[&str], escape: usize, press: Option<(usize, f64)>) -> usize {
     let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    #[cfg(windows)]
+    {
+        let _ = app;
+        return win::ask(title, text, buttons, escape, press);
+    }
+    #[cfg(target_os = "macos")]
     let (tx, rx) = std::sync::mpsc::channel();
+    #[cfg(target_os = "macos")]
+    {
     let (title, text) = (title.to_string(), text.to_string());
     let buttons: Vec<String> = buttons.iter().map(|b| b.to_string()).collect();
     if app.run_on_main_thread(move || session::open(&title, &text, &buttons, escape, press, tx)).is_err() {
@@ -38,6 +52,7 @@ pub fn ask(app: &AppHandle, title: &str, text: &str, buttons: &[&str], escape: u
             }
             Err(RecvTimeoutError::Disconnected) => return usize::MAX,
         }
+    }
     }
 }
 
@@ -57,6 +72,7 @@ pub fn short(s: &str, max: usize) -> String {
 }
 
 /// The open alert. Main thread only.
+#[cfg(target_os = "macos")]
 mod session {
     use std::cell::RefCell;
     use std::sync::mpsc::Sender;
@@ -210,6 +226,132 @@ mod session {
             crate::logfile::write(&format!("alert: answered after {:.1} s", open.since.elapsed().as_secs_f64()));
             let _ = open.tx.send(index);
         });
+    }
+}
+
+
+/// The Windows question: TaskDialogIndirect from comctl32 version 6, looked up when it's needed
+/// (a test binary without the app's manifest only has version 5, which lacks it), and a plain
+/// message box with OK, or Yes and No, when it isn't there.
+#[cfg(windows)]
+mod win {
+    use std::time::Instant;
+
+    use windows::core::{w, BOOL, HRESULT, PCWSTR};
+    use windows::Win32::Foundation::{HWND, LPARAM, S_OK, WPARAM};
+    use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
+    use windows::Win32::UI::Controls::{
+        TASKDIALOGCONFIG, TASKDIALOG_BUTTON, TASKDIALOG_NOTIFICATIONS, TDF_ALLOW_DIALOG_CANCELLATION, TDF_CALLBACK_TIMER, TDF_SIZE_TO_CONTENT, TDM_CLICK_BUTTON,
+        TDN_CREATED, TDN_TIMER,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        LoadIconW, MessageBoxW, SendMessageW, SetForegroundWindow, SetWindowPos, HWND_TOPMOST, ICON_BIG, ICON_SMALL, IDCANCEL, IDYES, MB_ICONINFORMATION, MB_OK,
+        MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO, SWP_NOMOVE, SWP_NOSIZE, WM_SETICON,
+    };
+
+    type TaskDialogIndirect = unsafe extern "system" fn(*const TASKDIALOGCONFIG, *mut i32, *mut i32, *mut BOOL) -> HRESULT;
+
+    /// Button n has the id FIRST + n.
+    const FIRST: i32 = 100;
+    /// Where Tauri puts the app's icon in the exe's resources.
+    const APP_ICON: u16 = 32512;
+
+    struct Press {
+        id: i32,
+        after_ms: u32,
+        done: bool,
+    }
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn task_dialog() -> Option<TaskDialogIndirect> {
+        unsafe {
+            let lib = LoadLibraryW(w!("comctl32.dll")).ok()?;
+            let f = GetProcAddress(lib, windows::core::s!("TaskDialogIndirect"))?;
+            Some(std::mem::transmute::<unsafe extern "system" fn() -> isize, TaskDialogIndirect>(f))
+        }
+    }
+
+    unsafe extern "system" fn callback(hwnd: HWND, msg: TASKDIALOG_NOTIFICATIONS, wparam: WPARAM, _lparam: LPARAM, data: isize) -> HRESULT {
+        if msg == TDN_CREATED {
+            // Above the cat's windows (they're topmost too), so it can't sit on a button.
+            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            let _ = SetForegroundWindow(hwnd);
+            // The cat in the title bar and the taskbar, not Windows' blank program icon.
+            if let Ok(icon) = GetModuleHandleW(None).and_then(|m| LoadIconW(Some(m.into()), PCWSTR(APP_ICON as usize as *const u16))) {
+                for size in [ICON_SMALL, ICON_BIG] {
+                    SendMessageW(hwnd, WM_SETICON, Some(WPARAM(size as usize)), Some(LPARAM(icon.0 as isize)));
+                }
+            }
+        } else if msg == TDN_TIMER && data != 0 {
+            // The test hook: press the dialog's own button, a message to this window, no input event.
+            let press = &mut *(data as *mut Press);
+            if !press.done && wparam.0 as u32 >= press.after_ms {
+                press.done = true;
+                SendMessageW(hwnd, TDM_CLICK_BUTTON.0 as u32, Some(WPARAM(press.id as usize)), Some(LPARAM(0)));
+            }
+        }
+        S_OK
+    }
+
+    pub fn ask(title: &str, text: &str, buttons: &[&str], escape: usize, press: Option<(usize, f64)>) -> usize {
+        let since = Instant::now();
+        let answer = match task_dialog() {
+            Some(f) => dialog(f, title, text, buttons, escape, press),
+            None => fallback(title, text, buttons, escape),
+        };
+        crate::logfile::write(&format!("alert: answered after {:.1} s", since.elapsed().as_secs_f64()));
+        answer
+    }
+
+    fn dialog(f: TaskDialogIndirect, title: &str, text: &str, buttons: &[&str], escape: usize, press: Option<(usize, f64)>) -> usize {
+        let (title_w, text_w, app_w) = (wide(title), wide(text), wide("Felinquent"));
+        let names: Vec<Vec<u16>> = buttons.iter().map(|b| wide(b)).collect();
+        let list: Vec<TASKDIALOG_BUTTON> =
+            names.iter().enumerate().map(|(i, n)| TASKDIALOG_BUTTON { nButtonID: FIRST + i as i32, pszButtonText: PCWSTR(n.as_ptr()) }).collect();
+        let mut tick = press.filter(|(n, _)| *n < buttons.len()).map(|(n, s)| Press { id: FIRST + n as i32, after_ms: (s.max(0.0) * 1000.0) as u32, done: false });
+        let config = TASKDIALOGCONFIG {
+            cbSize: std::mem::size_of::<TASKDIALOGCONFIG>() as u32,
+            dwFlags: TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_CALLBACK_TIMER,
+            pszWindowTitle: PCWSTR(app_w.as_ptr()),
+            pszMainInstruction: PCWSTR(title_w.as_ptr()),
+            pszContent: PCWSTR(text_w.as_ptr()),
+            cButtons: list.len() as u32,
+            pButtons: list.as_ptr(),
+            // Enter presses the safe button (Escape's), never the first one, so a key meant for
+            // another app can't start anything.
+            nDefaultButton: FIRST + escape.min(buttons.len().saturating_sub(1)) as i32,
+            pfCallback: Some(callback),
+            lpCallbackData: tick.as_mut().map(|p| p as *mut Press as isize).unwrap_or(0),
+            ..Default::default()
+        };
+        let mut pressed = 0i32;
+        let ok = unsafe { f(&config, &mut pressed, std::ptr::null_mut(), std::ptr::null_mut()) };
+        if ok.is_err() {
+            crate::logfile::write(&format!("alert: the task dialog didn't show ({ok:?})"));
+            return fallback(title, text, buttons, escape);
+        }
+        if pressed == IDCANCEL.0 {
+            return if buttons.len() > 1 { escape } else { 0 };
+        }
+        usize::try_from(pressed - FIRST).ok().filter(|i| *i < buttons.len()).unwrap_or(usize::MAX)
+    }
+
+    /// OK for one button, Yes (the first) or No (Escape's) for more.
+    fn fallback(title: &str, text: &str, buttons: &[&str], escape: usize) -> usize {
+        let body = if buttons.len() > 1 { format!("{text}\n\nYes: {}\nNo: {}", buttons[0], buttons[escape.min(buttons.len() - 1)]) } else { text.to_string() };
+        let (t, b) = (wide(title), wide(&body));
+        let style = if buttons.len() > 1 { MB_YESNO } else { MB_OK } | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND;
+        let r = unsafe { MessageBoxW(None, PCWSTR(b.as_ptr()), PCWSTR(t.as_ptr()), style) };
+        if buttons.len() < 2 {
+            0
+        } else if r == IDYES {
+            0
+        } else {
+            escape
+        }
     }
 }
 

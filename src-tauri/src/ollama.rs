@@ -1,10 +1,13 @@
-//! Guided setup of the local model (macOS). When "Use the local model" is turned on and the model
+//! Guided setup of the local model (macOS and Windows). When "Use the local model" is turned on and the model
 //! isn't there, the page calls `model_setup`. This looks at what is missing and asks first, with
 //! a native question:
 //!
 //! - no Ollama at all: download the Ollama app from its GitHub release, check it against the
 //!   release's sha256sum.txt, unzip it, check its code signature and that Ollama's team signed it,
 //!   put it in Applications (or ~/Applications) and open it, then get the model.
+//!   On Windows: download OllamaSetup.exe from the same release, check it against sha256sum.txt
+//!   and that its Windows signature is valid and Ollama's, and run it without questions (it
+//!   installs for this user only, no admin), then start Ollama.
 //! - Ollama installed but not running: start it and wait up to a minute for it to answer.
 //! - Ollama running without the model: ask Ollama to pull it.
 //!
@@ -38,12 +41,22 @@ use crate::logfile;
 /// Where the Ollama app comes from.
 const REPO: &str = "https://github.com/ollama/ollama";
 /// The release asset with the Mac app in it.
+#[cfg(target_os = "macos")]
 const ZIP: &str = "Ollama-darwin.zip";
 /// The size of that zip, for the question (229 MB in v0.40.15, Nov 2026). The space doesn't
 /// break, so the number and MB stay on one line.
+#[cfg(target_os = "macos")]
 const ZIP_SIZE: &str = "about 230\u{a0}MB";
 /// The Apple team that signs Ollama.app (Infra Technologies, Inc).
+#[cfg(target_os = "macos")]
 const TEAM: &str = "3MU9H2V9Y9";
+/// The Windows installer in the release (1.69 GB in v0.40.15, Nov 2026: it carries the GPU libraries).
+#[cfg(windows)]
+const ZIP: &str = "OllamaSetup.exe";
+#[cfg(windows)]
+const ZIP_SIZE: &str = "about 1.7\u{a0}GB";
+/// What this computer is called in the questions.
+const MACHINE: &str = if cfg!(windows) { "PC" } else { "Mac" };
 /// Refuse a download bigger than this.
 const MAX_ZIP: u64 = 2 * 1024 * 1024 * 1024;
 /// Where the user can do it by hand.
@@ -189,8 +202,8 @@ fn run(app: &AppHandle, need: Need, url: &str, model: &str) -> Result<bool, Fail
         Need::Nothing => Ok(true),
         Need::Model => get_model(app, url, model, true),
         Need::Start => {
-            let text = "The local model runs in Ollama. It's on this Mac but it isn't running right now.";
-            let answer = question(app, "Ollama isn't running", text, &["Start Ollama", "Not now"]);
+            let text = format!("The local model runs in Ollama. It's on this {MACHINE} but it isn't running right now.");
+            let answer = question(app, "Ollama isn't running", &text, &["Start Ollama", "Not now"]);
             logfile::write(&format!("model setup: asked to start Ollama, answer {}", ["start", "not now"].get(answer).unwrap_or(&"none")));
             if answer != 0 {
                 return Ok(false);
@@ -204,7 +217,7 @@ fn run(app: &AppHandle, need: Need, url: &str, model: &str) -> Result<bool, Fail
                 None => format!("the model {model}"),
             };
             let text = format!(
-                "The cat can think with a small model that runs on this Mac, through Ollama, a free app.\n\nThis downloads Ollama ({ZIP_SIZE}) and {what}. After that the cat thinks on your Mac and nothing it sees leaves it."
+                "The cat can think with a small model that runs on this {MACHINE}, through Ollama, a free app.\n\nThis downloads Ollama ({ZIP_SIZE}) and {what}. After that the cat thinks on your {MACHINE} and nothing it sees leaves it."
             );
             let answer = question(app, "Set up the local model?", &text, &["Install", "Open ollama.com", "Not now"]);
             logfile::write(&format!("model setup: asked to install Ollama, answer {}", ["install", "open ollama.com", "not now"].get(answer).unwrap_or(&"none")));
@@ -245,7 +258,7 @@ fn get_model(app: &AppHandle, url: &str, model: &str, ask_first: bool) -> Result
             Some(s) => (format!("a one-time download of about {s}"), format!("Get the model ({s})")),
             None => ("a one-time download".into(), "Get the model".into()),
         };
-        let text = format!("Ollama is running but doesn't have the model the cat thinks with ({model}). It's {size}, and after that it runs on your Mac.");
+        let text = format!("Ollama is running but doesn't have the model the cat thinks with ({model}). It's {size}, and after that it runs on your {MACHINE}.");
         let answer = question(app, "Get the cat's brain?", &text, &[&button, "Not now"]);
         logfile::write(&format!("model setup: asked to get {model}, answer {}", ["get it", "not now"].get(answer).unwrap_or(&"none")));
         if answer != 0 {
@@ -314,12 +327,12 @@ fn restore(app: &AppHandle) {
 
 fn open_site() {
     logfile::write("model setup: opening ollama.com");
-    let _ = Command::new("/usr/bin/open").arg(SITE).spawn();
+    crate::open_url(SITE);
 }
 
 /// Paths in messages and logs show the home folder as ~, so the user name stays out.
 fn scrub(s: &str) -> String {
-    match std::env::var("HOME") {
+    match std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) {
         Ok(home) if home.len() > 1 => s.replace(&home, "~"),
         _ => s.to_string(),
     }
@@ -343,6 +356,7 @@ fn is_model_name(model: &str) -> bool {
 }
 
 /// The Ollama app, in Applications or ~/Applications.
+#[cfg(target_os = "macos")]
 fn find_app() -> Option<PathBuf> {
     let mut places = vec![PathBuf::from("/Applications/Ollama.app")];
     if let Ok(home) = std::env::var("HOME") {
@@ -351,7 +365,26 @@ fn find_app() -> Option<PathBuf> {
     places.into_iter().find(|p| p.is_dir())
 }
 
+/// Where Ollama's Windows installer puts it: the test folder, or %LOCALAPPDATA%\Programs\Ollama.
+#[cfg(windows)]
+fn ollama_dir() -> Option<PathBuf> {
+    test_dir().or_else(|| std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Programs").join("Ollama")))
+}
+
+/// The Ollama tray app, which starts the server.
+#[cfg(windows)]
+fn find_app() -> Option<PathBuf> {
+    ollama_dir().map(|d| d.join("ollama app.exe")).filter(|p| p.is_file())
+}
+
+/// The command-line ollama.
+#[cfg(windows)]
+fn find_bin() -> Option<PathBuf> {
+    ollama_dir().map(|d| d.join("ollama.exe")).filter(|p| p.is_file())
+}
+
 /// The command-line ollama, from the app's helper link or Homebrew.
+#[cfg(target_os = "macos")]
 fn find_bin() -> Option<PathBuf> {
     ["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"].iter().map(PathBuf::from).find(|p| p.is_file())
 }
@@ -392,10 +425,46 @@ fn local_client(read: Duration) -> Result<reqwest::Client, String> {
         .map_err(|e| e.to_string())
 }
 
+/// An error with its causes, since reqwest's own text is only "error sending request".
+fn chain(e: &dyn std::error::Error) -> String {
+    let mut text = e.to_string();
+    let mut cause = e.source();
+    while let Some(c) = cause {
+        text.push_str(": ");
+        text.push_str(&c.to_string());
+        cause = c.source();
+    }
+    text
+}
+
+/// The page's own requests to Ollama: the model list and the cat's plans. On Windows the page's
+/// address is http://tauri.localhost, which Ollama's CORS rules turn away, so there the page asks
+/// through here. Only the local address from the settings, only the paths the page uses. Returns
+/// Ollama's status and its answer as text. When the page's time is up the request is dropped,
+/// and Ollama stops working on it.
+pub async fn page_request(url: &str, path: &str, body: Option<String>, timeout_ms: Option<u64>) -> Result<(u16, String), String> {
+    if !is_local_url(url) {
+        return Err("the model address is not local".into());
+    }
+    if !matches!(path, "/api/tags" | "/api/chat" | "/api/version") {
+        return Err(format!("{} is not a path the cat uses", short(path, 40)));
+    }
+    let client = local_client(Duration::from_secs(60))?;
+    let full = format!("{}{path}", url.trim_end_matches('/'));
+    let req = match body {
+        Some(b) => client.post(full).header("content-type", "application/json").body(b),
+        None => client.get(full),
+    };
+    let limit = Duration::from_millis(timeout_ms.unwrap_or(65_000).clamp(500, 65_000));
+    let r = req.timeout(limit).send().await.map_err(|e| chain(&e))?;
+    let status = r.status().as_u16();
+    Ok((status, r.text().await.map_err(|e| chain(&e))?))
+}
+
 fn version(url: &str) -> Result<String, String> {
     block_on(async {
         let client = local_client(Duration::from_secs(3))?;
-        let r = client.get(format!("{url}/api/version")).timeout(Duration::from_secs(3)).send().await.map_err(|e| e.to_string())?;
+        let r = client.get(format!("{url}/api/version")).timeout(Duration::from_secs(3)).send().await.map_err(|e| chain(&e))?;
         let v: serde_json::Value = r.error_for_status().map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
         Ok(v["version"].as_str().unwrap_or("?").to_string())
     })
@@ -420,11 +489,15 @@ fn model_in_tags(tags: &serde_json::Value, model: &str) -> bool {
 fn wait_for(app: &AppHandle, url: &str, secs: u64) -> Result<(), String> {
     let t0 = Instant::now();
     loop {
-        if let Ok(v) = version(url) {
-            logfile::write(&format!("model setup: Ollama {v} answers after {} s", t0.elapsed().as_secs()));
-            return Ok(());
-        }
+        let last = match version(url) {
+            Ok(v) => {
+                logfile::write(&format!("model setup: Ollama {v} answers after {} s", t0.elapsed().as_secs()));
+                return Ok(());
+            }
+            Err(e) => e,
+        };
         if t0.elapsed() >= Duration::from_secs(secs) {
+            logfile::write(&format!("model setup: the last try said: {}", short(&scrub(&last), 200)));
             return Err(format!("it didn't answer within {secs} seconds"));
         }
         show(app, "Starting Ollama…");
@@ -434,6 +507,17 @@ fn wait_for(app: &AppHandle, url: &str, secs: u64) -> Result<(), String> {
 
 // ---- Starting ------------------------------------------------------------------------------
 
+#[cfg(windows)]
+fn open_app(path: &Path) -> Result<(), String> {
+    let mut child = Command::new(path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
+    // It keeps running after Felinquent quits; reap it if it ends first.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 fn open_app(path: &Path) -> Result<(), String> {
     let ok = Command::new("/usr/bin/open").arg("-a").arg(path).status().map_err(|e| e.to_string())?.success();
     if ok {
@@ -452,6 +536,12 @@ fn start_ollama(app: &AppHandle, url: &str) -> Result<(), Failure> {
         logfile::write(&format!("model setup: running {} serve", bin.display()));
         let mut cmd = Command::new(&bin);
         cmd.arg("serve").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        // No console window on Windows.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
         if let Ok(u) = reqwest::Url::parse(url) {
             if let (Some(host), Some(port)) = (u.host_str(), u.port_or_known_default()) {
                 cmd.env("OLLAMA_HOST", format!("{host}:{port}"));
@@ -470,11 +560,16 @@ fn start_ollama(app: &AppHandle, url: &str) -> Result<(), Failure> {
 
 // ---- Installing ----------------------------------------------------------------------------
 
-/// Downloads, checks and installs Ollama.app. Returns where it went.
+/// Downloads, checks and installs Ollama. Returns the app to open.
 fn install(app: &AppHandle) -> Result<PathBuf, String> {
     // Never replace an Ollama.app, so don't download one that has nowhere to go.
+    #[cfg(target_os = "macos")]
     if let Some(dir) = install_dirs().into_iter().find(|d| d.join("Ollama.app").exists()) {
         return Err(format!("there's already an Ollama.app in {}", scrub(&dir.display().to_string())));
+    }
+    #[cfg(windows)]
+    if find_app().is_some() {
+        return Err("Ollama is already installed".into());
     }
     let work = std::env::temp_dir().join(format!("felinquent-ollama-{}", std::process::id()));
     // Our own scratch folder from an earlier try, if any.
@@ -485,6 +580,38 @@ fn install(app: &AppHandle) -> Result<PathBuf, String> {
     result
 }
 
+#[cfg(windows)]
+fn install_in(app: &AppHandle, work: &Path) -> Result<PathBuf, String> {
+    show(app, "Getting Ollama…");
+    let tag = block_on(latest_tag())?;
+    logfile::write(&format!("model setup: Ollama {tag} from GitHub"));
+    let sums = block_on(get_text(&format!("{REPO}/releases/download/{tag}/sha256sum.txt")))?;
+    let want = checksum_for(&sums, ZIP).ok_or_else(|| format!("the release has no checksum for {ZIP}"))?;
+    let setup = work.join(ZIP);
+    let got = block_on(download(app, &format!("{REPO}/releases/download/{tag}/{ZIP}"), &setup))?;
+    if got != want {
+        return Err("the download doesn't match its checksum".into());
+    }
+    logfile::write("model setup: checksum matches sha256sum.txt");
+    show(app, "Checking Ollama…");
+    let signer = check_signature(&setup)?;
+    logfile::write(&format!("model setup: signature checks out ({signer})"));
+    show(app, "Installing Ollama…");
+    let mut cmd = Command::new(&setup);
+    cmd.args(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"]);
+    if let Some(dir) = test_dir() {
+        cmd.arg(format!("/DIR={}", dir.display()));
+    }
+    let status = cmd.status().map_err(|e| format!("the installer didn't run ({e})"))?;
+    if !status.success() {
+        return Err(format!("the installer stopped ({status})"));
+    }
+    let placed = find_app().ok_or("the installer didn't put Ollama where it should")?;
+    logfile::write(&format!("model setup: installed in {}", if test_dir().is_some() { "the test folder".to_string() } else { scrub(&placed.display().to_string()) }));
+    Ok(placed)
+}
+
+#[cfg(target_os = "macos")]
 fn install_in(app: &AppHandle, work: &Path) -> Result<PathBuf, String> {
     show(app, "Getting Ollama…");
     let tag = block_on(latest_tag())?;
@@ -614,7 +741,42 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// A valid Windows signature (Authenticode), made out to Ollama. Read with PowerShell's own
+/// Get-AuthenticodeSignature. Returns who signed it.
+#[cfg(windows)]
+fn check_signature(file: &Path) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    let path = file.display().to_string().replace('\'', "''");
+    let script = format!("$s = Get-AuthenticodeSignature -LiteralPath '{path}'; $s.Status; $s.SignerCertificate.Subject");
+    let out = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(0x0800_0000)
+        .output()
+        .map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    signer_of(&text)
+}
+
+/// From Get-AuthenticodeSignature's two lines: "Valid", then the subject. Ollama's own name must
+/// be in the subject's name or organization.
+#[cfg(any(windows, test))]
+fn signer_of(output: &str) -> Result<String, String> {
+    let mut lines = output.lines().map(str::trim).filter(|l| !l.is_empty());
+    let status = lines.next().unwrap_or("");
+    let subject = lines.next().unwrap_or("");
+    if status != "Valid" {
+        return Err(format!("its signature doesn't check out ({})", short(if status.is_empty() { "no signature" } else { status }, 60)));
+    }
+    let named = subject.split(',').map(str::trim).filter(|p| p.starts_with("CN=") || p.starts_with("O=")).find(|p| p.to_ascii_lowercase().contains("ollama"));
+    if let Some(name) = named {
+        Ok(name.replace('"', ""))
+    } else {
+        Err(format!("it's signed by someone else ({})", short(subject, 80)))
+    }
+}
+
 /// A valid, sealed signature, made by Ollama's team.
+#[cfg(target_os = "macos")]
 fn check_signature(bundle: &Path) -> Result<(), String> {
     let verify = Command::new("/usr/bin/codesign").args(["--verify", "--deep", "--strict"]).arg(bundle).output().map_err(|e| e.to_string())?;
     if !verify.status.success() {
@@ -630,11 +792,13 @@ fn check_signature(bundle: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn team_of(codesign_output: &str) -> Option<String> {
     codesign_output.lines().find_map(|l| l.strip_prefix("TeamIdentifier=")).map(|t| t.trim().to_string()).filter(|t| t != "not set")
 }
 
 /// The test folder, or /Applications and then ~/Applications.
+#[cfg(target_os = "macos")]
 fn install_dirs() -> Vec<PathBuf> {
     match test_dir() {
         Some(d) => vec![d],
@@ -650,6 +814,7 @@ fn install_dirs() -> Vec<PathBuf> {
 
 /// Moves the app into the test folder, /Applications, or ~/Applications when /Applications
 /// can't be written to. Never replaces an Ollama.app that is already there.
+#[cfg(target_os = "macos")]
 fn place(bundle: &Path) -> Result<PathBuf, String> {
     let dirs = install_dirs();
     let mut last = String::from("there's nowhere to put it");
@@ -840,6 +1005,7 @@ mod tests {
         assert!(!is_github_host("evil-github.com"));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn the_team_is_read_from_codesign() {
         let out = "Executable=/x/Ollama\nIdentifier=com.electron.ollama\nAuthority=Developer ID Application: Infra Technologies, Inc (3MU9H2V9Y9)\nTeamIdentifier=3MU9H2V9Y9\n";
@@ -849,12 +1015,25 @@ mod tests {
     }
 
     #[test]
+    fn a_windows_signature_must_be_valid_and_ollamas() {
+        assert!(signer_of("Valid\nCN=\"Ollama, Inc.\", O=\"Ollama, Inc.\", L=Palo Alto, S=California, C=US\n").is_ok());
+        // What OllamaSetup.exe v0.40.15 really says.
+        assert_eq!(signer_of("Valid\nCN=Ollama Inc., O=Ollama Inc., L=Toronto, S=Ontario, C=CA, SERIALNUMBER=2713355\n").unwrap(), "CN=Ollama Inc.");
+        assert!(signer_of("Valid\nCN=Someone Else, O=Other Corp\n").unwrap_err().starts_with("it's signed by someone else"));
+        assert!(signer_of("HashMismatch\nCN=Ollama\n").unwrap_err().starts_with("its signature doesn't check out"));
+        assert!(signer_of("NotSigned\n\n").is_err());
+        assert!(signer_of("Valid\nCN=Evil, OU=ollama-lookalike\n").is_err());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn apple_tools_are_not_ollama() {
         let e = check_signature(Path::new("/bin/ls")).unwrap_err();
         assert!(e.contains("isn't signed by a team"), "{e}");
     }
 
     /// Reads real apps on this Mac (read only): `cargo test -- --ignored`.
+    #[cfg(target_os = "macos")]
     #[test]
     #[ignore]
     fn the_signature_check_knows_ollama_from_other_teams() {

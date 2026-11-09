@@ -1,9 +1,9 @@
 [package]
 name = "felinquent"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2021"
 license = "PolyForm-Noncommercial-1.0.0"
-description = "Felinquent: a cat that does whatever it wants. Mac overlay spike."
+description = "Felinquent: a cat that does whatever it wants. A desktop pet for macOS and Windows."
 default-run = "felinquent"
 
 [build-dependencies]
@@ -21,6 +21,9 @@ core-graphics = "0.25"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder", "NSApplication", "NSEvent", "NSAlert", "NSButton", "NSControl", "NSView"] }
 objc2-foundation = "0.3"
+
+# Updates and the guided model setup, on the Mac and on Windows.
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
 tauri-plugin-updater = "2"
 # Already in the build through the updater (same versions and features), so no new crates:
 # reqwest for the Ollama download and the local server, rustls to give it the ring provider,
@@ -34,10 +37,13 @@ windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
+  "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
+  "Win32_UI_Controls",
   "Win32_UI_HiDpi",
   "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
 winreg = "0.55"

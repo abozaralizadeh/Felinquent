@@ -1,6 +1,6 @@
 # Install
 
-Felinquent is early software. On a Mac you can download it like any other app, or build it yourself.
+Felinquent is early software. On a Mac or a Windows PC you can download it like any other app, or build it yourself.
 
 ## Mac: download
 
@@ -100,13 +100,41 @@ FELINQUENT_DEMO=1 ./src-tauri/target/release/felinquent    # Ctrl+C to stop
 
 To make the DMG yourself: `npm run bundle:mac-dmg` (this Mac's chip only) or `npm run bundle:mac-universal` (Apple Silicon and Intel, needs `rustup target add x86_64-apple-darwin`). The release workflow in `.github/workflows/release.yml` does the universal one on GitHub when a version tag is pushed.
 
-## Windows (untested)
+## Windows: download
 
-`scripts/install-windows.ps1` installs Node, Rust and the Visual Studio C++ build tools with winget, then builds and installs the app. It has never been run on Windows, so read it first.
+You need Windows 10 or 11, 64-bit.
+
+1. [Download Felinquent-setup.exe](https://github.com/abozaralizadeh/Felinquent/releases/latest/download/Felinquent-setup.exe) and open it.
+2. Windows SmartScreen may say it protected your PC, because the installer isn't signed with a Windows certificate yet. Click **More info**, then **Run anyway**. You only do this once.
+3. The installer puts Felinquent in your user folder (no admin needed) and starts it.
+
+The cat shows up at the bottom of your screen, standing on the taskbar, and its icon appears in the notification area by the clock (it may be under the little arrow). Click the icon for the menu: everything the Mac's menu bar menu has, including **Start at login**, **Update automatically** and the local model. Panic is **Ctrl+Alt+Shift+P**. Right-click the animal for its own menu.
+
+### Or in one line, with no warning
+
+Paste this in PowerShell instead of downloading the installer in a browser:
+
+```powershell
+irm https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-windows.ps1 | iex
+```
+
+It downloads the same `Felinquent-setup.exe` from the latest release, checks it against the SHA-256 published next to it (and stops if it doesn't match), installs it without questions and starts it. SmartScreen only asks about files a browser marked as downloaded from the internet, and a download made by PowerShell doesn't get that mark. Run it again any time to update. The script is [scripts/get-windows.ps1](../scripts/get-windows.ps1) if you want to read it first.
+
+It updates itself like the Mac app: it checks GitHub a minute after it starts and every 3 hours, and with **Update automatically** on it installs a new version the next time you leave the PC alone for a couple of minutes (a small progress window shows for a few seconds and the cat comes back). Your cat keeps what it learned (in `%APPDATA%\app.felinquent`). To remove it, use **Settings > Apps > Installed apps > Felinquent > Uninstall**.
+
+What's different from the Mac: a full-screen window on Windows is nearly always a video, a game or slides, so the cat goes outside while one is in front (on the Mac it stays on a full-screen app unless a video or slides keep the display awake). Logs are in `%LOCALAPPDATA%\Felinquent\Logs` (**Open logs folder** in the menu).
+
+The local model works on Windows too. Turn on **Use the local model** and, if Ollama isn't there, the app offers to get Ollama's own Windows installer (about 1.7 GB, checked against its checksum and its signature) and then `gemma3:1b` (about 815 MB). On a PC without a graphics card Ollama is slow, 10 to 20 seconds per plan, so the cat keeps going on its rules while it thinks.
+
+## Windows: build it yourself
+
+`scripts/install-windows.ps1` installs Node, Rust and the Visual Studio C++ build tools with winget, then builds and installs the app. Read it first.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-windows.ps1
 ```
+
+To make the installer yourself: `npm run bundle:win` (the NSIS installer lands in `src-tauri\target\release\bundle\nsis`). The release workflow builds it on GitHub next to the DMG.
 
 ## The browser playground
 

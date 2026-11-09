@@ -1,15 +1,19 @@
-//! Felinquent overlay spike: a transparent, click-through window over every display
-//! that shows the cat, with real Mac sensors behind it (spikes S-1 and S-2).
-#[cfg(target_os = "macos")]
+//! Felinquent overlay: a transparent, click-through window over every display that shows the
+//! cat, with real sensors behind it (macOS and Windows; spikes S-1 and S-2, ADR-060).
+// A GUI app on Windows: without this a release build opens a console window next to the cat.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+#[cfg(any(target_os = "macos", windows))]
 mod alert;
 mod logfile;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 mod login;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 mod ollama;
 mod sensors;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 mod update;
+#[cfg(windows)]
+mod winui;
 
 use serde::{Deserialize, Serialize};
 #[cfg(not(windows))]
@@ -228,11 +232,10 @@ async fn read_sensors() -> Sensors {
 /// The desktop showing, and whether the cat's window can be shown on it (not on a full-screen
 /// app unless the overlay follows you from Space to Space).
 fn space_now() -> Option<sensors::Space> {
-    let mut s = sensors::space()?;
+    let s = sensors::space()?;
+    // Windows: the overlay is on every virtual desktop and over full-screen windows, never hidden.
     #[cfg(target_os = "macos")]
-    {
-        s.hidden = s.app && !follows_spaces();
-    }
+    let s = sensors::Space { hidden: s.app && !follows_spaces(), ..s };
     Some(s)
 }
 
@@ -269,9 +272,9 @@ async fn read_pointer() -> Pointer {
 /// The version this was before, if it just updated itself (once), so the cat can say hello.
 #[tauri::command]
 fn just_updated(app: AppHandle) -> Option<String> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     return update::just_updated(&app);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = app;
         None
@@ -328,6 +331,10 @@ fn build_pet_menu(app: &AppHandle, cur: Option<&Choices>) -> tauri::Result<Menu<
 /// true: clicks pass through to whatever is below. false: the cat catches them.
 #[tauri::command]
 async fn set_click_through(window: WebviewWindow, on: bool) {
+    // On Windows Tauri's own call would drop the bits that keep the window on every desktop.
+    #[cfg(windows)]
+    winui::click_through(&window, on);
+    #[cfg(not(windows))]
     let _ = window.set_ignore_cursor_events(on);
 }
 
@@ -368,17 +375,30 @@ fn read_config() -> Config {
 }
 
 /// Helps the user get Ollama and the model when the local model is turned on and isn't there
-/// (macOS, see ollama.rs). `reason` is "no-ollama", "not-running" or "no-model". Returns at once:
+/// (macOS and Windows, see ollama.rs). `reason` is "no-ollama", "not-running" or "no-model". Returns at once:
 /// true when a setup started. The result comes later as the `ctl` message "model-ready" or
 /// "model-failed". Elsewhere it does nothing.
 #[tauri::command]
 async fn model_setup(app: AppHandle, reason: String, model: String, url: String) -> bool {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     return ollama::setup(app, &reason, model, url);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (app, reason, model, url);
         false
+    }
+}
+
+/// The page's requests to the local Ollama (the model list, the cat's plans) on Windows, where
+/// Ollama's CORS rules turn away the page's address. See `ollama::page_request`.
+#[tauri::command]
+async fn ollama_http(path: String, body: Option<String>, timeout_ms: Option<u64>) -> Result<(u16, String), String> {
+    #[cfg(any(target_os = "macos", windows))]
+    return ollama::page_request(&ollama_target().0, &path, body, timeout_ms).await;
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let _ = (path, body, timeout_ms);
+        Err("the app can't reach the model on this system".into())
     }
 }
 
@@ -387,6 +407,28 @@ async fn model_setup(app: AppHandle, reason: String, model: String, url: String)
 fn debug_log(line: String) {
     println!("[overlay] {line}");
     logfile::write(&line);
+}
+
+/// Opens a web page in the default browser (the download page, ollama.com). Only fixed https
+/// addresses from the code come here.
+#[cfg(any(target_os = "macos", windows))]
+pub fn open_url(url: &str) {
+    if !url.starts_with("https://") {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+        let open: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            ShellExecuteW(None, PCWSTR(open.as_ptr()), PCWSTR(wide.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+        }
+    }
 }
 
 /// Sends a control message (panic, shoo, chaos level) to the window that runs the cat.
@@ -429,15 +471,15 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let pet = MenuItem::with_id(app, "pet", "Pet it", true, None::<&str>)?;
     let zoomies = MenuItem::with_id(app, "zoomies", "Zoomies!", true, None::<&str>)?;
     let nap = MenuItem::with_id(app, "nap", "Nap time", true, None::<&str>)?;
-    let panic = check("panic", "Panic: hide the cat (Cmd+Opt+Shift+P)")?;
+    let panic = check("panic", if cfg!(target_os = "macos") { "Panic: hide the cat (Cmd+Opt+Shift+P)" } else { "Panic: hide the cat (Ctrl+Alt+Shift+P)" })?;
     let shoo = check("shoo", "Shoo for 1 hour")?;
     let model = check("model", "Use the local model (needs Ollama)")?;
     // Filled with the models Ollama has once the page has asked it (show_choices).
     let looking = MenuItem::with_id(app, "llm-none", "Looking for models\u{2026}", false, None::<&str>)?;
     let llm = Submenu::with_items(app, "Model", true, &[&looking])?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     let login = CheckMenuItem::with_id(app, "login", "Start at login", true, login::is_on(), None::<&str>)?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     let (update, autoupdate) = update::menu_items(app)?;
     let forget = MenuItem::with_id(app, "forget", "Forget everything it learned", true, None::<&str>)?;
     let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
@@ -446,10 +488,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let (line1, line2, line3) = (line()?, line()?, line()?);
 
     let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version];
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     items.push(&update);
     items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &line2, &model, &llm]);
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
@@ -457,7 +499,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     app.manage(Current(std::sync::Mutex::new(None)));
     app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone(), llm: llm.clone(), listed: std::sync::Mutex::new(None) });
     // The model setup shows its progress in this item's text.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     ollama::menu_item(app, &model);
 
     // The tabby's head in colour (tools/build-icons.py), drawn 18 points tall in the menu bar.
@@ -465,13 +507,13 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     tray.on_menu_event(move |app, event| match event.id().as_ref() {
         "quit" => app.exit(0),
         "logs" => logfile::open_folder(),
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         "login" => {
             let on = login::set(!login::is_on());
             let _ = login.set_checked(on);
             logfile::write(&format!("menu: start at login {}", if on { "on" } else { "off" }));
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", windows))]
         id @ ("update" | "autoupdate") => update::on_menu(app, id),
         // The rest is the page's business. It answers with show_choices, which moves the ticks.
         other => control(app, other),
@@ -652,12 +694,14 @@ fn fit_to(w: &WebviewWindow, d: &sensors::Display) {
     let _ = w.set_focusable(false);
     #[cfg(target_os = "macos")]
     tune_ns_window(w);
+    #[cfg(windows)]
+    winui::tune(w);
 }
 
 fn main() {
     let builder = tauri::Builder::default();
-    // Signed updates from GitHub Releases (macOS only for now). See update.rs.
-    #[cfg(target_os = "macos")]
+    // Signed updates from GitHub Releases (macOS and Windows). See update.rs.
+    #[cfg(any(target_os = "macos", windows))]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
         .plugin(
@@ -677,9 +721,9 @@ fn main() {
 
             move_old_state(app.handle());
             build_tray(app)?;
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             update::start(app.handle());
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             ollama::start(app.handle());
             // The panic hotkey. A listener only: it never sends keys to anything.
             if let Err(e) = app.global_shortcut().register("CmdOrCtrl+Alt+Shift+P") {
@@ -832,6 +876,7 @@ fn main() {
             read_pointer,
             pet_menu,
             just_updated,
+            ollama_http,
             set_click_through,
             overlay_reveal,
             read_config,

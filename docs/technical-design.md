@@ -7,7 +7,7 @@
 
 ## 1. Goals and constraints
 
-- **Mac first** (macOS 13+, Apple Silicon first). Windows later, Linux X11 maybe, no Wayland.
+- **Mac first** (macOS 13+, Apple Silicon first), then Windows 10 and 11 (64-bit, since 0.1.12). Linux X11 maybe, no Wayland.
 - **Feels alive at 60 fps** while moving, yet costs almost nothing while asleep.
 - **The LLM is optional.** The cat must be complete on the rules brain alone.
 - **Hard safety lines in code:** no input synthesis, no screenshots, no destructive actions ([safety](safety-and-privacy.md#2-hard-lines)).
@@ -91,7 +91,7 @@ Alternatives considered: Swift/SpriteKit, Godot 4, Python/PySide6, Electron.
 
 All sensors live behind a `Sensors` trait, so the Windows port and the playground can swap them.
 
-| Signal | Used for | macOS API | Permission | Windows (later) |
+| Signal | Used for | macOS API | Permission | Windows |
 |---|---|---|---|---|
 | Window list: bounds, owner app, PID, z-order | Platforms, targets | `CGWindowListCopyWindowInfo` (on-screen only, layer 0) | none | `EnumWindows`, `GetWindowRect`, DWM cloaked check |
 | Window titles | Smart targeting (B-13, B-18) | Same call, `kCGWindowName` | **Screen Recording** (opt-in) | `GetWindowTextW` |
@@ -101,12 +101,12 @@ All sensors live behind a `Sensors` trait, so the Windows port and the playgroun
 | Typing activity (a level, **never the keys**) | `typing_fast` | Poll seconds-since-key-down at 4 Hz → burst detection | none (verify in S-3) | `GetLastInputInfo` heuristics |
 | CPU per app | Warmest window (B-06) | `sysinfo` crate, mapped by PID | none | `sysinfo` |
 | Camera / mic in use (a flag only) | Meeting mode | CoreMediaIO / CoreAudio "is running somewhere" | none (verify in S-6) | CapabilityAccessManager ConsentStore |
-| Fullscreen | RM-02 | The Space showing is an app in full screen and something keeps the display awake (`IOPMCopyAssertionsStatus`: `PreventUserIdleDisplaySleep` or `NoDisplaySleepAssertion` above 0) | none | Same idea |
-| Visible frame (Dock, menu bar) | Floor and Dock platforms | `NSScreen.visibleFrame` | none | `SHAppBarMessage` |
+| Fullscreen | RM-02 | The Space showing is an app in full screen and something keeps the display awake (`IOPMCopyAssertionsStatus`: `PreventUserIdleDisplaySleep` or `NoDisplaySleepAssertion` above 0) | none | The window in front (the one with the keyboard, or the top window on screen) covers its whole display and has no title bar while maximized (`GetForegroundWindow`, `EnumWindows` order, `MonitorFromWindow`), or `SHQueryUserNotificationState` says full screen, Direct3D full screen or presentation mode. A full-screen window on Windows is nearly always a video, a game or slides, so it counts as one |
+| Visible frame (Dock, menu bar) | Floor and Dock platforms | `NSScreen.visibleFrame` | none | The monitor's work area (the taskbar's top edge) |
 | Caret position (not text) | Keyboard walk (B-17) | AX focused element → bounds for range | **Accessibility** (opt-in) | UI Automation |
 | Move a window | Gremlin nudge (B-25) | AX set position | **Accessibility** (opt-in) | `SetWindowPos` |
 | Battery | RM-07 | IOKit power sources | none | `GetSystemPowerStatus` |
-| Which desktop (Space) is showing, and its place in the row | Desktops: it stays on its own and walks in from the side | `CGSCopyManagedDisplaySpaces` on the main connection (read only, looked up with `dlsym`, so a missing symbol just means "no desktop info") | none | not yet (`None`) |
+| Which desktop (Space) is showing, and its place in the row | Desktops: it stays on its own and walks in from the side | `CGSCopyManagedDisplaySpaces` on the main connection (read only, looked up with `dlsym`, so a missing symbol just means "no desktop info") | none | What Explorer keeps in the registry (`HKCU\...\Explorer\VirtualDesktops`: `CurrentVirtualDesktop` and the order in `VirtualDesktopIDs`), read only. One desktop that was never split is desktop 0 |
 
 **Polling:** the window list at 4 Hz, diffed into events (opened, closed, moved, focused). Everything else at 1-4 Hz. Polling pauses while the cat is hidden. The cost gets checked in S-2.
 
@@ -541,8 +541,17 @@ Felinquent/
 | S-5 | Embedding llama.cpp in Rust | Builds with Metal; app size impact understood; first-run download works | Guided Ollama install instead |
 | S-6 | Camera/mic in-use detection with no permission | Detects Zoom, Meet (browser) and FaceTime calls within 2 s | Meeting apps in front + manual "meeting" toggle |
 
-## 17. Windows port notes (later)
+## 17. Windows (as built, 0.1.12)
 
-- The same core. A `sensors::windows` implementation (see §5), with the overlay a layered, topmost, `WS_EX_TRANSPARENT` toggle window.
-- Different "Dock": the taskbar via `SHAppBarMessage`. It may be on any edge.
-- Code signing and SmartScreen reputation take time. Start signing early.
+- The same core and page. `src-tauri/src/sensors/win.rs` reads the windows (`EnumWindows`, DWM bounds, cloaked windows skipped, so other desktops' windows are left out; the desktop, the taskbar and tool windows too), the cursor and buttons, idle time, the displays, camera and mic in use (CapabilityAccessManager ConsentStore), the virtual desktop and full screen (see §5).
+- The overlay windows (`winui.rs`): topmost tool windows (`WS_EX_TOOLWINDOW`, so Windows shows them on every virtual desktop and leaves them out of the taskbar and Alt+Tab) that are never activated (`WS_EX_NOACTIVATE`, so a click on the cat leaves the keyboard where it was). Click-through is `WS_EX_TRANSPARENT` plus `WS_EX_LAYERED`, set by `winui::click_through` itself: Tauri's `set_ignore_cursor_events` rewrites the whole extended style and would drop the tool window bit.
+- The "Dock" is the taskbar's top edge (the main monitor's work area). A taskbar on another edge leaves the floor at the bottom of the screen.
+- Menu in the notification area (the tray icon by the clock), the same items as the Mac's menu bar menu. Panic is Ctrl+Alt+Shift+P.
+- Start at login: a `Felinquent` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`login.rs`). The uninstaller removes it (`src-tauri/windows/hooks.nsh`), an update doesn't.
+- Questions: a task dialog (`alert.rs`, `TaskDialogIndirect` looked up at run time, a message box if it isn't there), on top of the cat's windows. Enter presses the safe button.
+- Updates: the NSIS installer is the update, signed with the same updater key; the app hands over to it (passive mode, a small progress window) and it starts the cat again. `latest.json` carries `windows-x86_64` next to the two Mac entries.
+- Local model setup: `OllamaSetup.exe` from Ollama's GitHub release (about 1.7 GB), checked against `sha256sum.txt` and its Authenticode signature (valid, made out to Ollama), run with `/VERYSILENT` (it installs for the user, no admin), then `ollama app.exe` starts the server.
+- The page's own requests to Ollama (the model list, the plans) go through the app on Windows (`ollama_http` in `main.rs`, `ollama::page_request`): there the page's address is `http://tauri.localhost`, and Ollama's CORS rules answer 403 to it (the Mac's `tauri://localhost` is let in). The app only talks to the local address from the settings, and only to `/api/tags`, `/api/chat` and `/api/version`, and drops a request when the page's time for it is up. A plan may take 20 s on Windows instead of 8 (on a four-core PC with no graphics chip Ollama took 12 to 24 s); the animal keeps moving while it waits.
+- A release build is a GUI program (`windows_subsystem = "windows"` in `main.rs`), so no console window opens next to the cat.
+- Tried on a Windows 11 VM (9 Nov 2026): the cat on the taskbar and on windows, see-through and click-through, the menu on the animal, every menu message, the questions, start at login (a test), the Ollama setup end to end. Not tried there yet: switching virtual desktops, a real update, a second display.
+- Not signed with a Windows certificate, so SmartScreen asks once for the downloaded installer. `scripts/get-windows.ps1` downloads with PowerShell, which leaves no "from the internet" mark, so it doesn't ask.

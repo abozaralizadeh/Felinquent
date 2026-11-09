@@ -44,20 +44,20 @@ These are rules in the code and in CI, not settings.
 | Diary | Fun, sharing | Local | Only if you share a card |
 | Logs | Fixing bugs | Local, max 15 MB, no titles | Only if you send them |
 | What the cat did lately ("the human poked me", "i knocked the mug off") | So the model and the thought bubble can react to it | In memory only, gone after 45 min | Only to the brain, on your Mac |
-| Settings (character, chaos level, local model on or off and which model, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` | No |
-| Which desktop (Space) is showing, as an id and a number in the row, and whether it's an app in full screen | So the animal stays on its own desktop, walks in from the right side and knows when a full-screen app is in front | No, live only. The log has the id and the number (just numbers, no names) | No |
+| Settings (character, chaos level, local model on or off and which model, when it last offered to set up the model) | Keeping your choices | `~/Library/Application Support/app.felinquent/settings.json` on the Mac, `%APPDATA%\app.felinquent\settings.json` on Windows | No |
+| Which desktop (Space, or virtual desktop on Windows) is showing, as an id and a number in the row, and whether it's an app in full screen | So the animal stays on its own desktop, walks in from the right side and knows when a full-screen app is in front | No, live only. The log has the id and the number (just numbers, no names) | No |
 | Whether something keeps the display awake (one system-wide yes or no: a video playing or a presentation running). Not which app, not what it shows | On a full-screen app, the cat goes outside while a video plays or slides are shown (RM-02) | No, live only | No |
 | How fast each window moves (worked out from the window list) | Things on a dragged window ride along or fall off | No | No |
 | What it learned about its own choices (per action: how you reacted, how often it did it lately) | Doing more of what you like, getting bored, trying new things | `memory.json`, local, counts only, no titles. Wiped by Forget everything | No |
 | Tricks it made up (names and lists of poses and moves) | Variety | `memory.json`, local. Checked again when loaded, so a hand-edited file can only hold poses and moves. Wiped by Forget everything | No |
-| Start at login | Opening the app when you log in | Only if you turn it on: one file, `~/Library/LaunchAgents/app.felinquent.plist`. Turning it off deletes it | No |
+| Start at login | Opening the app when you log in | Only if you turn it on: one file, `~/Library/LaunchAgents/app.felinquent.plist` on the Mac, one `Felinquent` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` on Windows (the uninstaller removes it too). Turning it off deletes it | No |
 
 ## 4. Network
 
 The app only talks to:
 1. **The brain:** Ollama on `localhost`, the built-in engine (no network), or a custom endpoint *you* set.
-2. **Update checks (since 0.1.2):** a minute after launch and then every 3 hours (every 12 before 0.1.10) the Mac app downloads `latest.json` from the latest GitHub Release (`github.com`, which redirects to GitHub's download host). The request carries nothing about you; GitHub sees an IP address, as with any download. With **Update automatically** on (the default) a newer version is downloaded and put in place by itself the next time the Mac is left alone for two minutes, only if its signature checks out. **Check for updates…** by hand asks first. Turn **Update automatically** off and it never checks by itself.
-3. **Setting up the local model (Mac, only after you say yes):** when you turn on **Use the local model** and Ollama or the model is missing, the app asks first and shows the sizes. If you pick **Install**, it asks `github.com/ollama/ollama` which release is the newest, then downloads that release's `sha256sum.txt` and `Ollama-darwin.zip` (GitHub serves them from its download host, `release-assets.githubusercontent.com`; the app follows redirects to GitHub hosts only). It checks the zip against the checksum and the app's code signature against Ollama's developer team before it puts anything in Applications. For the model (after **Install**, or when you pick **Get the model**), the app asks your local Ollama to pull it, and Ollama downloads it from its own registry (`registry.ollama.ai`). Nothing about you goes with any of these requests. After that Ollama is an app of its own, with its own update checks; see [ollama.com](https://ollama.com).
+2. **Update checks (since 0.1.2):** a minute after launch and then every 3 hours (every 12 before 0.1.10) the app (Mac and Windows) downloads `latest.json` from the latest GitHub Release (`github.com`, which redirects to GitHub's download host). The request carries nothing about you; GitHub sees an IP address, as with any download. With **Update automatically** on (the default) a newer version is downloaded and put in place by itself the next time the Mac is left alone for two minutes, only if its signature checks out. **Check for updates…** by hand asks first. Turn **Update automatically** off and it never checks by itself.
+3. **Setting up the local model (Mac and Windows, only after you say yes):** when you turn on **Use the local model** and Ollama or the model is missing, the app asks first and shows the sizes. If you pick **Install**, it asks `github.com/ollama/ollama` which release is the newest, then downloads that release's `sha256sum.txt` and `Ollama-darwin.zip` on the Mac or `OllamaSetup.exe` on Windows (GitHub serves them from its download host, `release-assets.githubusercontent.com`; the app follows redirects to GitHub hosts only). It checks the download against the checksum, and the code signature against Ollama's developer team (Mac) or the Windows signature against Ollama's name, before it installs anything. For the model (after **Install**, or when you pick **Get the model**), the app asks your local Ollama to pull it, and Ollama downloads it from its own registry (`registry.ollama.ai`). Nothing about you goes with any of these requests. After that Ollama is an app of its own, with its own update checks; see [ollama.com](https://ollama.com).
 4. **Model download for a built-in engine (planned):** once, from a fixed URL, with the size shown first and a checksum check.
 
 No analytics, no ads, no accounts, no crash reporting unless you send diagnostics yourself.
@@ -66,7 +66,7 @@ The website is separate from the app: [the Felinquent page](https://abozaralizad
 
 ⚠️ **Custom endpoint warning:** if you point the brain at a cloud API, the world summary goes there, including window titles if smart targeting is on. Settings shows this warning before saving.
 
-## 5. Permissions (macOS)
+## 5. Permissions
 
 | Permission | Needed for | Default | When we ask |
 |---|---|---|---|
@@ -81,6 +81,8 @@ Reading which desktop is showing needs no permission either: it's a read-only ca
 Knowing that something keeps the display awake needs no permission: it's the public power-management call `IOPMCopyAssertionsStatus`, the same count `pmset -g assertions` prints. Only the system-wide count is read.
 
 Setting up the local model needs no permission. Ollama goes into `/Applications`, or `~/Applications` when your account can't write there, and the app never replaces an Ollama that is already installed.
+
+**Windows** asks for no permission at all, and the app never needs admin. What it reads: the window list (`EnumWindows`, positions and app names), the cursor and whether a mouse button is down, seconds since the last input (`GetLastInputInfo`, a number only), whether an app uses the camera or mic (the privacy records Windows itself keeps under `CapabilityAccessManager\ConsentStore`, a yes or no), which virtual desktop is showing (the ids Explorer keeps under `Explorer\VirtualDesktops`), and whether something runs full screen or a presentation is on (`SHQueryUserNotificationState`). All read only. Its own windows are tool windows that never take the keyboard. Setting up the local model runs Ollama's own installer from its GitHub release after checking its checksum and that its Windows signature is valid and Ollama's; it installs for your account only, and the app never runs it over an Ollama that is already there.
 
 ## 6. LLM and prompt injection
 
