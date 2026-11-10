@@ -2,11 +2,13 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-Two monitors on a Mac? Go to a full-screen app or another desktop on your second monitor and the animal now stays behind on its own desktop, then walks in a little later, like it already did on the main display. Before, it just showed up on the full-screen app where it had been sitting. A switch on the display it isn't on leaves it alone, and walking over to the other display is not a switch.
+Clicked "Update to…" in the menu and nothing happened? Fixed. While an automatic update waited for you to step away, a click on it did nothing at all. Now a click always asks right away.
 
-## More about 0.1.14
+New: error reports. The first time something goes wrong, the app asks once whether it may send error reports. Say yes and they go by themselves, so problems get fixed without you writing anything. A report has the app version, your system and the end of the app's own log with your name taken out, never your screen. **Send error reports** in the menu turns it off any time.
 
-Each display keeps its own mess: switch one and only what lies there is put away until you come back. Nothing changes on Windows, where one virtual desktop covers every display.
+## More about 0.1.15
+
+A report is made when the app crashes, an update doesn't install, the animal's page throws an error or gets stuck while you're using the computer, or the app stopped last time without quitting. At most 5 a day leave your computer, each problem once per version, and they go to a private issue list that only the developer reads. The same on Mac and Windows.
 
 ## Updating
 

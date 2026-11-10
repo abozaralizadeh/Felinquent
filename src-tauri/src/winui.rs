@@ -49,3 +49,28 @@ pub fn click_through(w: &WebviewWindow, on: bool) {
     let keep = WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0;
     set_ex(h, |ex| if on { ex | through | keep } else { (ex & !through) | keep });
 }
+
+/// Calls `f` when Windows ends the session (logging off, shutting down, an update of Windows).
+/// Windows ends the app without the usual quit then, and with fast startup a shutdown doesn't
+/// start a new boot, so without this the next launch would think the app had crashed (report.rs).
+pub fn on_session_end(w: &WebviewWindow, f: fn()) {
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::WM_ENDSESSION;
+
+    unsafe extern "system" fn proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM, _id: usize, data: usize) -> LRESULT {
+        if msg == WM_ENDSESSION && wp.0 != 0 {
+            // SAFETY: `data` is the fn pointer given to SetWindowSubclass below.
+            let f: fn() = unsafe { std::mem::transmute::<usize, fn()>(data) };
+            f();
+        }
+        unsafe { DefSubclassProc(h, msg, wp, lp) }
+    }
+
+    let Some(h) = hwnd(w) else { return };
+    let raw = h.0 as isize;
+    // A subclass has to be set on the window's own thread.
+    let _ = w.run_on_main_thread(move || unsafe {
+        let _ = SetWindowSubclass(HWND(raw as _), Some(proc), 0xF1E1, f as usize);
+    });
+}

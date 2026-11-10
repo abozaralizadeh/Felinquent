@@ -72,8 +72,11 @@ pub struct Updates {
     busy: Mutex<bool>,
     /// The newer version found by the last check.
     found: Mutex<Option<Update>>,
-    /// The question is on screen or waiting for a quiet moment, so it never shows twice.
-    offering: AtomicBool,
+    /// A question about the update is on screen, so it never shows twice.
+    asking: AtomicBool,
+    /// An automatic update is waiting for a quiet moment. A click by hand still asks at once:
+    /// before 0.1.15 the wait also blocked the click, so "Update to…" did nothing (ADR-064).
+    waiting: AtomicBool,
 }
 
 fn now() -> u64 {
@@ -121,7 +124,7 @@ pub fn menu_items(app: &tauri::App) -> tauri::Result<(MenuItem<Wry>, CheckMenuIt
     let prefs = load(app.handle());
     let item = MenuItem::with_id(app, "update", "Check for updates…", true, None::<&str>)?;
     let auto_item = CheckMenuItem::with_id(app, "autoupdate", "Update automatically", true, prefs.auto, None::<&str>)?;
-    app.manage(Updates { item: item.clone(), auto_item: auto_item.clone(), prefs: Mutex::new(prefs), busy: Mutex::new(false), found: Mutex::new(None), offering: AtomicBool::new(false) });
+    app.manage(Updates { item: item.clone(), auto_item: auto_item.clone(), prefs: Mutex::new(prefs), busy: Mutex::new(false), found: Mutex::new(None), asking: AtomicBool::new(false), waiting: AtomicBool::new(false) });
     Ok((item, auto_item))
 }
 
@@ -196,12 +199,25 @@ pub fn on_menu(app: &AppHandle, id: &str) {
 /// which always answers; an automatic check only speaks up when there is something to offer.
 fn check(app: &AppHandle, by_hand: bool) {
     let Some(u) = app.try_state::<Updates>() else { return };
-    {
-        let mut busy = u.busy.lock().unwrap();
-        if *busy {
+    // A click by hand while an automatic check is running waits for it (up to half a minute)
+    // instead of doing nothing.
+    let mut tries = if by_hand { 60 } else { 0 };
+    loop {
+        {
+            let mut busy = u.busy.lock().unwrap();
+            if !*busy {
+                *busy = true;
+                break;
+            }
+        }
+        if tries == 0 {
+            if by_hand {
+                logfile::write("update: still busy with a download, the click waits for it");
+            }
             return;
         }
-        *busy = true;
+        tries -= 1;
+        std::thread::sleep(Duration::from_millis(500));
     }
     let result = tauri::async_runtime::block_on(async {
         let mut builder = app.updater_builder();
@@ -209,7 +225,10 @@ fn check(app: &AppHandle, by_hand: bool) {
             builder = builder.endpoints(vec![url.parse().map_err(|e| format!("{e}"))?]).map_err(|e| e.to_string())?;
         }
         // Windows: the installer takes over from here and the app quits.
-        builder = builder.on_before_exit(|| logfile::write("update: the installer takes over, quitting"));
+        builder = builder.on_before_exit(|| {
+            logfile::write("update: the installer takes over, quitting");
+            crate::report::clean_exit();
+        });
         builder.build().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())
     });
     *u.busy.lock().unwrap() = false;
@@ -259,15 +278,21 @@ fn check(app: &AppHandle, by_hand: bool) {
 /// minutes, then downloads, puts the new app in place and restarts (a second or two without the cat).
 fn quietly(app: &AppHandle, update: Update) {
     let Some(u) = app.try_state::<Updates>() else { return };
-    if u.offering.swap(true, Ordering::SeqCst) {
+    if u.waiting.swap(true, Ordering::SeqCst) {
         return;
     }
     logfile::write(&format!("update: {} will go in by itself at a quiet moment", update.version));
     loop {
         // Turned off meanwhile: it asks the next time you check by hand instead.
-        if !u.prefs.lock().unwrap().auto {
+        let p = u.prefs.lock().unwrap().clone();
+        if !p.auto {
             logfile::write("update: automatic updates were turned off, not installing");
-            u.offering.store(false, Ordering::SeqCst);
+            u.waiting.store(false, Ordering::SeqCst);
+            return;
+        }
+        // You said "Skip this version" to a question by hand meanwhile.
+        if p.skipped == update.version {
+            u.waiting.store(false, Ordering::SeqCst);
             return;
         }
         if sensors::idle_sec() >= IDLE_FOR && !sensors::camera_in_use() && !sensors::mic_in_use() && !fullscreen_in_front() {
@@ -275,18 +300,20 @@ fn quietly(app: &AppHandle, update: Update) {
         }
         std::thread::sleep(Duration::from_secs(15));
     }
-    u.offering.store(false, Ordering::SeqCst);
-    install(app, update, false);
+    u.waiting.store(false, Ordering::SeqCst);
+    // A newer version may have come out while it waited (three came out on 9 Nov 2026).
+    let newest = u.found.lock().unwrap().clone().unwrap_or(update);
+    install(app, newest, false);
 }
 
 /// Asks about the update (after a check by hand).
 fn offer(app: &AppHandle, update: Update) {
     let Some(u) = app.try_state::<Updates>() else { return };
-    if u.offering.swap(true, Ordering::SeqCst) {
+    if u.asking.swap(true, Ordering::SeqCst) {
         return;
     }
     ask_about(app, update);
-    u.offering.store(false, Ordering::SeqCst);
+    u.asking.store(false, Ordering::SeqCst);
 }
 
 fn ask_about(app: &AppHandle, update: Update) {
@@ -350,10 +377,12 @@ fn install(app: &AppHandle, update: Update, asked: bool) {
         Ok(()) => {
             logfile::write(&format!("update: {} is in place, restarting", update.version));
             let _ = u.item.set_text("Restarting…");
+            crate::report::clean_exit();
             app.restart();
         }
         Err(e) => {
             logfile::write(&format!("update: install failed: {e}"));
+            crate::report::problem(app, "update", &format!("install of {} failed: {e}", update.version));
             *u.busy.lock().unwrap() = false;
             let _ = u.item.set_enabled(true);
             let _ = u.item.set_text(format!("Update to {}…", update.version));

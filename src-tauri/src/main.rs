@@ -10,6 +10,8 @@ mod logfile;
 mod login;
 #[cfg(any(target_os = "macos", windows))]
 mod ollama;
+#[cfg(any(target_os = "macos", windows))]
+mod report;
 mod sensors;
 #[cfg(any(target_os = "macos", windows))]
 mod update;
@@ -222,6 +224,9 @@ fn index_of(window: &WebviewWindow) -> usize {
 
 #[tauri::command]
 async fn read_sensors() -> Sensors {
+    // The page is alive: the stall check in report.rs watches this.
+    #[cfg(any(target_os = "macos", windows))]
+    report::page_seen();
     Sensors {
         windows: sensors::windows("felinquent"),
         idle_sec: sensors::idle_sec(),
@@ -500,6 +505,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let login = CheckMenuItem::with_id(app, "login", "Start at login", true, login::is_on(), None::<&str>)?;
     #[cfg(any(target_os = "macos", windows))]
     let (update, autoupdate) = update::menu_items(app)?;
+    // Error reports (ADR-064): asked once, then sent by themselves while this is ticked.
+    #[cfg(any(target_os = "macos", windows))]
+    let reports = report::menu_item(app)?;
     let forget = MenuItem::with_id(app, "forget", "Forget everything it learned", true, None::<&str>)?;
     let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Felinquent", true, None::<&str>)?;
@@ -511,7 +519,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     items.push(&update);
     items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &line2, &model, &llm]);
     #[cfg(any(target_os = "macos", windows))]
-    items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate]);
+    items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate, &reports]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
 
@@ -535,6 +543,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         }
         #[cfg(any(target_os = "macos", windows))]
         id @ ("update" | "autoupdate") => update::on_menu(app, id),
+        #[cfg(any(target_os = "macos", windows))]
+        "reports" => report::on_menu(),
         // The rest is the page's business. It answers with show_choices, which moves the ticks.
         other => control(app, other),
     })
@@ -716,6 +726,10 @@ fn fit_to(w: &WebviewWindow, d: &sensors::Display) {
     tune_ns_window(w);
     #[cfg(windows)]
     winui::tune(w);
+    #[cfg(windows)]
+    if w.label() == "overlay" {
+        winui::on_session_end(w, report::clean_exit);
+    }
 }
 
 fn main() {
@@ -739,6 +753,9 @@ fn main() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // First, while the end of the log is still last run's (report.rs looks at how it ended).
+            #[cfg(any(target_os = "macos", windows))]
+            report::init(app.handle());
             move_old_state(app.handle());
             build_tray(app)?;
             #[cfg(any(target_os = "macos", windows))]
@@ -898,6 +915,7 @@ fn main() {
             just_updated,
             ollama_http,
             about::about_action,
+            report::report_error,
             set_click_through,
             overlay_reveal,
             read_config,
@@ -907,6 +925,13 @@ fn main() {
             debug_log,
             model_setup
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Felinquent");
+        .build(tauri::generate_context!())
+        .expect("error while running Felinquent")
+        .run(|_app, event| {
+            // Quitting the normal way (the menu, logging out, shutting down): not a crash.
+            #[cfg(any(target_os = "macos", windows))]
+            if let tauri::RunEvent::Exit = event {
+                report::clean_exit();
+            }
+        });
 }

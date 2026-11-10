@@ -71,6 +71,30 @@ const invoke = <T>(cmd: string, args?: object): Promise<T> => {
 const say = (line: string): void => void invoke("debug_log", { line }).catch(() => {});
 
 /**
+ * The page's own errors go to the app, which logs them and keeps them for an error report
+ * (report.rs, ADR-064). The same error at most once in 10 minutes, and 10 in all per run, so an
+ * error in the frame loop can't flood anything.
+ */
+const reported = new Map<string, number>();
+let reportsLeft = 10;
+function reportError(message: string, stack?: string): void {
+  const now = performance.now();
+  const last = reported.get(message);
+  if ((last !== undefined && now - last < 600_000) || reportsLeft <= 0) return;
+  reported.set(message, now);
+  reportsLeft--;
+  void invoke("report_error", { message, stack: stack ?? null }).catch(() => {});
+}
+window.addEventListener("error", (e) => {
+  const where = e.filename ? ` (${e.filename.split("/").pop()}:${e.lineno}:${e.colno})` : "";
+  reportError(`${e.message || "error"}${where}`, e.error instanceof Error ? e.error.stack : undefined);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const r: unknown = e.reason;
+  reportError(`unhandled rejection: ${r instanceof Error ? r.message : String(r)}`, r instanceof Error ? r.stack : undefined);
+});
+
+/**
  * Requests to the local Ollama. On Windows this page's address is http://tauri.localhost, and
  * Ollama's CORS rules turn that away (on the Mac it's tauri://localhost, which Ollama lets in), so
  * there the page asks through the app. The app only talks to the local Ollama address from the
@@ -482,6 +506,11 @@ async function main(): Promise<void> {
     } else if (msg === "toy") {
       cat.throwToy(world);
       say("toy thrown");
+    } else if (msg === "report-test") {
+      // FELINQUENT_REPORT_CRASH=page: an error the page doesn't catch, to try the error reports.
+      setTimeout(() => {
+        throw new Error("a test error on purpose (FELINQUENT_REPORT_CRASH)");
+      }, 0);
     } else if (msg === "petmenu-test") {
       // FELINQUENT_PETMENU_TEST: the menu on the animal, opened next to it with no click, once it
       // sits still (a minute at most), so a picture shows the two together.
