@@ -63,6 +63,7 @@
       --win-bar: #F2E9DD;
       --win-ink: #E6D8C6;
       --glow: rgba(232, 134, 42, .16);
+      --bar: #C8641A;
       color-scheme: light;
     }
     @media (prefers-color-scheme: dark) {
@@ -88,6 +89,7 @@
         --win-bar: #2C3539;
         --win-ink: #3A464C;
         --glow: rgba(245, 154, 69, .10);
+        --bar: #D9772A;
         color-scheme: dark;
       }
     }
@@ -113,6 +115,7 @@
       --win-bar: #2C3539;
       --win-ink: #3A464C;
       --glow: rgba(245, 154, 69, .10);
+      --bar: #D9772A;
       color-scheme: dark;
     }
 
@@ -359,6 +362,7 @@
     .card.full { grid-column: span 6; display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; align-items: center; }
     .card h3 { font-size: 1.35rem; }
     .card p { color: var(--ink-soft); }
+    .card p a { color: var(--ginger-text); font-weight: 600; }
     .ico { width: 58px; height: 58px; border-radius: 16px; background: var(--bg-2); color: var(--ink); display: grid; place-items: center; }
     .ico svg { width: 36px; height: 36px; overflow: visible; }
     .reacts { display: flex; align-items: end; justify-content: space-around; gap: 12px; margin-top: auto; padding: 20px 8px 4px; border-radius: 16px; background: var(--bg-2); }
@@ -436,6 +440,40 @@
     .faq details[open] summary::after { transform: rotate(45deg); }
     .faq details p { color: var(--ink-soft); padding: 0 2px 26px; max-width: 46em; margin-top: -6px; }
     .faq details p + p { margin-top: -12px; }
+
+    /* The numbers: live usage counts from the relay */
+    .nums { margin-top: 44px; display: grid; gap: 18px; }
+    .n-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+    .n-tile { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 22px 24px; box-shadow: var(--shadow); }
+    .n-tile-n { display: block; font: 600 clamp(2rem, 4.2vw, 2.8rem)/1.05 "Fraunces", Georgia, serif; font-variation-settings: "SOFT" 100, "WONK" 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .n-tile-l { display: block; margin-top: 6px; color: var(--ink-soft); font-size: .95rem; }
+    .n-chart { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 24px; box-shadow: var(--shadow); min-width: 0; }
+    .n-chart h3 { font: 600 1.05rem "Instrument Sans", system-ui, sans-serif; letter-spacing: 0; }
+    .n-chart .n-sub { color: var(--ink-soft); font-size: .9rem; margin-top: 2px; }
+    .n-days { position: relative; margin-top: 20px; height: 150px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px; border-bottom: 1px solid var(--line); }
+    .n-day { flex: 1 1 0; max-width: 24px; height: 100%; display: flex; align-items: flex-end; justify-content: center; cursor: default; outline-offset: 2px; }
+    .n-day i { display: block; width: 100%; background: var(--bar); border-radius: 4px 4px 0 0; min-height: 0; }
+    .n-day:hover i, .n-day:focus-visible i { filter: brightness(1.12); }
+    .n-days-axis { display: flex; justify-content: space-between; margin-top: 8px; font-size: .82rem; color: var(--ink-soft); }
+    .n-tip { position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); background: var(--ink); color: var(--bg); font-size: .82rem; line-height: 1.35; padding: 6px 10px; border-radius: 8px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s; }
+    .n-tip.on { opacity: 1; }
+    .n-splits { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 18px; }
+    .n-split { margin-top: 16px; display: grid; gap: 10px; }
+    .n-split-row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr) 3em; align-items: center; gap: 10px; font-size: .92rem; }
+    .n-split-row b { font-weight: 500; }
+    .n-split-row span { color: var(--ink-soft); text-align: right; font-variant-numeric: tabular-nums; }
+    .n-split-track { height: 12px; }
+    .n-split-track i { display: block; height: 100%; min-width: 2px; background: var(--bar); border-radius: 0 4px 4px 0; }
+    .n-nums-table summary { cursor: pointer; color: var(--ginger-text); font-weight: 600; font-size: .95rem; }
+    .n-nums-table table { margin-top: 12px; border-collapse: collapse; font-size: .9rem; font-variant-numeric: tabular-nums; }
+    .n-nums-table th, .n-nums-table td { text-align: right; padding: 4px 14px 4px 0; border-bottom: 1px solid var(--line); }
+    .n-nums-table th:first-child, .n-nums-table td:first-child { text-align: left; }
+    .lead a { color: var(--ginger-text); font-weight: 600; }
+    .nums .n-empty { color: var(--ink-soft); font-size: .95rem; padding: 18px 0 4px; }
+    @media (max-width: 860px) {
+      .n-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .n-splits { grid-template-columns: minmax(0, 1fr); }
+    }
 
     footer { position: relative; border-top: 1px solid var(--line); padding: 56px 0 48px; margin-top: 40px; }
     .footer-cat { position: absolute; top: 0; right: max(24px, calc(50% - 520px)); width: 92px; transform: translateY(-86%); pointer-events: none; }
@@ -738,7 +776,7 @@
         <article class="card reveal">
           <div class="ico" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 36h21a8 8 0 0 0 .6-16A11 11 0 0 0 14.4 22 7 7 0 0 0 14 36Z"/><path d="M7 43L41 7" stroke="var(--ginger)" stroke-width="2.8"/></svg></div>
           <h3>Private by default</h3>
-          <p>No account, no analytics, no cloud and no screenshots. Out of the box it asks for no permissions at all, on macOS or Windows. The one thing it fetches on its own is an update check from GitHub every few hours, and a new version installs itself while you're away from the computer (you can turn that off). If you turn on the local model it offers to download that too, after you say yes. If something breaks, it asks once whether it may send error reports (never your screen), and after a yes they go by themselves.</p>
+          <p>No account, no cloud and no screenshots. Out of the box it asks for no permissions at all, on macOS or Windows. On its own it checks GitHub for updates every few hours, and a new version installs itself while you're away from the computer (you can turn that off). Once a day it sends an anonymous ping so the <a href="#numbers">numbers</a> below can count installs: no ID, nothing about you, and one click in the menu turns it off. If you turn on the local model it offers to download that too, after you say yes. If something breaks, it asks once whether it may send error reports (never your screen), and after a yes they go by themselves.</p>
         </article>
         <article class="card full reveal">
           <div>
@@ -827,9 +865,36 @@
     </div>
   </section>
 
+  <section class="band" id="numbers">
+    <div class="wrap">
+      <p class="kicker reveal">06 / how many</p>
+      <h2 class="reveal">How many are out there.</h2>
+      <p class="lead reveal">Live numbers from the app's one anonymous ping a day. There's no ID and nothing about you in it, just totals. Counting started with 0.1.16, and <b>Share usage counts</b> in the menu turns it off. <a class="inline" href="https://github.com/abozaralizadeh/Felinquent/blob/main/PRIVACY.md">What exactly is sent</a>.</p>
+      <div class="nums reveal" id="nums">
+        <div class="n-tiles">
+          <div class="n-tile"><span class="n-tile-n" data-n="installs">&hellip;</span><span class="n-tile-l">installs</span></div>
+          <div class="n-tile"><span class="n-tile-n" data-n="daily">&hellip;</span><span class="n-tile-l" data-l="daily">daily users</span></div>
+          <div class="n-tile"><span class="n-tile-n" data-n="weekly">&hellip;</span><span class="n-tile-l" data-l="weekly">weekly users</span></div>
+          <div class="n-tile"><span class="n-tile-n" data-n="monthly">&hellip;</span><span class="n-tile-l" data-l="monthly">monthly users</span></div>
+        </div>
+        <div class="n-chart">
+          <h3>Daily users</h3>
+          <p class="n-sub">The last 30 days. Hover or tap a day for its numbers.</p>
+          <div class="n-days" id="days" role="img" aria-label="Daily users over the last 30 days"></div>
+          <div class="n-days-axis"><span id="days-from"></span><span>today</span></div>
+        </div>
+        <div class="n-splits">
+          <div class="n-chart"><h3>Mac or Windows</h3><p class="n-sub" data-week></p><div class="n-split" data-split="os"></div></div>
+          <div class="n-chart"><h3>Which animal</h3><p class="n-sub" data-week></p><div class="n-split" data-split="character"></div></div>
+        </div>
+        <details class="n-nums-table"><summary>All of it as a table</summary><div id="nums-table"></div></details>
+      </div>
+    </div>
+  </section>
+
   <section class="band" id="faq">
     <div class="wrap">
-      <p class="kicker reveal">06 / the honest bit</p>
+      <p class="kicker reveal">07 / the honest bit</p>
       <h2 class="reveal">Questions, and the limits.</h2>
       <div class="faq reveal">
         <details open>
@@ -1222,6 +1287,94 @@
     io.observe(cat);
   }
   Promise.all([load("poses"), reduce ? null : load("walk")]).then(start);
+})();
+</script>
+<script>
+// The numbers section: live totals from the relay (the app's anonymous daily ping; what's sent
+// is in PRIVACY.md). It only reads; nothing about the visitor goes out.
+(() => {
+  const box = document.getElementById("nums");
+  if (!box) return;
+  const URL_STATS = "https://felinquent-reports.felinquent-report-relay.workers.dev/v1/stats";
+  const NAMES = { mac: "Mac", windows: "Windows", tabby: "Tabby", inky: "Inky", pearl: "Pearl", mochi: "Mochi", bandit: "Bandit", biscuit: "Biscuit", chili: "Chili", clover: "Clover", hazel: "Hazel", other: "Other", unknown: "Not set" };
+  const fmt = (n) => n.toLocaleString("en-US");
+  const dayName = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const fail = (msg) => { box.querySelectorAll("[data-n]").forEach((n) => (n.textContent = "?")); const d = document.getElementById("days"); d.replaceChildren(el("p", "n-empty", msg)); d.style.border = "0"; };
+  fetch(URL_STATS, { mode: "cors", credentials: "omit" })
+    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    .then((s) => {
+      // Daily, weekly and monthly show the last whole period unless the current one is bigger,
+      // the same rule as the README badges.
+      const pick = (now, before, a, b) => (now >= before ? [now, a] : [before, b]);
+      const vals = {
+        installs: [s.installs],
+        daily: pick(s.today.active, s.yesterday.active, "users today", "users yesterday"),
+        weekly: pick(s.week.active, s.lastWeek.active, "users this week", "users last week"),
+        monthly: pick(s.month.active, s.lastMonth.active, "users this month", "users last month"),
+      };
+      for (const [k, [n, label]] of Object.entries(vals)) {
+        box.querySelector(`[data-n="${k}"]`).textContent = fmt(n);
+        if (label) box.querySelector(`[data-l="${k}"]`).textContent = label;
+      }
+      // The 30 days.
+      const days = document.getElementById("days");
+      const top = Math.max(1, ...s.days.map((d) => d.active));
+      const tip = el("div", "n-tip");
+      days.append(tip);
+      document.getElementById("days-from").textContent = dayName(s.days[0].day);
+      for (const d of s.days) {
+        const b = el("span", "n-day");
+        b.tabIndex = 0;
+        b.setAttribute("aria-label", `${dayName(d.day)}: ${d.active} users, ${d.new} new`);
+        const bar = el("i");
+        bar.style.height = d.active ? `${Math.max(2, (d.active / top) * 100)}%` : "0";
+        b.append(bar);
+        const show = () => {
+          tip.textContent = `${dayName(d.day)}: ${fmt(d.active)} user${d.active === 1 ? "" : "s"}, ${fmt(d.new)} new`;
+          // Centred on the bar, but kept inside the chart at both ends.
+          const half = tip.offsetWidth / 2;
+          tip.style.left = `${Math.min(Math.max(b.offsetLeft + b.offsetWidth / 2, half), days.clientWidth - half)}px`;
+          tip.classList.add("on");
+        };
+        b.addEventListener("mouseenter", show);
+        b.addEventListener("focus", show);
+        b.addEventListener("mouseleave", () => tip.classList.remove("on"));
+        b.addEventListener("blur", () => tip.classList.remove("on"));
+        days.append(b);
+      }
+      // Splits: the week with more installs seen, so a Monday isn't empty.
+      const wk = s.week.active >= s.lastWeek.active ? s.week : s.lastWeek;
+      const wkLabel = wk === s.week ? "Installs seen this week" : "Installs seen last week";
+      box.querySelectorAll("[data-week]").forEach((p) => (p.textContent = wkLabel));
+      for (const holder of box.querySelectorAll("[data-split]")) {
+        const counts = Object.entries(wk[holder.dataset.split] || {}).sort((a, b) => b[1] - a[1]);
+        if (!counts.length) { holder.append(el("p", "n-empty", "Nothing counted yet. Check back in a day or two.")); continue; }
+        const most = counts[0][1];
+        for (const [key, n] of counts) {
+          const row = el("div", "n-split-row");
+          const track = el("div", "n-split-track");
+          const fill = el("i");
+          fill.style.width = `${(n / most) * 100}%`;
+          track.append(fill);
+          row.append(el("b", "", NAMES[key] || key), track, el("span", "", fmt(n)));
+          holder.append(row);
+        }
+      }
+      // The table view.
+      const t = el("table");
+      const head = el("tr");
+      ["Day", "Users", "New"].forEach((h) => head.append(el("th", "", h)));
+      t.append(head);
+      for (const d of [...s.days].reverse()) {
+        const tr = el("tr");
+        [dayName(d.day), fmt(d.active), fmt(d.new)].forEach((v) => tr.append(el("td", "", v)));
+        t.append(tr);
+      }
+      document.getElementById("nums-table").append(t);
+      if (!s.since) { days.replaceChildren(el("p", "n-empty", "Counting starts with 0.1.16. Check back in a day or two.")); days.style.borderBottom = "0"; }
+    })
+    .catch(() => fail("The numbers couldn't load right now."));
 })();
 </script>
 </body>

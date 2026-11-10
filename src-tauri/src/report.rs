@@ -107,15 +107,15 @@ static PAGE_SEEN: AtomicU64 = AtomicU64::new(0);
 /// The question is on screen.
 static ASKING: AtomicBool = AtomicBool::new(false);
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-fn load<T: for<'a> Deserialize<'a> + Default>(path: &PathBuf) -> T {
+pub(crate) fn load<T: for<'a> Deserialize<'a> + Default>(path: &PathBuf) -> T {
     std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
-fn store<T: Serialize>(path: &PathBuf, value: &T) {
+pub(crate) fn store<T: Serialize>(path: &PathBuf, value: &T) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }

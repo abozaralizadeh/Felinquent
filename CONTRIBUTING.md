@@ -18,7 +18,7 @@ A few things the project will never take, whatever the reason:
 - Code that fakes input: key presses, clicks, scrolls or moving the cursor. The cat can look like it's walking on your keyboard, but it never touches it. `npm run check:forbidden` and CI check this.
 - Screenshots or screen capture of any kind.
 - Anything that closes, hides, moves or resizes other apps' windows.
-- Network calls, analytics or telemetry. The only network the app knows is the local model on `localhost`.
+- New network calls, tracking or anything that identifies a person or a computer. The app only talks to the local model, GitHub for updates and the relay for error reports (after a yes) and the anonymous daily count, as listed in [PRIVACY.md](PRIVACY.md).
 - Window titles or personal data in the default logs.
 
 If a behavior changes, update `docs/behavior-catalog.md` in the same pull request.

@@ -2,13 +2,15 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-Clicked "Update to…" in the menu and nothing happened? Fixed. While an automatic update waited for you to step away, a click on it did nothing at all. Now a click always asks right away.
+New: Felinquent counts how many of us there are. Once a day the app sends one anonymous ping, with no ID and nothing about you, so the README and the website can show how many people have it and use it. **Share usage counts** in the menu turns it off, and exactly what's sent is in [PRIVACY.md](https://github.com/abozaralizadeh/Felinquent/blob/main/PRIVACY.md).
 
-New: error reports. The first time something goes wrong, the app asks once whether it may send error reports. Say yes and they go by themselves, so problems get fixed without you writing anything. A report has the app version, your system and the end of the app's own log with your name taken out, never your screen. **Send error reports** in the menu turns it off any time.
+A new install now starts at login. If you already turned that off, it stays off.
 
-## More about 0.1.15
+## More about 0.1.16
 
-A report is made when the app crashes, an update doesn't install, the animal's page throws an error or gets stuck while you're using the computer, or the app stopped last time without quitting. At most 5 a day leave your computer, each problem once per version, and they go to a private issue list that only the developer reads. The same on Mac and Windows.
+The ping holds the app version, Mac or Windows, which animal, the chaos level, whether the local model is on, and the date it was last counted. The relay adds 1 to some totals and keeps nothing else, not even your IP address. Setting `DO_NOT_TRACK=1` turns it off too. The totals are live on [the website](https://abozaralizadeh.github.io/Felinquent/#numbers).
+
+There's now a short [privacy notice](https://github.com/abozaralizadeh/Felinquent/blob/main/PRIVACY.md) and [terms of use](https://github.com/abozaralizadeh/Felinquent/blob/main/TERMS.md), and installing means you agree to them. The About window (the version line in the menu) links to the privacy notice. Error reports still only go out after you say yes. The same on Mac and Windows.
 
 ## Updating
 

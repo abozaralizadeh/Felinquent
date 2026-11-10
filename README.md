@@ -1,5 +1,7 @@
 # Felinquent
 
+[![installs](https://img.shields.io/endpoint?url=https%3A%2F%2Ffelinquent-reports.felinquent-report-relay.workers.dev%2Fv1%2Fbadge%2Finstalls)](https://abozaralizadeh.github.io/Felinquent/#numbers) [![weekly users](https://img.shields.io/endpoint?url=https%3A%2F%2Ffelinquent-reports.felinquent-report-relay.workers.dev%2Fv1%2Fbadge%2Fweekly)](https://abozaralizadeh.github.io/Felinquent/#numbers) [![monthly users](https://img.shields.io/endpoint?url=https%3A%2F%2Ffelinquent-reports.felinquent-report-relay.workers.dev%2Fv1%2Fbadge%2Fmonthly)](https://abozaralizadeh.github.io/Felinquent/#numbers)
+
 A cat that lives on your desktop and does whatever it wants.
 
 ![Tabby walks along the top of a code window and lies down, gets petted, gets poked, then gets carried over to a video window](docs/assets/demo.gif)
@@ -36,7 +38,7 @@ Or skip that step and paste this in Terminal. It downloads the same app, checks 
 curl -fsSL https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get-mac.sh | bash
 ```
 
-After that it lives in the menu bar. Pick a character, set the chaos level, give it a treat, throw its toy, pet it, set off the zoomies, send it for a nap, hide it, shoo it for an hour, turn the local model on or off and pick which Ollama model it uses (any you have pulled), make it start at login. A tick shows what's on, and the version at the top opens a little About window. From 0.1.10 it checks GitHub for a new version at launch and every 3 hours and updates itself when you leave the Mac alone for a couple of minutes (turn off "Update automatically" in the menu if you'd rather not; "Check for updates…" asks first). More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
+After that it lives in the menu bar. Pick a character, set the chaos level, give it a treat, throw its toy, pet it, set off the zoomies, send it for a nap, hide it, shoo it for an hour, turn the local model on or off and pick which Ollama model it uses (any you have pulled). It starts at login from the first run (untick Start at login to stop that). A tick shows what's on, and the version at the top opens a little About window. From 0.1.10 it checks GitHub for a new version at launch and every 3 hours and updates itself when you leave the Mac alone for a couple of minutes (turn off "Update automatically" in the menu if you'd rather not; "Check for updates…" asks first). More in [docs/INSTALL.md](docs/INSTALL.md), including how to build it yourself.
 
 ## Install on Windows
 
@@ -50,12 +52,14 @@ irm https://raw.githubusercontent.com/abozaralizadeh/Felinquent/main/scripts/get
 
 The cat stands on your taskbar, and its menu is the icon by the clock: the same menu as on the Mac. Panic is Ctrl+Alt+Shift+P. It updates itself the same way too.
 
+Installing Felinquent, on either system, means you agree to its [terms](TERMS.md) and [privacy notice](PRIVACY.md). The short version is under [Privacy and terms](#privacy-and-terms).
+
 ## What it will and won't do
 
 - It can get in your way, on purpose. It never types, clicks, scrolls, moves your cursor, closes anything or sends anything. A check in CI fails the build if code that fakes input shows up.
 - No screenshots or screen capture, ever. It reads window positions, idle time and whether the camera or mic is on, nothing else.
 - It backs off in meetings, full-screen videos and presentations, and screen sharing, and there's a panic hotkey.
-- Everything runs locally. No accounts, no analytics, no cloud. The one thing it fetches on its own is the update check, a small file from GitHub with nothing about you in it, and you can turn it off. If something breaks, it asks once whether it may send error reports (the version, your system and the end of its own log with your name taken out, never your screen). Say yes and they go by themselves, so problems get fixed without you writing anything. Turn it off in the menu any time. An optional small local model (through [Ollama](https://ollama.com)) plans what the cat does next and gives it thoughts in a little bubble. Turn it on in the menu and, if Ollama or the model is missing, the app offers to set them up (it asks first and shows the sizes). Without it a rules brain does the same job, and every move still happens: the toy, the chase, the potty, all of it.
+- Everything runs locally. No accounts, no cloud. On its own it fetches the update check, a small file from GitHub with nothing about you in it, and you can turn it off. Once a day it also sends an anonymous ping that only adds to the totals in the badges above (more below). If something breaks, it asks once whether it may send error reports (the version, your system and the end of its own log with your name taken out, never your screen). Say yes and they go by themselves, so problems get fixed without you writing anything. Turn it off in the menu any time. An optional small local model (through [Ollama](https://ollama.com)) plans what the cat does next and gives it thoughts in a little bubble. Turn it on in the menu and, if Ollama or the model is missing, the app offers to set them up (it asks first and shows the sizes). Without it a rules brain does the same job, and every move still happens: the toy, the chase, the potty, all of it.
 
 The full list is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).
 
@@ -106,6 +110,12 @@ The cat's day comes in bouts: a long rest, a stroll, some play, a visit to you, 
 ## Contributing
 
 Issues and pull requests are welcome. Keep the hard lines: no synthetic input, no screen capture, nothing destructive to other apps, and the governor approves every action. Run the checks above before you open a pull request. A new behavior needs a row in the behavior catalog and a test. The details, and what you agree to when you send code, are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Privacy and terms
+
+Felinquent sends one small ping a day so the badges at the top can count installs and users. It holds the app version, Mac or Windows, which animal, the chaos level, whether the local model is on, and the date it was last counted. There's no ID in it, nothing about you, your screen, your windows or your files, and the relay only adds it to totals. Your IP address isn't stored. **Share usage counts** in the menu turns it off, and so does setting `DO_NOT_TRACK=1`. The totals are public on [the website](https://abozaralizadeh.github.io/Felinquent/#numbers).
+
+Error reports are separate and only go out after you say yes. Updates come from GitHub. The full list of what leaves your computer, and what never does, is in [PRIVACY.md](PRIVACY.md). By installing or using Felinquent you agree to [TERMS.md](TERMS.md) and to that notice.
 
 ## License
 

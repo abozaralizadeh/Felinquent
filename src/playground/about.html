@@ -69,6 +69,8 @@
     @media (prefers-color-scheme: dark) { button.star { color: #1B120C; } }
     button.star:hover { filter: brightness(1.06); }
     .ask { margin: 10px 0 0; color: var(--ink-soft); font-size: 12.5px; max-width: 280px; }
+    button.link { border: 0; background: none; padding: 0; color: var(--ink-soft); font: inherit; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
+    button.link:hover { color: var(--ink); }
     .small { margin-top: auto; padding-top: 14px; color: var(--ink-soft); font-size: 11.5px; }
   </style>
 </head>
@@ -83,7 +85,7 @@
     <button id="site" type="button">Visit the website</button>
   </div>
   <p class="ask">If it made you smile, a star on GitHub really helps, and so does telling a friend.</p>
-  <p class="small">Free for non-commercial use.<br />Runs on your computer only.</p>
+  <p class="small">Free for non-commercial use.<br />Counts installs anonymously, once a day. <button class="link" id="privacy" type="button">Privacy</button></p>
   <script type="module" src="./about.ts"></script>
 </body>
 </html>

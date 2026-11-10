@@ -1,6 +1,7 @@
 //! The About window (ADR-062): the version line at the top of the menu opens it. Made with love by
 //! Abozar, with a button that opens the code on GitHub (asking for a star) and one for the website.
-//! The buttons open your browser at two fixed addresses; the app itself sends nothing.
+//! The buttons, and the Privacy link (ADR-065), open your browser at three fixed addresses; the
+//! window itself sends nothing.
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -8,6 +9,7 @@ use crate::logfile;
 
 const SITE: &str = "https://abozaralizadeh.github.io/Felinquent/";
 const REPO: &str = "https://github.com/abozaralizadeh/Felinquent";
+const PRIVACY: &str = "https://github.com/abozaralizadeh/Felinquent/blob/main/PRIVACY.md";
 
 /// Opens the About window, or brings it to the front when it is open already.
 pub fn show(app: &AppHandle) {
@@ -55,12 +57,13 @@ fn activate(app: &AppHandle) {
     let _ = app;
 }
 
-/// The page's two buttons, Escape, and "shown" when the page has loaded (only logged).
+/// The page's two buttons, its Privacy link, Escape, and "shown" when the page has loaded (only logged).
 #[tauri::command]
 pub fn about_action(app: AppHandle, what: String) {
     match what.as_str() {
         "site" => open_url(SITE),
         "repo" => open_url(REPO),
+        "privacy" => open_url(PRIVACY),
         "close" => {
             if let Some(w) = app.get_webview_window("about") {
                 let _ = w.close();
@@ -71,7 +74,7 @@ pub fn about_action(app: AppHandle, what: String) {
     logfile::write(&format!("about: {what}"));
 }
 
-/// Opens one of the two fixed addresses in the default browser.
+/// Opens one of the three fixed addresses in the default browser.
 fn open_url(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();

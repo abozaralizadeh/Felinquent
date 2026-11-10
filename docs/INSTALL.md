@@ -45,16 +45,18 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 | Shoo for 1 hour | Keeps it away for an hour. Click again to call it back early |
 | Use the local model | Lets a small local model pick what the cat wants to do. Needs [Ollama](https://ollama.com) with `gemma3:1b`. If they're missing when you turn it on, the app offers to set them up: it asks first, shows the sizes (Ollama about 230 MB, the model about 815 MB), checks the download and shows the progress right here in the menu. Without it, or with this off, a rules brain does the same job |
 | Model | Every model your Ollama has, the one in use ticked. Pick any of them: `ollama pull <name>` in Terminal, and it shows up here within two minutes. Small ones (1 to 4B) answer in time; a big one gets 20 s per answer and the rules fill in while it thinks |
-| Start at login | Opens Felinquent when you log in |
+| Start at login | Opens Felinquent when you log in. On from the first run since 0.1.16; untick it and it stays off, updates included |
 | Update automatically | Looks for a new version at launch and every 3 hours and puts it in place by itself when you leave the Mac alone for a couple of minutes. On by default |
+| Send error reports | Sends a cleaned-up report when something breaks. It asks the first time; this switches it later |
+| Share usage counts | One anonymous ping a day, so the project can count installs and users. No ID and nothing about you, see [PRIVACY.md](../PRIVACY.md). On by default |
 | Forget everything it learned | Wipes its memory of you |
 | Open logs folder | The logs are size-limited and kept in `~/Library/Logs/Felinquent/` |
 
 Right-click the animal for a shorter menu right there (its actions are in the menu bar menu too): Give a treat, Throw its toy, Pet it, Zoomies!, Nap time, Character, Chaos level, Shoo for 1 hour and Panic. They start at once, with or without the local model. The click stays with the animal: the app under it doesn't get it and keeps the keyboard. In the browser playground the same menu opens on a right-click too.
 
-No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. The only thing it fetches from the internet on its own is the update check, one small file from GitHub, and you can turn that off. Setting up the local model downloads Ollama and the model, but only after you say yes. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
+No macOS permission is needed. It doesn't ask for Screen Recording or Accessibility. On its own it fetches the update check, one small file from GitHub, and sends one anonymous usage count a day; you can turn both off. Installing it means you agree to the [terms](../TERMS.md) and the [privacy notice](../PRIVACY.md). Setting up the local model downloads Ollama and the model, but only after you say yes. Its settings and memory are in `~/Library/Application Support/app.felinquent/`.
 
-To remove it, quit it from the menu and drag it from Applications to the Trash. Turn off **Start at login** first if you turned it on.
+To remove it, quit it from the menu and drag it from Applications to the Trash. Turn off **Start at login** first (it's on from the first run), or delete `~/Library/LaunchAgents/app.felinquent.plist` afterwards.
 
 ## Mac: build it yourself
 

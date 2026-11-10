@@ -15,6 +15,8 @@ mod report;
 mod sensors;
 #[cfg(any(target_os = "macos", windows))]
 mod update;
+#[cfg(any(target_os = "macos", windows))]
+mod usage;
 #[cfg(windows)]
 mod winui;
 
@@ -181,6 +183,22 @@ async fn show_choices(app: AppHandle, choices: Choices) {
 }
 
 /// Builds before 0.1.0 used the identifier app.felinquent.spike. Bring their settings and memory along once.
+/// Start at login is on for a new install (ADR-066): the first time the app runs on this computer,
+/// with nothing in its folder yet. Someone who has run it before keeps what they chose, so an
+/// update never turns it back on. Debug builds leave it alone unless FELINQUENT_LOGIN_TEST is set.
+#[cfg(any(target_os = "macos", windows))]
+fn login_on_first_run(app: &AppHandle) {
+    let Ok(dir) = app.path().app_config_dir() else { return };
+    let empty = |p: &std::path::Path| std::fs::read_dir(p).map(|mut d| d.next().is_none()).unwrap_or(true);
+    let old = dir.parent().map(|p| p.join("app.felinquent.spike"));
+    let fresh = empty(&dir) && old.as_deref().is_none_or(empty);
+    if !fresh || (cfg!(debug_assertions) && std::env::var("FELINQUENT_LOGIN_TEST").is_err()) || login::is_on() {
+        return;
+    }
+    let on = login::set(true);
+    logfile::write(&format!("first run: start at login {}", if on { "on" } else { "couldn't be turned on" }));
+}
+
 fn move_old_state(app: &AppHandle) {
     let Ok(dir) = app.path().app_config_dir() else { return };
     let Some(old) = dir.parent().map(|p| p.join("app.felinquent.spike")) else { return };
@@ -508,6 +526,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     // Error reports (ADR-064): asked once, then sent by themselves while this is ticked.
     #[cfg(any(target_os = "macos", windows))]
     let reports = report::menu_item(app)?;
+    // Usage counts (ADR-065): on by default, anonymous, one ping a day while this is ticked.
+    #[cfg(any(target_os = "macos", windows))]
+    let usage = usage::menu_item(app)?;
     let forget = MenuItem::with_id(app, "forget", "Forget everything it learned", true, None::<&str>)?;
     let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Felinquent", true, None::<&str>)?;
@@ -519,7 +540,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     items.push(&update);
     items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &line2, &model, &llm]);
     #[cfg(any(target_os = "macos", windows))]
-    items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate, &reports]);
+    items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate, &reports, &usage]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
 
@@ -545,6 +566,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         id @ ("update" | "autoupdate") => update::on_menu(app, id),
         #[cfg(any(target_os = "macos", windows))]
         "reports" => report::on_menu(),
+        #[cfg(any(target_os = "macos", windows))]
+        "usage" => usage::on_menu(),
         // The rest is the page's business. It answers with show_choices, which moves the ticks.
         other => control(app, other),
     })
@@ -753,9 +776,14 @@ fn main() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // Before anything writes to the app's folder: an empty one means a new install.
+            #[cfg(any(target_os = "macos", windows))]
+            login_on_first_run(app.handle());
             // First, while the end of the log is still last run's (report.rs looks at how it ended).
             #[cfg(any(target_os = "macos", windows))]
             report::init(app.handle());
+            #[cfg(any(target_os = "macos", windows))]
+            usage::init(app.handle());
             move_old_state(app.handle());
             build_tray(app)?;
             #[cfg(any(target_os = "macos", windows))]
