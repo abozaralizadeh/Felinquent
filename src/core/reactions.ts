@@ -1,8 +1,8 @@
-import type { Beat } from "./executor";
+import { SHAKE_SEC, THUMP_AT, type Beat } from "./executor";
 import type { Kind } from "./species";
 import type { Rng } from "./rng";
 import type { Mood } from "./types";
-import { doing as d, go, leap, paced } from "./scenes";
+import { doing as d, go, HOLD, leap, MIN_HOLD, paced } from "./scenes";
 
 /** What a click on the animal sets off. */
 export interface Reaction {
@@ -41,6 +41,13 @@ interface Variant {
   make: Maker;
 }
 
+/** A whole shake, head to tail (paced() stretches a pose by HOLD, so it is written shorter). */
+const shake = (): Beat => d("shake_off", SHAKE_SEC / HOLD, undefined, { fx: "shake" }, 0.3);
+/** One stamp of a rabbit's hind foot: up on alert, and the thud the first time the foot comes down.
+ * paced() holds it MIN_HOLD, and a second "thump" right after keeps the same clock (its thud is at
+ * THUMP_AT[1] less that). */
+const stamp = (): Beat => d("thump", THUMP_AT[0] / HOLD, "cursor", { fx: "thud" }, THUMP_AT[0]);
+
 const r = (name: string, mood: Mood, effect: Reaction["effect"], script: Beat[], extra: Partial<Reaction> = {}): Reaction => ({ name, mood, effect, script: paced(script), ...extra });
 
 const CAT: Record<number, Variant[]> = {
@@ -70,6 +77,7 @@ const CAT: Record<number, Variant[]> = {
 const DOG: Record<number, Variant[]> = {
   0: [
     { name: "yip", fit: () => 2, make: () => r("yip", "playful", "play", [d("surprise", 0.3, "cursor"), d("bark", 1.2, "cursor"), d("happy", 2.2)]) },
+    { name: "wag", fit: (i) => (i.trust >= 40 ? 3 : 1.5), make: () => r("wag", "content", "pet", [d("surprise", 0.3, "cursor"), d("wag", 1.8, "cursor"), d("happy", 1.4, "cursor")], { thought: "you! it's you!" }) },
     { name: "play bow", fit: () => 2.5, make: () => r("play bow", "playful", "play", [d("play_bow", 1.6, "cursor"), d("bark", 0.9, "cursor"), leap("ahead", 50, 45, "bounce"), d("happy", 1.5)]) },
     { name: "sit pretty", fit: () => 2, make: () => r("sit pretty", "content", "pet", [d("curious", 0.8, "cursor"), d("beg", 2.6, "cursor"), d("love", 1.5, "cursor")]) },
     { name: "hop hop", fit: () => 1.5, make: () => r("hop hop", "playful", "play", [d("surprise", 0.3, "cursor"), leap("away", 50, 50, "bounce"), leap("cursor", 50, 50, "bounce"), d("bark", 1)]) },
@@ -79,6 +87,7 @@ const DOG: Record<number, Variant[]> = {
     { name: "chase me", fit: () => 3, make: () => r("chase me", "playful", "play", [d("play_bow", 1, "cursor"), go("away", 260, "run"), d("bark", 0.8, "cursor"), go("cursor", 300, "run"), d("happy", 1.5)]) },
     { name: "zoomies", fit: () => 2.5, make: () => r("zoomies", "playful", "play", [d("bark", 0.8, "cursor"), go("away", 220, "run"), go("cursor", 450, "run"), go("away", 260, "run"), d("giggle", 1.8)]) },
     { name: "spin", fit: () => 2, make: () => r("spin", "playful", "play", [d("chase_tail", 3.5), d("dazed", 1.4), d("happy", 1.5)]) },
+    { name: "shake it off", fit: () => 2, make: () => r("shake it off", "playful", "play", [d("surprise", 0.3, "cursor"), shake(), d("wag", 1.4, "cursor")], { thought: "shook it off. again?" }) },
   ],
   2: [
     { name: "belly rub", fit: () => 3, make: () => r("belly rub", "content", "pet", [d("play_bow", 0.8, "cursor"), d("belly", 3.2), d("love", 1.6)]) },
@@ -95,6 +104,7 @@ const FOX: Record<number, Variant[]> = {
     { name: "pounce", fit: () => 3, make: () => r("pounce", "playful", "play", [d("curious", 1.4, "cursor"), d("pounce", 1, "cursor"), leap("cursor", 80, 55), d("swat", 0.8, "cursor"), d("proud", 1.2)]) },
     { name: "yip", fit: () => 2, make: () => r("yip", "playful", "play", [d("surprise", 0.3, "cursor"), d("bark", 1, "cursor"), d("happy", 1.8)]) },
     { name: "sniff", fit: () => 2, make: () => r("sniff", "curious", "none", [d("curious", 1, "cursor"), d("sniff", 1.4, "cursor"), d("blink", 1)]) },
+    { name: "listen", fit: () => 2.5, make: () => r("listen", "curious", "play", [d("surprise", 0.3, "cursor"), d("listen", 2.2, "cursor"), d("pounce", 0.9, "cursor"), leap("cursor", 70, 60), d("sniff", 1.2), d("proud", 1)], { thought: "i heard something under your click." }) },
   ],
   1: [
     { name: "tease", fit: () => 3, make: () => r("tease", "playful", "play", [d("play_bow", 0.9, "cursor"), go("away", 260, "run"), d("bark", 0.8, "cursor"), d("shy", 1.4, "cursor"), go("cursor", 200, "walk")]) },
@@ -114,9 +124,10 @@ const RACCOON: Record<number, Variant[]> = {
     { name: "chatter", fit: () => 2.5, make: () => r("chatter", "curious", "none", [d("curious", 1, "cursor"), d("chatter", 2.2, "cursor"), d("blink", 1)]) },
     { name: "got anything", fit: () => 2, make: () => r("got anything", "curious", "play", [d("surprise", 0.3, "cursor"), d("beg", 2.4, "cursor"), d("gift", 2)]) },
     { name: "sniff", fit: () => 1.5, make: () => r("sniff", "curious", "none", [d("sniff", 1.6, "cursor"), d("curious", 1)]) },
+    { name: "inspect", fit: () => 2, make: () => r("inspect", "curious", "none", [d("surprise", 0.3, "cursor"), d("inspect", 2, "cursor"), d("chatter", 1.2, "cursor")], { thought: "checked my hands. you gave me nothing." }) },
   ],
   1: [
-    { name: "wash up", fit: () => 2.5, make: () => r("wash up", "smug", "annoy", [d("annoyed", 1, "cursor"), d("groom", 3.4), d("chatter", 1.4, "cursor")], { sulkSec: 20 }) },
+    { name: "wash up", fit: () => 2.5, make: () => r("wash up", "smug", "annoy", [d("annoyed", 1, "cursor"), d("wash_hands", 1.4, undefined, { fx: "spot", kind: "pool", ahead: 0.45 }, 0.05), d("wash_hands", 1.6, undefined, { fx: "splash" }, 0.3), d("inspect", 1.2), d("chatter", 1.2, "cursor")], { sulkSec: 20, thought: "washing you off." }) },
     { name: "steal", fit: () => 2.5, make: () => r("steal", "smug", "play", [d("sniff", 1.2, "cursor"), d("gift", 1.2), go("away", 280, "run"), d("proud", 1.5)], { thought: "this is mine now." }) },
   ],
   2: [
@@ -131,12 +142,13 @@ const RACCOON: Record<number, Variant[]> = {
 const RABBIT: Record<number, Variant[]> = {
   0: [
     { name: "freeze", fit: () => 2.5, make: () => r("freeze", "curious", "none", [d("startled", 0.4, "cursor"), d("stare", 1.6, "cursor"), d("sniff", 1.4, "cursor")]) },
-    { name: "binky", fit: (i) => (i.energy > 0.4 ? 2 : 0.5), make: () => r("binky", "playful", "play", [d("surprise", 0.3, "cursor"), leap("ahead", 40, 50, "bounce"), d("happy", 1.4)], { thought: "binky. you didn't see that." }) },
+    { name: "binky", fit: (i) => (i.energy > 0.4 ? 2 : 0.5), make: () => r("binky", "playful", "play", [d("surprise", 0.3, "cursor"), leap("ahead", 40, 55, "binky_air"), d("happy", 1.4)], { thought: "binky. you didn't see that." }) },
+    { name: "flop", fit: (i) => (i.trust >= 55 && !i.asleep ? 2 : 0), make: () => r("flop", "content", "pet", [d("sniff", 0.8, "cursor"), d("flop", 3.2), d("blink", 1.2)], { thought: "flop. that means i like it here." }) },
     { name: "nose bump", fit: (i) => (i.trust >= 45 ? 3 : 0), make: () => r("nose bump", "content", "pet", [d("sniff", 1, "cursor"), d("headbutt", 2.2, "cursor"), d("loaf", 2)]) },
     { name: "bolt", fit: () => 1.5, make: () => r("bolt", "curious", "none", [d("startled", 0.4, "cursor"), go("away", 160, "run"), d("shy", 1.6, "cursor")]) },
   ],
   1: [
-    { name: "thump", fit: () => 3, make: () => r("thump", "grumpy", "annoy", [d("annoyed", 1, "cursor"), d("angry", 0.8, "cursor"), d("turn_away", 4, "away")], { sulkSec: 40, thought: "thump. that means no." }) },
+    { name: "thump", fit: () => 3, make: () => r("thump", "grumpy", "annoy", [d("annoyed", 0.6, "cursor"), stamp(), d("thump", 0.95, "cursor", { fx: "thud" }, THUMP_AT[1] - Math.max(THUMP_AT[0], MIN_HOLD)), d("turn_away", 4, "away")], { sulkSec: 40, thought: "thump. that means no." }) },
     { name: "hop off", fit: () => 2, make: () => r("hop off", "grumpy", "annoy", [d("startled", 0.4, "cursor"), go("away", 180, "run"), d("loaf", 3)], { sulkSec: 30 }) },
     { name: "dig it off", fit: () => 1.5, make: () => r("dig it off", "smug", "annoy", [d("annoyed", 0.8, "cursor"), d("dig", 2), d("groom", 2.4)], { sulkSec: 20 }) },
   ],
@@ -153,14 +165,14 @@ const RABBIT: Record<number, Variant[]> = {
 /** A squirrel chatters and scolds, zips off and back, begs, and buries its annoyance. */
 const SQUIRREL: Record<number, Variant[]> = {
   0: [
-    { name: "chatter", fit: () => 2.5, make: () => r("chatter", "curious", "none", [d("curious", 0.8, "cursor"), d("chatter", 2, "cursor"), d("look", 1)]) },
+    { name: "chatter", fit: () => 2.5, make: () => r("chatter", "curious", "none", [d("curious", 0.8, "cursor"), d("chatter", 2, "cursor"), d("flick", 1, "cursor")]) },
     { name: "zip", fit: (i) => (i.energy > 0.4 ? 2.5 : 0.6), make: () => r("zip", "playful", "play", [d("startled", 0.3, "cursor"), go("away", 200, "run"), go("cursor", 160, "run"), d("proud", 1.2)]) },
     { name: "beg", fit: () => 1.8, make: () => r("beg", "curious", "play", [d("sniff", 0.8, "cursor"), d("beg", 2.4, "cursor"), d("gift", 1.6)]) },
     { name: "pounce", fit: (i) => (i.energy > 0.5 ? 1.5 : 0), make: () => r("pounce", "playful", "play", [d("pounce", 1, "cursor"), leap("cursor", 70, 50), d("swat", 0.6, "cursor"), d("chatter", 1.2)]) },
   ],
   1: [
     { name: "scold", fit: () => 3, make: () => r("scold", "grumpy", "annoy", [d("annoyed", 0.8, "cursor"), d("chatter", 1.6, "cursor"), d("puffed", 0.5, "cursor"), d("turn_away", 3, "away")], { sulkSec: 40, thought: "chk chk chk. i'm telling you off." }) },
-    { name: "tail flick", fit: () => 2, make: () => r("tail flick", "grumpy", "annoy", [d("chatter", 1.2, "cursor"), leap("away", 60, 50, "bounce"), d("chatter", 1.2, "cursor")], { sulkSec: 30 }) },
+    { name: "tail flick", fit: () => 2, make: () => r("tail flick", "grumpy", "annoy", [d("flick", 1.2, "cursor"), d("chatter", 1, "cursor"), leap("away", 60, 50, "bounce"), d("flick", 1.2, "cursor")], { sulkSec: 30, thought: "see the tail? that's a warning." }) },
     { name: "bury it", fit: () => 1.5, make: () => r("bury it", "smug", "annoy", [d("annoyed", 0.8, "cursor"), d("dig", 2.2), d("proud", 1.2)], { sulkSec: 20 }) },
   ],
   2: [
@@ -178,11 +190,14 @@ const CHIHUAHUA: Record<number, Variant[]> = {
     { name: "yap", fit: () => 2.5, make: () => r("yap", "playful", "play", [d("surprise", 0.3, "cursor"), d("bark", 1.6, "cursor"), d("happy", 1.6)]) },
     { name: "spooked yap", fit: () => 2, make: () => r("spooked yap", "curious", "none", [d("startled", 0.5, "cursor"), leap("away", 40, 30), d("bark", 1.4, "cursor"), d("shy", 1.2, "cursor")]) },
     { name: "sit pretty", fit: () => 2, make: () => r("sit pretty", "content", "pet", [d("curious", 0.6, "cursor"), d("beg", 2.4, "cursor"), d("love", 1.4, "cursor")]) },
+    { name: "paw up", fit: () => 2, make: () => r("paw up", "curious", "pet", [d("curious", 0.6, "cursor"), d("paw_up", 2.2, "cursor"), d("shy", 1.2, "cursor")]) },
     { name: "play bow", fit: () => 1.5, make: () => r("play bow", "playful", "play", [d("play_bow", 1.2, "cursor"), d("bark", 1, "cursor"), leap("ahead", 40, 40, "bounce"), d("happy", 1.2)]) },
   ],
   1: [
     { name: "yap yap", fit: () => 3, make: () => r("yap yap", "playful", "play", [d("bark", 1, "cursor"), d("howl", 2), d("bark", 0.8, "cursor")]) },
     { name: "zoomies", fit: () => 2, make: () => r("zoomies", "playful", "play", [d("bark", 0.6, "cursor"), go("away", 200, "run"), go("cursor", 260, "run"), d("giggle", 1.4)]) },
+    { name: "shiver", fit: () => 2, make: () => r("shiver", "curious", "none", [d("startled", 0.4, "cursor"), d("shiver", 1.6, undefined, { fx: "shiver" }, 0), d("paw_up", 1.2, "cursor")], { thought: "not scared. cold." }) },
+    { name: "shake it off", fit: () => 1.5, make: () => r("shake it off", "grumpy", "none", [d("annoyed", 0.6, "cursor"), shake(), d("bark", 0.9, "cursor")]) },
     { name: "growl", fit: () => 1.5, make: () => r("growl", "grumpy", "annoy", [d("annoyed", 0.8, "cursor"), d("hiss", 0.9, "cursor"), d("bark", 1, "cursor")], { sulkSec: 20 }) },
   ],
   2: [

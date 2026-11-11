@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHARACTERS } from "../src/core/characters";
 import { GAIT_STRIDE } from "../src/playground/gaits";
-import { gazeShot, gazeTarget, groomShot, restLook, LICK_HZ, lengthOf, pawShot, planFor, poseShot, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
+import { gazeShot, gazeTarget, groomShot, restLook, LICK_HZ, lengthOf, OWN_KEYS, pawShot, planFor, poseShot, SCRATCH_HZ, scratchProgram, scratchShot, SPRITE_KEYS, turnShot, type Shot } from "../src/playground/sprites";
+import { OWN_ANIMS } from "../src/core/executor";
 import { TURN_SEC, type Anim } from "../src/core/executor";
 import { SCRATCH_SEC } from "../src/core/scenes";
 
@@ -36,26 +37,34 @@ describe("sprite art", () => {
   }, 30_000);
 
   it("the programs of the poses (a howl, a bark, a hop for joy...) only use frames that exist", () => {
-    const keys = new Set<string>(SPRITE_KEYS);
     const bad = new Set<string>();
-    for (const a of ANIMS)
-      for (const c of CHARACTERS)
+    for (const a of [...ANIMS, ...OWN_ANIMS])
+      for (const c of CHARACTERS) {
+        // Each animal has the shared frames and its own (ADR-067): another animal's own move is drawn
+        // with a near one of its own, never with frames it doesn't have.
+        const keys = new Set<string>([...SPRITE_KEYS, ...(OWN_KEYS[c.id] ?? [])]);
         for (let e = 0; e < 12; e += 0.03) {
           const s = poseShot(a, c.id, e);
           if (!s) continue;
-          for (const k of [s.key, s.next]) if (k && !keys.has(k)) bad.add(`${a}: ${k}`);
+          for (const k of [s.key, s.next]) if (k && !keys.has(k)) bad.add(`${c.id} ${a}: ${k}`);
         }
-    for (let e = 0; e < 4; e += 0.02) for (const k of ["push", "swat"] as const) if (!keys.has(pawShot(k, e).key)) bad.add(`${k}: ${pawShot(k, e).key}`);
+      }
+    const shared = new Set<string>(SPRITE_KEYS);
+    for (let e = 0; e < 4; e += 0.02) for (const k of ["push", "swat"] as const) if (!shared.has(pawShot(k, e).key)) bad.add(`${k}: ${pawShot(k, e).key}`);
     expect([...bad]).toEqual([]);
   });
 
   it("the programs (washing, the ear scratch, turning round) only use frames that exist", () => {
-    const keys = new Set<string>(SPRITE_KEYS);
+    let keys = new Set<string>(SPRITE_KEYS);
     const bad = new Set<string>();
     const seen = (s: Shot): void => {
       for (const k of [s.key, s.next]) if (k && !keys.has(k)) bad.add(k);
     };
-    for (const c of CHARACTERS) for (let e = 0; e < 120; e += 0.05) seen(groomShot(c.id, e, 0.37));
+    for (const c of CHARACTERS) {
+      keys = new Set<string>([...SPRITE_KEYS, ...(OWN_KEYS[c.id] ?? [])]);
+      for (let e = 0; e < 120; e += 0.05) seen(groomShot(c.id, e, 0.37));
+    }
+    keys = new Set<string>(SPRITE_KEYS);
     for (let e = 0; e < SCRATCH_SEC + 1; e += 0.02) seen(scratchShot(e, 0.61));
     for (let u = 0; u <= 1; u += 0.01) (seen(turnShot("stand", u)), seen(turnShot("sit", u)));
     expect([...bad]).toEqual([]);
@@ -198,8 +207,9 @@ describe("washing", () => {
         const order = regions(c.id, seed, 60).map((x) => x.r).join(" ");
         // A bout: paw to mouth, paw licks, wipes over the ear and down the cheek (back to the paw
         // between them), the nose, the chest, a hind leg, a content blink. Then the next bout.
-        const bout = "1 2( 3 4 5( 2)?)* 6 7 8 9";
-        expect(order, `${c.id} ${seed}: ${order}`).toMatch(new RegExp(`^${bout}( 1 2( 3 4 5( 2)?)* 6 7 8 9)*( 1( 2( 3( 4( 5( 2)?)?)?)?)?)*`));
+        // A rabbit pulls an ear down and licks it (0) before the nose (ADR-067).
+        const bout = "1 2( 3 4 5( 2)?)*( 0)? 6 7 8 9";
+        expect(order, `${c.id} ${seed}: ${order}`).toMatch(new RegExp(`^${bout}( ${bout})*( 1( 2( 3( 4( 5( 2)?)?)?)?)?)*`));
       }
   });
 

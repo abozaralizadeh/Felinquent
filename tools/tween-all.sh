@@ -212,4 +212,7 @@ for dir in "${dirs[@]}"; do
   $T "$dir" 2 loop beg1 beg2
   $T "$dir" 2 loop headbutt1 headbutt2
   $T "$dir" 2 once proud proud2
+
+  # Each animal's own moves (ADR-067).
+  tools/tween-own.sh "$dir"
 done

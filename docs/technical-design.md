@@ -300,6 +300,8 @@ It runs twice: once to filter `options`, once to validate the chosen intent. It 
 | `invite_play` | B-55 | 1 | ≤ 20 s | Energy > 0.5, cursor within 1000 px |
 | `yawn`, `look_around` | B-56, B-57 | 0 | ≤ 20 s | none |
 | `pee`, `poop` | B-58, B-59 | 1 | 8 to 40 s / 10 to 60 s | Normal or gremlin. Only offered when that need is full (`Mind.potty`, 1 or more). Target here, a corner or the Dock, and at gremlin often your focused window. Blocked by every respect mode like any annoy-1 move; it asks again 45 s later. Puddles and piles are drawn on the overlay only (`Mess.spots`) |
+| `shake_off`, `chew`, `burrow`, `shiver`, `mouse`, `cache`, `wash`, `binky`, `thump`, `flop`, `nut`, `cling` | B-60 to B-66, B-68 to B-70, B-72, B-73 | 0 | 6 to 600 s (per move in `behaviors.ts`) | Only for the animals that list it in `Instinct.own` (`species.ts`, ADR-067); `OWN_INTENTS` are taken off every other animal's menu. `cling` needs a window at least 2.2 animals tall and the end of its top, `chew` and `cache` bring its toy out first. Effects are drawn on the overlay only: fur, dust, drops, crumbs and the marks of a shiver or a thump (`Mess.puffs`), the blanket and the held find (`own` props), the mound, the pool and the shells (`Mess.spots`) |
+| `raid`, `nibble` | B-67, B-71 | 1 | 15 to 60 s / 6 to 25 s | Normal or gremlin, the raccoon and the rabbit only. `raid` goes to the Dock, `nibble` to a window top (bite marks are decals on that window, a few minutes) |
 | `leave` | respect modes | 0 | n/a | Always allowed |
 
 **Other rules:**

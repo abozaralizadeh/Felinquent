@@ -1,4 +1,4 @@
-import { TURN_SEC, type Anim } from "../core/executor";
+import { OWN_ANIMS, SHAKE_SEC, TURN_SEC, type Anim } from "../core/executor";
 import { SCRATCH_SEC } from "../core/scenes";
 import { GAIT_STRIDE } from "./gaits";
 import { GROUND } from "./ground";
@@ -66,13 +66,31 @@ const LICK = ["lick1", "lick2", "lick3", "lick4", "lick5", "chest1", "chest2", "
  * kicks back); a hind paw shaken; and a sheepish look at you in the middle of a poop.
  */
 const POTTY = ["pee1", "pee2", "poop1", "poop2", "pottyback", "cover1", "cover2", "pawshake", "sheepish"] as const;
+/**
+ * Each animal's own moves (ADR-067, the <id>-sig sheets). Only that animal has these drawings, and
+ * only its set loads them (OWN_KEYS). The dog: a shake head to tail (three twists and the fluffed
+ * end), chewing its toy lying down (mouth shut, chewing with eyes shut, a look up), the tail wagging.
+ * The chihuahua shakes too (no front view), and has a paw up standing and sitting, a shiver, and
+ * under its blanket: ears and nose, peeking out, asleep.
+ */
+const OWN_DOG = ["dshake1", "dshake2", "dshake3", "dshake4", "chew1", "chew2", "chew3", "wag1", "wag2", "wag3"] as const;
+const OWN_CHIHUAHUA = ["pawup", "pawup_sit", "shiver", "blanket1", "blanket2", "blanket3"] as const;
+/** The fox mousing: head down listening, tilted; the leap up, at the top, diving; in the ground; out; pushing earth with the nose. */
+const OWN_FOX = ["listen1", "listen2", "mouse_up", "mouse_top", "mouse_dive", "mouse_in", "mouse_out", "nosepush1", "nosepush2"] as const;
+/** The raccoon: hands in the water three ways, looking at its hands, two ways of going through a box, a toss over the shoulder, a find at its chest and nibbled. */
+const OWN_RACCOON = ["wash1", "wash2", "wash3", "inspect", "rummage1", "rummage2", "toss", "hold1", "hold2"] as const;
+/** The rabbit: the binky's other twist, up on alert and the stamp, the flop over and lying flat, nibbling, an ear pulled down and licked. */
+const OWN_RABBIT = ["binky2", "thump1", "thump2", "flop1", "flop2", "nibble1", "nibble2", "earwash1", "earwash2"] as const;
+/** The squirrel: a nut at the mouth and nibbled, held at the chest, the cheeks stuffed, patting earth down, a flick of the tail, on the side of a window head up and head down. */
+const OWN_SQUIRREL = ["nut1", "nut2", "nut3", "cheeks", "pat1", "pat2", "flick", "cling_up", "cling_down"] as const;
 
 type Drawn =
   | (typeof BASE)[number] | (typeof WALK)[number] | (typeof RUN)[number] | (typeof FACE)[number] | (typeof ACTION)[number] | (typeof LIFE)[number]
   | (typeof EXTRA)[number] | (typeof GROOM)[number] | (typeof SPIN)[number] | (typeof SEQ)[number] | (typeof TRANS)[number] | (typeof REACT)[number]
   | (typeof PLAY)[number] | (typeof SCRATCH)[number] | (typeof TURN)[number] | (typeof PAW)[number] | (typeof LOOK)[number] | (typeof LOOKSTAND)[number]
   | (typeof LEDGE)[number] | (typeof RESTING)[number] | (typeof JOYFUL)[number] | (typeof NOSE)[number] | (typeof VOICE)[number] | (typeof MOOD)[number] | (typeof FEEL)[number]
-  | (typeof GAZE)[number] | (typeof GAZESTAND)[number] | (typeof LICK)[number] | (typeof POTTY)[number];
+  | (typeof GAZE)[number] | (typeof GAZESTAND)[number] | (typeof LICK)[number] | (typeof POTTY)[number]
+  | (typeof OWN_DOG)[number] | (typeof OWN_CHIHUAHUA)[number] | (typeof OWN_FOX)[number] | (typeof OWN_RACCOON)[number] | (typeof OWN_RABBIT)[number] | (typeof OWN_SQUIRREL)[number];
 /**
  * Frames made from the drawings: `groom1t1` and `groom1t2` sit between groom1 and the frame after it,
  * another letter is a second link out of the same drawing (`groom5u1` leads back to groom2), and
@@ -206,6 +224,63 @@ const MADE: SpriteKey[] = [
 ];
 
 /**
+ * Each animal's own frames (ADR-067): its drawings and the in-betweens tools/tween-own.sh makes. The
+ * links off a drawing all the animals have (sit, stand, loaf) have a tag of their own per animal,
+ * because BETWEEN is one list for every animal.
+ */
+const SHAKE = ["dshake1", "dshake2", "dshake4"] as const;
+const LOAF_CHEW = link("loaf", "chew1", "x");
+const CHEW_LOOP = [...dense(["chew1", "chew2"], 2), "chew1"] as SpriteKey[];
+const CHEW_UP = link("chew1", "chew3", "u");
+const WAG = chain(["wag1", "wag2", "wag3"]);
+const PAWUP_SIT = link("sit", "pawup_sit", "u");
+const SHIVER_PAW = link("shiver", "pawup", "x");
+const PAWUP_DOWN = link("pawup", "sit", "x");
+const PEEK_OUT = link("blanket1", "blanket2");
+const DOZE_OFF = link("blanket1", "blanket3", "u");
+const LISTEN = link("listen1", "listen2");
+const NOSEPUSH_LOOP = [...dense(["nosepush1", "nosepush2"], 2), "nosepush1"] as SpriteKey[];
+const WASH_LOOP = [...dense(["wash1", "wash2", "wash3"], 2), "wash1"] as SpriteKey[];
+const RUMMAGE_LOOP = [...dense(["rummage1", "rummage2"], 2), "rummage1"] as SpriteKey[];
+const HOLD_IN = link("sit", "hold1", "x");
+const HOLD_NIBBLE = link("hold1", "hold2");
+const THUMP_UP = link("stand", "thump1", "u");
+const STAMP = link("thump1", "thump2");
+const NIBBLE_LOOP = [...dense(["nibble1", "nibble2"], 2), "nibble1"] as SpriteKey[];
+const EARWASH = link("earwash1", "earwash2");
+const NUT_IN = link("sit", "nut3", "c");
+const NUT_UP = link("nut3", "nut1");
+const NUT_LOOP = [...dense(["nut1", "nut2"], 2), "nut1"] as SpriteKey[];
+const CHEEKS_IN = link("nut1", "cheeks", "u");
+const PAT_LOOP = [...dense(["pat1", "pat2"], 2), "pat1"] as SpriteKey[];
+export const OWN_KEYS: Readonly<Record<string, readonly SpriteKey[]>> = {
+  biscuit: [...new Set<SpriteKey>([...OWN_DOG, ...LOAF_CHEW, ...CHEW_LOOP, ...CHEW_UP, ...WAG])],
+  chili: [...new Set<SpriteKey>([...SHAKE, ...OWN_CHIHUAHUA, ...PAWUP_SIT, ...SHIVER_PAW, ...PAWUP_DOWN, ...PEEK_OUT, ...DOZE_OFF])],
+  mochi: [...new Set<SpriteKey>([...OWN_FOX, ...LISTEN, ...NOSEPUSH_LOOP])],
+  bandit: [...new Set<SpriteKey>([...OWN_RACCOON, ...WASH_LOOP, ...RUMMAGE_LOOP, ...HOLD_IN, ...HOLD_NIBBLE])],
+  clover: [...new Set<SpriteKey>([...OWN_RABBIT, ...THUMP_UP, ...STAMP, ...NIBBLE_LOOP, ...EARWASH])],
+  hazel: [...new Set<SpriteKey>([...OWN_SQUIRREL, ...NUT_IN, ...NUT_UP, ...NUT_LOOP, ...CHEEKS_IN, ...PAT_LOOP])],
+};
+const OWN_SET = new Map<string, ReadonlySet<string>>(Object.entries(OWN_KEYS).map(([id, keys]) => [id, new Set<string>(keys)]));
+/** The drawing that tells whether an animal has a move of its own, and what the others do instead. */
+const OWN_SIGN: Partial<Record<Anim, [SpriteKey, Anim]>> = {
+  shake_off: ["dshake1", "happy"], chew: ["chew1", "loaf"], wag: ["wag1", "happy"], burrow: ["blanket1", "sleep"], shiver: ["shiver", "puffed"],
+  paw_up: ["pawup_sit", "idle_sit"], listen: ["listen1", "sniff"], mouse_leap: ["mouse_top", "leap"], mouse_in: ["mouse_in", "dig"],
+  mouse_out: ["mouse_out", "idle_sit"], nose_push: ["nosepush1", "dig"], wash_hands: ["wash1", "groom"], inspect: ["inspect", "curious"],
+  rummage: ["rummage1", "dig"], toss: ["toss", "swat"], hold: ["hold1", "beg"], binky_air: ["binky2", "bounce"], thump: ["thump1", "startled"],
+  flop: ["flop1", "sprawl"], nibble: ["nibble1", "eat"], nut: ["nut1", "eat"], cheeks: ["cheeks", "proud"], pat: ["pat1", "dig"],
+  flick: ["flick", "look"], cling: ["cling_up", "dangle"], cling_down: ["cling_down", "dangle"],
+};
+/** The move as this animal can draw it: one of another animal's own moves becomes a near one of its own. */
+export function ownOr(id: string, anim: Anim): Anim {
+  if (!OWN_ANIMS.has(anim)) return anim;
+  const sign = OWN_SIGN[anim];
+  if (!sign) return anim;
+  return OWN_SET.get(id)?.has(sign[0]) ? anim : sign[1];
+}
+const hasOwn = (id: string, key: SpriteKey): boolean => OWN_SET.get(id)?.has(key) ?? false;
+
+/**
  * Cut from the sheets but no longer played: the rigged gaits replaced the drawn walk and run, sitting
  * no longer flicks its tail by swapping drawings, the ear scratch is a sheet of its own now, the paw
  * sheet replaced the two swat drawings, the ledge sheet the one perch drawing, the stalking crouch
@@ -276,7 +351,8 @@ function load(id: string): Promise<void> {
   if (have) return have;
   const img = {} as Record<SpriteKey, HTMLImageElement>;
   // A few hundred frames: ask for them a few at a time (a dev server drops a flood), and retry a failure once.
-  const queue = [...SPRITE_KEYS];
+  const all = [...SPRITE_KEYS, ...(OWN_KEYS[id] ?? [])];
+  const queue = [...all];
   const results: boolean[] = [];
   const worker = async (): Promise<void> => {
     const url = await spriteUrl;
@@ -290,7 +366,7 @@ function load(id: string): Promise<void> {
     // A missing frame is drawn as the drawing it comes from (see frameOf); only without the two
     // base drawings is the set no use.
     const ok = (k: SpriteKey): boolean => (img[k]?.naturalWidth ?? 0) > 0;
-    const missing = SPRITE_KEYS.filter((k) => !ok(k));
+    const missing = all.filter((k) => !ok(k));
     if (missing.length) console.warn(`sprites/${id}: ${missing.length} frames missing, drawn as their nearest drawing: ${missing.slice(0, 12).join(" ")}${missing.length > 12 ? " ..." : ""}`);
     const usable = results.length > 0 && ok("sit") && ok("stand");
     sets.set(id, usable ? { id, img } : "none");
@@ -539,6 +615,7 @@ const CALLING: Seg[] = [move(link("sit", "meow2", "w"), 0.2, false, 1), hold("me
  */
 export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, id = ""): SpritePlan {
   const rabbit = id === "clover";
+  anim = ownOr(id, anim);
   switch (anim) {
     case "keyboard": return { key: pick(GW, phase), group: "walk", head: HEAD_SIDE, motion: M({ breath: 0 }) };
     case "walk": return { key: pick(trot ? GT : GW, phase), group: trot ? "trot" : "walk", head: HEAD_SIDE, motion: M({ breath: 0, lean: trot ? 0.01 : 0 }) };
@@ -619,6 +696,38 @@ export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, 
     // Following the cursor with the head (see gazeShot), or looking round when there is none.
     case "watch": return { key: "sg_ahead", group: "watch", head: HEAD_SIT, motion: REST };
     case "watch_stand": return { key: "tg_ahead", group: "watch_stand", head: HEAD_SIDE, motion: M({ breath: 0.02 }) };
+    // Each animal's own moves (ADR-067). Programs: see poseShot.
+    // About one frame of blend between the fast swaps: crisp, like a cartoon, with no double image.
+    case "shake_off": return { key: "dshake1", group: "shake_off", head: HEAD_SIDE, motion: M({ breath: 0 }), fade: 0.02 };
+    case "wag": return { key: "wag1", group: "wag", head: HEAD_SIDE, motion: M({ breath: 0.03, breathHz: 6 }), fade: 0.2 };
+    case "chew": return { key: "chew1", group: "chew", head: HEAD_LOW, motion: M({ breath: 0.02, breathHz: 2.4 }) };
+    case "burrow": return { key: "blanket1", group: "burrow", head: HEAD_LOW, motion: M({ breath: 0.02, breathHz: 1.6 }), fade: 0.3 };
+    // Trembling: a fine fast shiver all over, the breath quick.
+    case "shiver": return { key: "shiver", group: "shiver", head: HEAD_SIDE, motion: M({ wobble: 0.012, wobbleHz: 17, breath: 0.03, breathHz: 7 }), fade: 0.22 };
+    case "paw_up": return { key: "pawup_sit", group: "paw_up", head: HEAD_SIT, motion: M({ breath: 0.02 }) };
+    case "listen": return { key: "listen1", group: "listen", head: HEAD_LOW, motion: M({ breath: 0.012 }), fade: 0.3 };
+    // The fox's leap: going up, at the top, coming down nose first.
+    case "mouse_leap": return { key: vy < -260 ? "mouse_up" : vy < 380 ? "mouse_top" : "mouse_dive", group: "mouse_air", head: HEAD_SIDE, motion: M({ breath: 0 }), fade: 0.08 };
+    // In the ground to the shoulders, the back end wiggling.
+    case "mouse_in": return { key: "mouse_in", group: "mouse_in", head: HEAD_LOW, motion: M({ wobble: 0.018, wobbleHz: 8, breath: 0 }), fade: 0.06 };
+    case "mouse_out": return { key: "mouse_out", group: "mouse_out", head: HEAD_SIDE, motion: M({ breath: 0.025 }), fade: 0.12 };
+    case "nose_push": return { key: "nosepush1", group: "nose_push", head: HEAD_LOW, motion: M({ breath: 0.02, breathHz: 4 }) };
+    case "wash_hands": return { key: "wash1", group: "wash_hands", head: HEAD_LOW, motion: M({ breath: 0.015 }), fade: 0.3 };
+    case "inspect": return { key: "inspect", group: "inspect", head: HEAD_SIT, motion: REST };
+    case "rummage": return { key: "rummage1", group: "rummage", head: HEAD_LOW, motion: M({ wobble: 0.01, wobbleHz: 6, breath: 0.02, breathHz: 4 }) };
+    case "toss": return { key: "toss", group: "toss", head: HEAD_SIT, motion: STILL, fade: 0.1 };
+    case "hold": return { key: "hold1", group: "hold", head: HEAD_SIT, motion: REST };
+    // The binky's twist: one way going up, the other coming down.
+    case "binky_air": return { key: vy < 0 ? "binky" : "binky2", group: "binky_air", head: HEAD_SIT, motion: M({ breath: 0 }), fade: 0.1 };
+    case "thump": return { key: "thump1", group: "thump", head: HEAD_SIDE, motion: STILL, fade: 0.2 };
+    case "flop": return { key: "flop2", group: "flop", head: HEAD_LOW, motion: M({ breath: 0.025, breathHz: 1.6 }), fade: 0.2 };
+    case "nibble": return { key: "nibble1", group: "nibble", head: HEAD_LOW, motion: M({ breath: 0.015 }) };
+    case "nut": return { key: "nut1", group: "nut", head: HEAD_SIT, motion: M({ breath: 0.02, breathHz: 4 }) };
+    case "cheeks": return { key: "cheeks", group: "cheeks", head: HEAD_SIT, motion: M({ breath: 0.03, breathHz: 5 }) };
+    case "pat": return { key: "pat1", group: "pat", head: HEAD_LOW, motion: M({ breath: 0.02 }) };
+    case "flick": return { key: "stand", group: "flick", head: HEAD_SIDE, motion: M({ breath: 0.02 }), fade: 0.1 };
+    case "cling": return { key: "cling_up", group: "cling", head: HEAD_SIT, motion: M({ breath: 0.02, breathHz: 4 }), fade: 0.12 };
+    case "cling_down": return { key: "cling_down", group: "cling_down", head: HEAD_LOW, motion: M({ breath: 0.02, breathHz: 4 }), fade: 0.12 };
     default: return { ...sitting(t), group: "sit", head: HEAD_SIT, motion: REST };
   }
 }
@@ -689,7 +798,15 @@ export function groomBout(id: string, r: () => number, first: boolean): Seg[] {
       tongue(segs, "paw", between(r, 1, 3), hz, r);
     }
   }
-  segs.push(wipes > 0 ? move(link("groom5", "groom6"), 0.3) : move(link("groom2", "groom6", "u"), 0.4));
+  // A rabbit pulls an ear down with both front paws and licks it (its own drawings, ADR-067).
+  // Then straight on to the nose (a cross-fade, as between any two poses that don't glide).
+  const ears = hasOwn(id, "earwash1") && r() < 0.85;
+  if (ears) {
+    segs.push(hold("earwash1", 0.4));
+    const n = between(r, 3, 6);
+    for (let i = 0; i < n; i++) segs.push(move(EARWASH, 0.28 * (0.9 + 0.2 * r())), move(rev(EARWASH), 0.3 * (0.9 + 0.2 * r())));
+    segs.push(hold("earwash1", 0.35));
+  } else segs.push(wipes > 0 ? move(link("groom5", "groom6"), 0.3) : move(link("groom2", "groom6", "u"), 0.4));
   licks(segs, "groom6", between(r, 1, 3), hz * 1.5, r);
   segs.push(move(link("groom6", "groom7"), 0.45));
   tongue(segs, "chest", between(r, 2, 6), hz, r);
@@ -1039,7 +1156,81 @@ function looped(entry: readonly Seg[], loop: readonly Seg[], e: number): Shot | 
  */
 export function poseShot(anim: Anim, id: string, e: number): Shot | null {
   const yappy = YAPPY.has(id);
+  anim = ownOr(id, anim);
   switch (anim) {
+    case "shake_off": {
+      // Head to tail, the way a wet dog shakes (Dickerson et al. 2012: about 5 twists a second at
+      // this size, faster for a small dog), as cartoon swaps: flow can't follow a whole body
+      // twisting. The dog's ends on the drawing from the front, the fur fluffed out; then pleased.
+      const front = hasOwn(id, "dshake3");
+      const half = 1 / (2 * (front ? 5 : 7));
+      const sh = 0.035;
+      const twist: Seg[] = [];
+      for (let i = 0; i < (front ? 3 : 6); i++) twist.push(hold("dshake1", half, sh), hold("dshake2", half, sh));
+      if (front) twist.push(hold("dshake3", half * 0.9, sh), hold("dshake2", half * 0.9, sh), hold("dshake3", half * 0.9, sh), hold("dshake1", half * 0.9, sh * 0.5));
+      // The fluffed-up end holds until the shake is over (the executor's step is SHAKE_SEC long).
+      const prog = [hold("stand", 0.12), ...twist];
+      prog.push(hold("dshake4", Math.max(0.5, SHAKE_SEC - lengthOf(prog))));
+      return play(prog, e) ?? still("dshake4");
+    }
+    case "wag":
+      // About three wags a second, tail side to side.
+      return looped([], [move(WAG, 0.17, true, 1), move(rev(WAG), 0.17, true, 1)], e);
+    case "chew": {
+      // Down into a loaf with the toy, between its paws: about two chews a second, a pause, and now
+      // and then a look up at you.
+      const gnaw = (sec: number): Seg => move(CHEW_LOOP, sec, true, 1);
+      return looped([...STOP_TO_LOAF, move(LOAF_CHEW, 0.45), hold("chew1", 0.4)], [
+        gnaw(0.5), gnaw(0.46), gnaw(0.52), gnaw(0.48), hold("chew1", 0.6), gnaw(0.5), gnaw(0.47), gnaw(0.53), hold("chew1", 0.35), ...visit(CHEW_UP, 0.35, 1.3, 0.35), hold("chew1", 0.5),
+      ], e);
+    }
+    case "burrow": {
+      // Under the blanket: ears up, a peek out, and off to sleep; now and then it peeks out again.
+      const peek: Seg[] = [move(rev(DOZE_OFF), 0.7), hold("blanket1", 0.5), ...visit(PEEK_OUT, 0.4, 1.8, 0.45), hold("blanket1", 0.6), move(DOZE_OFF, 0.9)];
+      return looped([hold("blanket1", 1.4), ...visit(PEEK_OUT, 0.45, 2.2, 0.45), hold("blanket1", 0.9), move(DOZE_OFF, 1.0)], [hold("blanket3", 16), ...peek], e);
+    }
+    case "shiver":
+      // Trembling, and now and then down onto its seat with a front paw held up off the floor.
+      return looped([hold("shiver", 1.8)], [move(SHIVER_PAW, 0.4), hold("pawup", 1.6), move(rev(SHIVER_PAW), 0.4), hold("shiver", 2.4)], e);
+    case "paw_up":
+      return play([move(PAWUP_SIT, 0.35), hold("pawup_sit", 1.5), move(rev(PAWUP_SIT), 0.35)], e) ?? still("sit");
+    case "listen":
+      // Stock still with the head down, tilting it to place the sound.
+      return looped([hold("listen1", 0.9)], [move(LISTEN, 0.3), hold("listen2", 1.1), move(rev(LISTEN), 0.3), hold("listen1", 0.8)], e);
+    case "mouse_out":
+      // A little hop back out of the hole.
+      return play([lifted(hold("mouse_out", 0.32), (u) => 16 * Math.sin(Math.PI * u))], e) ?? still("mouse_out");
+    case "nose_push":
+      return looped([hold("nosepush1", 0.2)], [move(NOSEPUSH_LOOP, 0.7, true), hold("nosepush1", 0.2), move(NOSEPUSH_LOOP, 0.62, true)], e);
+    case "wash_hands":
+      // Both hands rubbing round in the water, about once a second.
+      return looped([hold("wash1", 0.3)], [move(WASH_LOOP, 0.95, true, 1), move(WASH_LOOP, 1.02, true, 1), hold("wash1", 0.2)], e);
+    case "rummage":
+      return looped([hold("rummage1", 0.25)], [move(RUMMAGE_LOOP, 0.55, true), move(RUMMAGE_LOOP, 0.5, true), move(RUMMAGE_LOOP, 0.6, true), hold("rummage1", 0.35)], e);
+    case "hold":
+      // The find at its chest, up to the mouth for a nibble, and down again.
+      return looped([move(HOLD_IN, 0.35), hold("hold1", 0.5)], [move(HOLD_NIBBLE, 0.28), hold("hold2", 0.45), move(rev(HOLD_NIBBLE), 0.25), hold("hold1", 0.55)], e);
+    case "thump":
+      // Up on alert, then the stamp: the foot hits the ground at 1.0 s and every 1.33 s after
+      // (executor THUMP_AT, where the thud is).
+      return looped([move(THUMP_UP, 0.35), hold("thump1", 0.58), move(STAMP, 0.07, true, 1)], [hold("thump2", 0.12), move(rev(STAMP), 0.15), hold("thump1", 0.99), move(STAMP, 0.07, true, 1)], e);
+    case "flop":
+      // Over onto its side all at once, then flat out, eyes shut.
+      return play([hold("flop1", 0.35)], e) ?? still("flop2");
+    case "nibble":
+      return looped([hold("nibble1", 0.2)], [move(NIBBLE_LOOP, 0.42, true, 1), move(NIBBLE_LOOP, 0.4, true, 1), move(NIBBLE_LOOP, 0.44, true, 1), hold("nibble1", 0.3)], e);
+    case "nut": {
+      // Sitting up, the nut looked at, up to the mouth, gnawed fast (about four a second), turned.
+      const gnaw = (sec: number): Seg => move(NUT_LOOP, sec, true, 1);
+      return looped([move(NUT_IN, 0.4), hold("nut3", 0.5), move(NUT_UP, 0.3)], [gnaw(0.24), gnaw(0.22), gnaw(0.25), gnaw(0.23), gnaw(0.24), hold("nut1", 0.35)], e);
+    }
+    case "cheeks":
+      return play([move(CHEEKS_IN, 0.35)], e) ?? still("cheeks");
+    case "pat":
+      return looped([hold("pat1", 0.15)], [move(PAT_LOOP, 0.32, true, 1), move(PAT_LOOP, 0.3, true, 1), move(PAT_LOOP, 0.34, true, 1), hold("pat1", 0.25)], e);
+    case "flick":
+      // A burst of tail flicks, and still, watching.
+      return looped([hold("stand", 0.35)], [hold("flick", 0.14), hold("stand", 0.12), hold("flick", 0.14), hold("stand", 0.12), hold("flick", 0.16), hold("stand", 0.9)], e);
     case "howl":
       if (yappy) {
         // A chihuahua's howl is a string of high yaps.
@@ -1183,6 +1374,12 @@ const WAKE: Seg[] = [hold("waking", 0.45), move(link("waking", "wake"), 0.3), ho
 const WAKE_TO_SIT: Seg[] = [...WAKE, move(link("wake", "sit"), 0.35)];
 const LOAF_IN: Seg[] = [move(link("sit2", "lowering", "l"), 0.35), hold("lowering", 0.2), move(link("lowering", "loaf2"), 0.3), hold("loaf2", 0.15), move(link("loaf2", "loaf", "f"), 0.3)];
 const STOP_TO_LOAF: Seg[] = [...FROM_STAND, ...LOAF_IN];
+/** Up out of the loaf (LOAF_IN the other way) to the half sit, and the dog's up from chewing (ADR-067). */
+const UP_FROM_LOAF: Seg[] = [move(rev(link("loaf2", "loaf", "f")), 0.25), hold("loaf2", 0.06), move(rev(link("lowering", "loaf2")), 0.28), move(rev(link("sit2", "lowering", "l")), 0.3)];
+const CHEW_TO_SIT: Seg[] = [move(rev(LOAF_CHEW), 0.3), ...UP_FROM_LOAF, move(link("sit2", "sit"), 0.2)];
+const CHEW_TO_STAND: Seg[] = [move(rev(LOAF_CHEW), 0.3), ...UP_FROM_LOAF, move(rev(link("sitting_down", "sit2")), 0.22), move(rev(link("stand", "sitting_down", "d")), 0.2)];
+/** Own moves that stand: from a sit they stand up first, and a sit after them sits down first. */
+const STANDING_OWN = new Set(["wag", "flick"]);
 const STRETCH_IN: Seg[] = [hold("stretch1", 0.3), move(link("stretch1", "stretch2"), 0.3), hold("stretch2", 0.3), move(link("stretch2", "stretch3"), 0.35), hold("stretch3", 1.45), move(link("stretch3", "shake"), 0.25)];
 const LOOK_ROUND: Seg[] = [move(["stand", "pottyback"], 0.14, false, 1), hold("pottyback", 0.55), move(["pottyback", "stand"], 0.14, false, 1)];
 const LOOK_BACK_PEE: Seg[] = [move(PEE_UP, 0.45), ...LOOK_ROUND];
@@ -1196,6 +1393,11 @@ const SNEEZE_IN: Seg[] = [hold("presneeze", 0.55), move(link("presneeze", "sneez
  */
 function sequenceShot(anim: Anim, plan: SpritePlan, prev: string, e: number): Shot | null {
   const wasMoving = MOVING.has(prev);
+  // Up from lying flat: back over through the flop first.
+  if (prev === "flop" && plan.group !== "flop") {
+    const up = play([hold("flop1", 0.22)], e);
+    if (up) return up;
+  }
   if (plan.group === "stretch") return play(STRETCH_IN, e) ?? still("shake");
   if (anim === "sneeze") return play(SNEEZE_IN, e) ?? still("dazed");
   // Up out of the squat, a look back at what it did, and standing.
@@ -1206,6 +1408,20 @@ function sequenceShot(anim: Anim, plan: SpritePlan, prev: string, e: number): Sh
   if (SITTING.has(plan.group) && wasMoving) return play(SIT_DOWN, e);
   // Standing up first: the gait frames are made from "stand", so the walk grows out of it.
   if (MOVING.has(plan.group) && SITTING.has(prev)) return play(STAND_UP, e);
+  return null;
+}
+/**
+ * Frames that lead into a pose from the one before (ADR-067), so a whole-body change plays as a move
+ * and not a cross-fade: up from chewing, standing up for a wag and sitting down after it, the
+ * shivering chihuahua down onto its seat with a paw up and up again. `prevKey` is the drawing shown
+ * when the pose changed. The pose's own program starts after these.
+ */
+function leadIn(group: string, prev: string, prevKey: SpriteKey): Seg[] | null {
+  if (prev === "chew" && group !== "chew" && !MOVING.has(group)) return SITTING.has(group) ? CHEW_TO_SIT : CHEW_TO_STAND;
+  if (prev === "shiver" && group === "paw_up") return [...(prevKey === "shiver" || prevKey === "shiverx1" ? [move(SHIVER_PAW, 0.4)] : []), hold("pawup", 60)];
+  if (prev === "paw_up" && SITTING.has(group) && (prevKey === "pawup" || prevKey === "shiverx2")) return [move(PAWUP_DOWN, 0.4)];
+  if (STANDING_OWN.has(group) && SITTING.has(prev)) return STAND_UP;
+  if (SITTING.has(group) && STANDING_OWN.has(prev)) return SIT_DOWN;
   return null;
 }
 const MOVING = new Set(["walk", "trot", "run"]);
@@ -1254,6 +1470,8 @@ interface Shown {
   group: string;
   since: number;
   prev: string;
+  /** The drawing shown when the pose changed. */
+  prevKey: SpriteKey;
   from: SpriteKey | null;
   fromDir: number;
   fadeAt: number;
@@ -1341,6 +1559,26 @@ export function mouthOf(id: string, key: string, depth = 0): { x: number; y: num
     return b[2] < 0.5 ? a : c;
   }
   return null;
+}
+
+/**
+ * Where the paws hold something (a nut, a find) in the drawings that hold one (ADR-067), in the same
+ * units as mouthOf. Measured by eye on the drawings (tools/measure-hands.py prints a check sheet).
+ */
+const HANDS: Record<string, Partial<Record<SpriteKey, [number, number]>>> = {
+  hazel: { nut1: [101, 134], nut2: [93, 127], nut3: [81, 101] },
+  bandit: { hold1: [45, 130], hold2: [38, 150] },
+};
+export function handsOf(id: string, key: string, depth = 0): { x: number; y: number } | null {
+  const own = HANDS[id]?.[key as SpriteKey];
+  if (own) return { x: own[0], y: own[1] };
+  if (depth > 3) return null;
+  const b = BETWEEN.get(key);
+  if (!b) return null;
+  const a = handsOf(id, b[0], depth + 1);
+  const c = handsOf(id, b[1], depth + 1);
+  if (a && c) return { x: a.x + (c.x - a.x) * b[2], y: a.y + (c.y - a.y) * b[2] };
+  return a ?? c;
 }
 
 /**
@@ -1482,6 +1720,7 @@ export function drawSprite(
   t: number,
   d: SpriteDraw,
 ): { x: number; y: number; mouth: { x: number; y: number } | null } {
+  anim = ownOr(set.id, anim);
   const slot = `${set.id}/${d.slot ?? ""}`;
   let g = gaits.get(slot);
   if (!g) gaits.set(slot, (g = { x: null, t, phase: 0, speed: 0, trot: false, dir: facing, turn: null, turnAt: -1e9, turnEnd: -1e9 }));
@@ -1511,10 +1750,11 @@ export function drawSprite(
 
   let sh = shown.get(slot);
   // A new drawing starts the pose now (with no pose before it, so no one-off sequence replays).
-  if (!sh) shown.set(slot, (sh = { key: plan.key, next: null, mix: 0, dir, group: plan.group, since: t, prev: "", from: null, fromDir: dir, fadeAt: -1e9, fade: 0 }));
+  if (!sh) shown.set(slot, (sh = { key: plan.key, next: null, mix: 0, dir, group: plan.group, since: t, prev: "", prevKey: plan.key, from: null, fromDir: dir, fadeAt: -1e9, fade: 0 }));
   const was = sh.group;
   if (sh.group !== plan.group) {
     sh.prev = sh.group;
+    sh.prevKey = sh.key;
     sh.group = plan.group;
     sh.since = t;
   }
@@ -1555,7 +1795,8 @@ export function drawSprite(
   else if (plan.group === "push" || plan.group === "swat") shot = pawShot(plan.group, e);
   else {
     // A sitting pose after a walk sits down first, and its own program starts after that.
-    const settle = SITTING.has(plan.group) && MOVING.has(sh.prev) ? SIT_DOWN_SEC : 0;
+    const lead = leadIn(plan.group, sh.prev, sh.prevKey);
+    const settle = lead ? lengthOf(lead) : SITTING.has(plan.group) && MOVING.has(sh.prev) ? SIT_DOWN_SEC : 0;
     let follow: Shot | null = null;
     if ((anim === "watch" || anim === "watch_stand") && d.cursor) {
       // Where the head is, from the looking-ahead drawing, and which way the cursor is from it.
@@ -1578,7 +1819,7 @@ export function drawSprite(
       const hy = y - (plan.head.y * look.h - look.lift) * scale;
       follow = blushShot(slot, Math.hypot(d.cursor.x - hx, d.cursor.y - hy) < 180 * scale, t, e > 1.8);
     }
-    shot = sequenceShot(anim, plan, sh.prev, e) ?? follow ?? poseShot(anim, set.id, e - settle) ?? { key: plan.key, next: plan.next ?? null, mix: plan.mix ?? 0 };
+    shot = sequenceShot(anim, plan, sh.prev, e) ?? (lead ? play(lead, e) : null) ?? follow ?? poseShot(anim, set.id, e - settle) ?? { key: plan.key, next: plan.next ?? null, mix: plan.mix ?? 0 };
   }
 
   // A new frame cross-fades in, except where it is the neighbour the last one was gliding to (or
@@ -1600,7 +1841,8 @@ export function drawSprite(
       const gaitSide = GAITISH.test(shot.key) || GAITISH.test(sh.key);
       // A head turning from one direction to another is quick: a slow fade shows two heads.
       const headTurn = GAZE_KEY.test(shot.key) && GAZE_KEY.test(sh.key);
-      fadeFrom(shot.key === "blink" || sh.key === "blink" ? 0.06 : headTurn ? 0.08 : gaitSide ? 0.12 : g.turn ? 0.1 : (plan.fade ?? 0.24));
+      // A pose that swaps faster than that (a shake) keeps its own quicker blend, out of a stand too.
+      fadeFrom(shot.key === "blink" || sh.key === "blink" ? 0.06 : headTurn ? 0.08 : gaitSide ? Math.min(0.12, plan.fade ?? 0.12) : g.turn ? 0.1 : (plan.fade ?? 0.24));
     }
   }
   sh.key = shot.key;
@@ -1670,7 +1912,8 @@ export function drawSprite(
   weighed.sort((a, b) => b[1] - a[1]);
   for (const [key] of weighed) {
     const fk = frameKey(set, key);
-    const mo = mouthOf(set.id, fk);
+    // Something held in the paws (a nut, a find) goes to the paws, not the mouth.
+    const mo = handsOf(set.id, fk) ?? mouthOf(set.id, fk);
     if (!mo) continue;
     if (typeof DOMPoint === "undefined") break;
     const f = sizeFix(set.id, fk);
@@ -1694,7 +1937,7 @@ export function drawSprite(
 
 /** The width of the current sprite in cat units (for the soft shadow). */
 export function spriteWidth(set: SpriteSet, anim: Anim, t: number): number {
-  const key = planFor(anim, t).key;
+  const key = planFor(anim, t, 0, 0, false, set.id).key;
   // Gait frames have room around the drawing for the legs, so the shadow goes by the standing pose.
   return drawnSize(set, /^g[wtr]\d/.test(key) ? "stand" : key).w;
 }

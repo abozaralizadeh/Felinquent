@@ -43,7 +43,10 @@ OUT = ROOT / "src/playground/ground.ts"
 
 SKIP = re.compile(
     r"^(dangle|peek.*|jump|jumpback|leap|fall|binky|hop.*|startled|tumble|run\d|walk.*|spin\d|roll\d"
-    r"|stalk3|bow_.*|play_bow|box|wiggle.*|g[wtr]\d+)$"
+    r"|stalk3|bow_.*|play_bow|box|wiggle.*|g[wtr]\d+"
+    # Each animal's own moves (ADR-067): the fox's leap and dive (in the ground the earth drawn round
+    # it is the ground), the binky's second twist, and the squirrel on the side of a window.
+    r"|mouse_up|mouse_top|mouse_dive|mouse_in|binky2|cling_up|cling_down)$"
 )
 PERCH = re.compile(r"^perch")
 TURN = re.compile(r"^turn_t\d$")

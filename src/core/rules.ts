@@ -1,7 +1,7 @@
 import { BY_INTENT, CHAOS_PARAMS } from "./behaviors";
 import type { Habits } from "./habits";
 import type { Personality } from "./personality";
-import { instinctFor } from "./species";
+import { canDo, instinctFor } from "./species";
 import type { Rng } from "./rng";
 import type { TrickBook } from "./tricks";
 import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, SeenThing, WindowInfo, WorldSnapshot } from "./types";
@@ -92,8 +92,10 @@ export function candidates(ctx: RulesContext): Option[] {
   const aloof = 1 - 0.5 * p.aloofness;
   const catDist = dist(ctx.catPos, w.cursor);
   const out: Option[] = [];
+  const ins = instinctFor(p.species);
   const add = (intent: IntentName, score: number, targets: string[]) => {
-    if (score > 0 && targets.length > 0) out.push({ intent, score, targets });
+    // Another animal's own things are not on this one's menu at all (ADR-067).
+    if (score > 0 && targets.length > 0 && canDo(ins, intent)) out.push({ intent, score, targets });
   };
 
   add("nap", 0.15 + 3 * sleepy * (0.5 + p.laziness), ["here", "dock"]);
@@ -197,6 +199,27 @@ export function candidates(ctx: RulesContext): Option[] {
   add("howl", night ? 0.15 : 0.03, ["here"]);
   add("sprawl", 0.05 + 0.35 * sleepy * (0.4 + p.laziness), ["here"]);
   add("shy", n.trust < 40 ? 0.15 : 0.03, ["here"]);
+
+  // Each animal's own things (ADR-067): only the animal they are drawn for gets them (add checks).
+  // A shake comes after something messy or a nap (the last thing it did), not every few minutes.
+  const lately = ctx.recent.slice(-6);
+  const last = ctx.recent[ctx.recent.length - 1];
+  const grubby = last === "dig" || last === "roll" || last === "tumble" || last === "cache" || last === "mouse" || last === "burrow";
+  const startled = ctx.recent.slice(-2).some((r) => r === "spook" || r === "react");
+  if (!lately.includes("shake_off")) add("shake_off", 0.03 + (ctx.justWoke ? 0.5 : 0) + (grubby ? 0.6 : 0), ["here"]);
+  if (e > 0.3) add("chew", 0.12 + 0.25 * e * (1 - a), ["here"]);
+  add("burrow", 0.06 + 1.1 * sleepy * (0.4 + p.laziness) + (night ? 0.2 : 0), ["here"]);
+  if (!lately.includes("shiver")) add("shiver", 0.03 + (startled ? 0.35 : 0) + (night ? 0.06 : 0), ["here"]);
+  if (e > 0.45) add("mouse", 0.1 + 0.4 * c * e, ["here"]);
+  if (e > 0.35) add("cache", 0.08 + 0.3 * c, ["here"]);
+  add("wash", 0.12 + 0.2 * c, ["here"]);
+  if (e > 0.4) add("raid", (0.15 + 0.6 * a) * (0.4 + p.chaos), ["dock"]);
+  if (e > 0.5) add("binky", 0.08 + (n.mood === "playful" || n.mood === "content" ? 0.4 : 0.08) * e, ["here"]);
+  add("thump", 0.04 + (startled ? 0.4 : 0) + (n.mood === "grumpy" || n.mood === "sulky" ? 0.3 : 0), ["here"]);
+  add("flop", 0.05 + (n.mood === "content" ? 0.35 : 0.1) * (0.3 + n.trust / 100) + 0.4 * sleepy, ["here"]);
+  if (e > 0.3) add("nibble", (0.08 + 0.3 * a) * (0.3 + p.chaos), w.windows.slice(0, 4).map((x) => x.id));
+  add("nut", 0.1 + 0.25 * c + 0.15 * (1 - e), ["here"]);
+  if (e > 0.5) add("cling", 0.05 + 0.25 * c * e, w.windows.slice(0, 4).map((x) => x.id));
   if (catDist > 150 && catDist < 700 && n.trust > 25) add("beg", 0.1 + 0.3 * a, ["cursor"]);
 
   // Routines: several moves chosen as one.
@@ -294,6 +317,20 @@ const MOOD_THOUGHTS: Partial<Record<IntentName, string[]>> = {
   invite_play: ["you. me. chase. now.", "bottom up means play. everyone knows that."],
   pee: ["when you have to go, you have to go.", "this spot looked important."],
   poop: ["don't look. seriously, don't look.", "a little present. for you."],
+  shake_off: ["shake shake shake. better.", "you're welcome for the shower."],
+  chew: ["chew. chew. it's still a ball.", "this one's mine. for chewing."],
+  burrow: ["blanket. me. done.", "it's cold out there. it's always cold out there."],
+  shiver: ["brr. hold me.", "i'm not scared. i'm cold. it's different."],
+  mouse: ["shh. there's a mouse under there.", "i heard it. i'm going in."],
+  cache: ["for later. don't tell anyone.", "buried. i'll remember. probably."],
+  wash: ["clean hands. very important.", "washing it. it was already clean. still."],
+  raid: ["one human's trash.", "let's see what you threw away."],
+  binky: ["binky! you didn't see that.", "joy. it just comes out."],
+  thump: ["thump. that means no.", "i heard something. thump."],
+  flop: ["flop. this is fine.", "i'm melting. it's nice."],
+  nibble: ["just a little nibble.", "this edge was too straight."],
+  nut: ["nut. nut nut nut.", "crunch. mine."],
+  cling: ["up here is mine too.", "this is a tree now."],
 };
 
 /** Turns one option into a ready intent (used by the rules brain and the fake LLM). */

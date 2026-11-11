@@ -9,6 +9,8 @@ export interface Personality {
   voice?: Partial<Record<IntentName, string[]>>;
   /** Its own toy, the one it brings out to play with. The yarn unless said. */
   toy?: ToyKind;
+  /** The colour of the loose fur that flies off it in a shake (ADR-067). */
+  fur?: string;
   /** All traits go from 0 to 1. */
   laziness: number;
   neediness: number;

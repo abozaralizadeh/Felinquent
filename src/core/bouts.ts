@@ -24,11 +24,11 @@ export const BOUT_MEANING: Record<BoutKind, string> = {
 
 /** The actions that belong to each bout. */
 export const BOUT_INTENTS: Record<BoutKind, readonly IntentName[]> = {
-  rest: ["nap", "nap_warm", "cozy", "knead", "groom", "sprawl", "perch", "watch", "slow_blink", "stare", "ignore", "box", "scratch", "sneeze", "yawn", "look_around", "trick"],
-  explore: ["wander", "tour", "peek", "sniff", "perch", "cross", "chatter", "dig", "spook", "scratch", "watch", "box", "look_around", "nose_toy", "stash_toy", "trick", "pee", "poop"],
-  play: ["chase_tail", "bounce", "tumble", "roll", "stalk", "swat", "zoomies", "spook", "knock_toy", "hunt", "play_cursor", "chase_cursor", "fetch", "carry_toy", "nose_toy", "stash_toy", "invite_play", "trick"],
-  social: ["follow", "headbutt", "meow", "beg", "slow_blink", "sit_on", "keyboard_walk", "block_dock", "cross", "gift", "howl", "roll", "shy", "invite_play", "fetch", "trick"],
-  mischief: ["knock_off", "claw", "sit_on", "sit_on_video", "keyboard_walk", "block_dock", "zoomies", "hairball", "knock_toy", "nudge_window", "swat", "chase_cursor", "carry_toy", "trick", "pee", "poop"],
+  rest: ["nap", "nap_warm", "cozy", "knead", "groom", "sprawl", "perch", "watch", "slow_blink", "stare", "ignore", "box", "scratch", "sneeze", "yawn", "look_around", "trick", "chew", "burrow", "flop", "nut", "wash"],
+  explore: ["wander", "tour", "peek", "sniff", "perch", "cross", "chatter", "dig", "spook", "scratch", "watch", "box", "look_around", "nose_toy", "stash_toy", "trick", "pee", "poop", "wash", "cache", "mouse", "nibble", "cling", "nut", "shiver", "thump"],
+  play: ["chase_tail", "bounce", "tumble", "roll", "stalk", "swat", "zoomies", "spook", "knock_toy", "hunt", "play_cursor", "chase_cursor", "fetch", "carry_toy", "nose_toy", "stash_toy", "invite_play", "trick", "shake_off", "chew", "mouse", "binky", "cling"],
+  social: ["follow", "headbutt", "meow", "beg", "slow_blink", "sit_on", "keyboard_walk", "block_dock", "cross", "gift", "howl", "roll", "shy", "invite_play", "fetch", "trick", "shiver", "flop"],
+  mischief: ["knock_off", "claw", "sit_on", "sit_on_video", "keyboard_walk", "block_dock", "zoomies", "hairball", "knock_toy", "nudge_window", "swat", "chase_cursor", "carry_toy", "trick", "pee", "poop", "raid", "nibble"],
 };
 
 /** How long a bout lasts at the normal level, in seconds. */
@@ -146,8 +146,11 @@ export function boutLengthMs(kind: BoutKind, chaos: ChaosLevel, rng: Rng, gap = 
  */
 export function openingMove(from: BoutKind | null, to: BoutKind, kind: Kind, wasLying: boolean, rng: Rng): IntentName | null {
   if ((from === "play" || from === "mischief") && to !== from) {
-    // Cats wash after a bout of play ("displacement grooming"); dogs mostly don't.
-    const p = kind === "dog" ? 0.2 : 0.75;
+    // Cats wash after a bout of play ("displacement grooming"); a dog shakes itself off instead, a
+    // raccoon washes its hands, the others give themselves a quick wash now and then (ADR-067).
+    if (kind === "dog") return rng.next() < 0.45 ? "shake_off" : null;
+    if (kind === "raccoon") return rng.next() < 0.5 ? "wash" : null;
+    const p = kind === "cat" ? 0.75 : kind === "rabbit" ? 0.6 : 0.4;
     if (rng.next() < p) return "groom";
   }
   if (to !== "rest" && (from === "rest" || wasLying) && rng.next() < 0.7) return "stretch";

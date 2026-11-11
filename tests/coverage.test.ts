@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BEHAVIORS } from "../src/core/behaviors";
+import { characterById } from "../src/core/characters";
+import { instinctFor } from "../src/core/species";
 import { Executor } from "../src/core/executor";
 import { Governor } from "../src/core/governor";
 import { initialNeeds } from "../src/core/needs";
@@ -26,6 +28,8 @@ interface Situation {
   toy?: boolean;
   /** It has to go (mind.ts). */
   potty?: { pee: number; poop: number };
+  /** The animal (a character id), for the moves only one kind of animal has (ADR-067). */
+  who?: string;
 }
 
 const book = new TrickBook();
@@ -91,6 +95,21 @@ const SITUATIONS: Partial<Record<IntentName, Situation>> = {
   look_around: {},
   pee: { potty: { pee: 1.2, poop: 0 } },
   poop: { potty: { pee: 0, poop: 1.2 } },
+  // Each animal's own (ADR-067).
+  shake_off: { who: "biscuit", justWoke: true },
+  chew: { who: "biscuit", needs: { energy: 0.8 } },
+  burrow: { who: "chili", needs: { energy: 0.2 } },
+  shiver: { who: "chili" },
+  mouse: { who: "mochi", needs: { energy: 0.9, curiosity: 0.9 } },
+  cache: { who: "hazel", needs: { energy: 0.8, curiosity: 0.8 } },
+  wash: { who: "bandit" },
+  raid: { who: "bandit", needs: { energy: 0.8, attention: 0.6 } },
+  binky: { who: "clover", needs: { energy: 0.9, mood: "playful" } },
+  thump: { who: "clover", needs: { mood: "grumpy" } },
+  flop: { who: "clover", needs: { mood: "content", trust: 70 } },
+  nibble: { who: "clover", needs: { energy: 0.8, attention: 0.6 } },
+  nut: { who: "hazel" },
+  cling: { who: "hazel", needs: { energy: 0.9, curiosity: 0.9 } },
 };
 
 function build(s: Situation) {
@@ -103,7 +122,7 @@ function build(s: Situation) {
   const ctx: RulesContext = {
     world,
     needs,
-    personality: s.settings?.accessibility ? { ...ARCHETYPES.gremlin! } : ARCHETYPES.gremlin!,
+    personality: s.who ? characterById(s.who).personality : s.settings?.accessibility ? { ...ARCHETYPES.gremlin! } : ARCHETYPES.gremlin!,
     smartTargeting: settings.smartTargeting,
     catPos: s.catNearCursor ? { x: world.cursor.x + 40, y: world.cursor.y } : { x: 200, y: 800 },
     justWoke: s.justWoke ?? false,
@@ -128,6 +147,7 @@ describe("every behavior can be chosen and runs to the end", () => {
       expect(option, "allowed by the governor").toBeTruthy();
 
       const ex = new Executor(seeded(2));
+      ex.setInstinct(instinctFor(ctx.personality.species));
       ex.placeOnDock(world, 200);
       if (situation.props) {
         const w = world.windows[0]!;
@@ -142,6 +162,18 @@ describe("every behavior can be chosen and runs to the end", () => {
       expect(done, "finished").toBe(true);
     });
   }
+
+  it("no animal is offered another animal's own moves (ADR-067)", () => {
+    const own = Object.entries(SITUATIONS).filter(([, x]) => x.who);
+    for (const id of ["tabby", "inky", "pearl", "mochi", "bandit", "biscuit", "chili", "clover", "hazel"]) {
+      const mine = instinctFor(characterById(id).personality.species).own ?? [];
+      for (const [name, x] of own) {
+        const { ctx } = build({ ...x, who: id });
+        const offered = candidates(ctx).some((o) => o.intent === name);
+        expect(offered, `${id} ${name}`).toBe(mine.includes(name as IntentName));
+      }
+    }
+  });
 
   it("the reactions (ignore, sulk, leave) run too", () => {
     for (const name of ["ignore", "sulk", "leave"] as const) {

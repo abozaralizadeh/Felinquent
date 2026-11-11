@@ -136,6 +136,29 @@ What it leaves rides along with the window, goes when the window closes, and dri
 | B-58 | Pee | Sniffs a spot, squats and pees: a puddle spreads under its rear and runs down the front of the window. It looks back at it, then a cat, a fox or a raccoon turns round to face it and rakes over it, a dog kicks back without turning (most of the time), and the rabbit and the squirrel just leave. Sometimes it shakes a paw, then it looks proud | The pee need is full, normal or gremlin | 1 | Rule and LLM | none | MVP |
 | B-59 | Poop | Sniffs, squats with a straining face (it goes shy if your cursor comes close), and leaves a pile that fits the animal: a swirl for a dog, a log for a cat, a fox or a raccoon, pellets for the rabbit and a row of them for the squirrel. Then it looks back, covers it up like B-58, and often gets the zoomies (a cat about half the time) | The poop need is full, normal or gremlin | 1 | Rule and LLM | none | MVP |
 
+## What only that animal does
+
+Every animal has moves of its own, drawn for it alone, on top of everything the others share. A move that belongs to another animal never reaches its menu, whatever the model or the rules would like. The cats had the most to begin with (kneading, the box, the hairball, the keyboard walk); now every other animal has at least two of its own, with its own reactions to a click too.
+
+| ID | Behavior | Who | What happens | Triggered by | Annoy | Brain | Perm | Phase |
+|---|---|---|---|---|---|---|---|---|
+| B-60 | Shake it off | Biscuit, Chili | Shakes head to tail the way a wet dog does, fur and dust flying off, ends fluffed up and pleased, then wags | After a roll, a dig or a tumble, on waking, now and then | 0 | Rule and LLM | none | MVP |
+| B-61 | Chew its toy | Biscuit | Fetches its toy, takes it a few steps away from you, lies down with it between its paws and chews (now and then a look up at you), then gets up and wags | Energy, more when it isn't asking for attention | 0 | Rule and LLM | none | MVP |
+| B-62 | Under the blanket | Chili | Brings out its blanket, paws it into a nest, crawls under, ears and nose poking out, peeks out now and then and dozes off, then comes out with a shake | Sleepy, lazy, night | 0 | Rule and LLM | none | MVP |
+| B-63 | Shiver | Chili | Trembles all over, crouched (little lines either side), sits down with a front paw lifted off the cold floor and looks at you for help | After a fright, at night, now and then | 0 | Rule and LLM | none | MVP |
+| B-64 | Mousing | Mochi | Stock still, head down, listening (the head tilts to place the sound), a crouch, a high leap and down nose first into the ground, the back end wiggling, then out again with earth on its nose and a shake | Energy and curiosity | 0 | Rule and LLM | none | MVP |
+| B-65 | Cache it | Mochi, Hazel | Carries its toy off and buries it: a fox pushes the earth back over it with its nose, a squirrel pats it down with its paws. A little mound is left | Energy and curiosity | 0 | Rule and LLM | none | MVP |
+| B-66 | Wash its hands | Bandit | A little pool in front of it, both hands in the water rubbing round and round, a look at them, and again | Curiosity, now and then | 0 | Rule and LLM | none | MVP |
+| B-67 | Raid a snack box | Bandit | In the Dock: a snack box, head in it, rubbish thrown over its shoulder (an apple core, a fish bone, a banana peel, a paper ball), then a find (grapes) held to its chest and nibbled until it's gone, crumbs falling | Attention need and chaos, normal or gremlin | 1 | Rule and LLM | none | MVP |
+| B-68 | Binky | Clover | A rabbit's joy: a dash, a twisting leap, a dash back, another, and sometimes a flop after | Energy, playful or content | 0 | Rule and LLM | none | MVP |
+| B-69 | Thump | Clover | Up on alert, a hind foot stamped (once, twice or three times, with a little thud you can see), then still, staring | After a fright, grumpy or sulking | 0 | Rule and LLM | none | MVP |
+| B-70 | Flop | Clover | Over onto its side all at once and flat out, eyes shut: a happy, safe rabbit | Content and trusting, sleepy | 0 | Rule and LLM | none | MVP |
+| B-71 | Nibble a window | Clover | Chews the top edge of the window it's on (little bites stay in the edge for a few minutes), a step along, again, and looks innocent | Attention need and chaos, normal or gremlin | 1 | Rule and LLM | none | MVP |
+| B-72 | A nut | Hazel | Digs up a nut, sits up and nibbles it fast, turning it in its paws, stuffs its cheeks, leaves the shells and flicks its tail | Curiosity, more when tired | 0 | Rule and LLM | none | MVP |
+| B-73 | Down the side | Hazel | Runs to the end of the window top, looks over, goes down the side head first, holds on, then turns and climbs back up | Energy and curiosity, a window tall enough | 0 | Rule and LLM | none | MVP |
+
+A click gets that animal's own reactions too: a dog wags or shakes it off, the chihuahua lifts a paw or shivers, the fox listens, the raccoon looks at its hands or goes to wash them, the rabbit binkies, flops when it trusts you or thumps when annoyed, and the squirrel flicks its tail.
+
 ## Freshness (what it learns and what bores it)
 
 Every choice the rules make is tilted by three things (`src/core/habits.ts`), per action and per trick:

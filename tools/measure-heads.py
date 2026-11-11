@@ -2,7 +2,7 @@
 """Measures the head in every drawn frame of every character, and writes src/playground/heads.ts.
 
 Usage: tools/measure-heads.py [--one-head] [--clamp 0.7,1.4] [--json out.json] [--reuse out.json]
-           [--only id,id] [--keys k,k] [--no-write]
+           [--only id,id] [--keys k,k] [--no-write] [--merge] [--rules]
 
 The drawings were made sheet by sheet, and build-sprites.py sized each sheet (or
 each pass of a sheet) by the height or width of one of its frames, not by the animal's head, so the
@@ -37,11 +37,16 @@ How (per character):
 5. Pass two: frames whose head was not found well are searched again only near their pass's size,
    with turns up to 60 degrees, for the mouth.
 6. A fix outside --clamp is dropped (null), and so is anything in SKIP (checked by eye). A few
-   passes the matching can't size are sized by eye (BY_EYE).
+   passes the matching can't size are sized by eye (BY_EYE), and so are a few frames (BY_EYE_FRAME).
 
 --json keeps every measurement (and --reuse reads it back, so pass one, the slow part, runs once:
-about an hour for all nine characters on eight cores). Plain runs write heads.ts; --only and --keys
-are for trying things and never write it.
+about an hour for all nine characters on eight cores; frames drawn since are measured on top).
+Plain runs write heads.ts; --only and --keys are for trying things and never write it. --merge
+(with --only if you like) adds only the frames heads.ts doesn't have yet and keeps every other value
+as it is, for new drawings:
+  tools/measure-heads.py --reuse <json> --only biscuit,hazel --merge
+--rules measures nothing: it applies the sizes set by rule (BY_BODY, BY_EYE_FRAME) to heads.ts as it
+is, keeping every other value and every mouth.
 """
 import json
 import os
@@ -114,6 +119,18 @@ _TURN_STAND = {
 NEW_IDS = {"chili", "clover", "hazel"}
 
 
+# Each animal's own moves (ADR-067): one sheet, cut at one size (both rows of OWN_PASSES in
+# build-sprites.py share the factor), so one pass.
+OWN_SIG = {
+    "biscuit": "dshake1 dshake2 dshake3 dshake4 wag1 wag2 wag3 chew1 chew2 chew3".split(),
+    "chili": "pawup shiver dshake1 dshake2 dshake4 pawup_sit blanket1 blanket2 blanket3".split(),
+    "mochi": "listen1 listen2 mouse_up mouse_top mouse_dive mouse_in mouse_out nosepush1 nosepush2".split(),
+    "bandit": "inspect toss hold1 hold2 wash1 wash2 wash3 rummage1 rummage2".split(),
+    "clover": "thump1 thump2 binky2 flop1 flop2 nibble1 nibble2 earwash1 earwash2".split(),
+    "hazel": "nut1 nut2 nut3 cheeks pat1 pat2 flick cling_up cling_down".split(),
+}
+
+
 def passes(ch: str) -> list[tuple[str, list[str]]]:
     out = [
         ("base", ["sit", "walk_a", "walk_b", "sleep", "groom", "jump", "crouch", "loaf", "wave"]),
@@ -156,6 +173,8 @@ def passes(ch: str) -> list[tuple[str, list[str]]]:
     ]
     for i, keys in enumerate(_TURN_STAND.get(ch, [["turn_s1", "turn_s2", "turn_s3"]])):
         out.append((f"turn_stand{i + 1}", keys))
+    if ch in OWN_SIG:
+        out.append(("sig", OWN_SIG[ch]))
     if ch in ("clover", "hazel"):
         # Their gaits are their drawn hops placed on the ground (tools/hop-gait.py), one cycle each.
         out += [(f"gait_{g}", [f"g{g}{i:02d}" for i in range(n)]) for g, n in (("w", 32), ("t", 24), ("r", 20))]
@@ -175,7 +194,9 @@ STANDING = set(
     "dig sniff startled turn_s1 turn_s2 turn_s3 turn_s4 turn_s5 stand2 tg_down tg_ahead tg_up tg_high tg_top tg_you tg_freeze "
     "tq_down tq_level tq_up tb_down tb_level tb_up tb_high tg_tilt tg_tiltyou bow_down bow_l bow_up binky sniff1 sniff2 sniff3 "
     "dig1 dig2 dig3 stalk1 stalk2 stalk3 cross angry1 angry2 hiss1 hiss2 puff1 puff2 jumpback "
-    "pee1 pee2 poop1 poop2 pottyback cover1 cover2 pawshake sheepish".split()
+    "pee1 pee2 poop1 poop2 pottyback cover1 cover2 pawshake sheepish "
+    "dshake1 dshake2 dshake3 dshake4 wag1 wag2 wag3 pawup shiver listen1 listen2 mouse_up mouse_top mouse_dive mouse_in "
+    "mouse_out nosepush1 nosepush2 rummage1 rummage2 thump1 thump2 binky2 nibble1 nibble2 pat1 pat2 flick cling_up cling_down".split()
 )
 
 
@@ -499,6 +520,54 @@ BY_EYE: dict[str, dict[str, tuple[float, str]]] = {
 }
 
 
+# Frames sized by eye (ADR-067): the own-move sheets mix sitting, lying and standing drawings that
+# came out at different sizes on one sheet, and many of their heads are turned down, in profile or
+# with the eyes shut, so the matching can't size them. Laid next to sit.webp, stand.webp and the loaf
+# at a few factors, matching the head, the eyes, the collar bell and the tail (the rabbit's cotton
+# tail, the raccoon's rings). Frames that swap fast in a loop (gnawing, nibbling) share one factor,
+# so nothing pulses. The size fix itself, as in HEADS.
+BY_EYE_FRAME: dict[str, dict[str, float]] = {
+    "biscuit": {"chew1": 1.02, "chew2": 1.02, "chew3": 1.02},
+    "bandit": {k: 1.0 for k in "inspect toss hold1 hold2 wash1 wash2 wash3 rummage1 rummage2".split()},
+    # The stamp crouches lower than the alert pose before it: its head size made it as tall and wider.
+    "clover": {"nibble1": 1.05, "nibble2": 1.05, "flop1": 1.15, "flop2": 1.15, "earwash1": 1.0, "earwash2": 1.0, "thump2": 1.08},
+    "hazel": {"nut1": 0.97, "nut2": 0.97, "nut3": 0.98, "cheeks": 1.0, "pat1": 1.06, "pat2": 1.06, "flick": 1.0, "cling_up": 1.06, "cling_down": 1.06},
+}
+
+
+# The sitting-down and lying-down sheet (stand2, sitting_down, sit2, lowering, loaf2, drowsy, curl,
+# deep, waking) was already cut to the height of sit.webp by build-sprites.py, but its heads are drawn
+# smaller, so sizing it by the head made the whole body up to 16% bigger than the sit it sits down
+# into (biscuit, mochi, bandit), and it popped every time the animal sat or lay down. Its passes are
+# sized by the body instead: sit2 has the sit's posture, so the size that gives it the same silhouette
+# area as sit.webp is the size of the sheet. stand2 keeps its head size (it is cut to the standing
+# height) except where that is clearly off (BY_EYE_FRAME).
+BY_BODY = ("trans_sit", "trans_mid")
+BY_EYE_FRAME["hazel"]["stand2"] = 0.88
+BY_EYE_FRAME["pearl"] = {"stand2": 0.96}
+
+
+def body_size(ch: str) -> float:
+    """The size fix that gives sit2.webp the silhouette area of sit.webp."""
+    def area(key: str) -> int:
+        a = np.array(Image.open(SPRITES / ch / f"{key}.webp").convert("RGBA"))[:, :, 3]
+        return int((a > 128).sum())
+    return float(np.sqrt(area("sit") / area("sit2")))
+
+
+def apply_rules(ch: str, final: dict) -> list[str]:
+    """Sizes set by rule over the measured ones: the body-sized passes and the frames sized by eye."""
+    changed = []
+    body = {x for name, keys in passes(ch) if name in BY_BODY for x in keys}
+    fix = round(body_size(ch), 3) if body else None
+    for key, val in final.items():
+        new = BY_EYE_FRAME.get(ch, {}).get(key, fix if key in body else val[0])
+        if new != val[0]:
+            changed.append(f"{ch}.{key} {val[0]}->{new}")
+            val[0] = new
+    return changed
+
+
 def calibrate(res: dict) -> tuple[float, float]:
     """The scores of no usable head and of a plain head for this character (see TRUE_KEYS)."""
     null = float(np.median([res[x]["score"] for x in NULL_KEYS if x in res]))
@@ -617,6 +686,8 @@ def decide(ch: str, k: float, res: dict, near: dict, sizes: dict, one_head: bool
             if not CLAMP[0] <= fix <= CLAMP[1]:
                 notes["clamped"].append(f"{key} {fix:.3f}")
                 fix = None
+        if key in BY_EYE_FRAME.get(ch, {}):
+            fix = BY_EYE_FRAME[ch][key]
         if fix is None:
             notes["no_size"].append(key)
         z = sizes.get(pass_of.get(key) or pass_of.get(MIRRORED.get(key, ""), ""), {})
@@ -634,6 +705,7 @@ def decide(ch: str, k: float, res: dict, near: dict, sizes: dict, one_head: bool
         else:
             notes["no_mouth"].append(key)
             final[key] = [None if fix is None else round(fix, 3), None, None]
+    apply_rules(ch, final)
     return final, notes
 
 
@@ -681,6 +753,22 @@ def write_ts(final: dict, ks: dict, one_head: bool) -> None:
     OUT_TS.write_text("\n".join(lines) + "\n")
 
 
+def read_ts() -> tuple[dict, dict]:
+    """HEADS and STAND_HEAD as heads.ts has them now (for --merge)."""
+    src = OUT_TS.read_text()
+
+    def val(v: str):
+        v = v.strip()
+        return None if v == "null" else float(v) if "." in v else int(v)
+
+    heads: dict[str, dict] = {}
+    for ch, body in re.findall(r"^  (\w+): \{ (.*) \},$", src, re.M):
+        heads[ch] = {key: [val(v) for v in vals.split(",")] for key, vals in re.findall(r"(\w+): \[([^\]]*)\]", body)}
+    line = re.search(r"STAND_HEAD[^=]*= \{(.*)\};", src).group(1)
+    ks = {ch: float(v) for ch, v in re.findall(r"(\w+): ([\d.]+)", line)}
+    return heads, ks
+
+
 def main() -> None:
     args = sys.argv[1:]
 
@@ -701,6 +789,15 @@ def main() -> None:
     if clamp:
         CLAMP[:] = [float(v) for v in clamp.split(",")]
     no_write = "--no-write" in args
+    merge = "--merge" in args
+    if "--rules" in args:
+        cur, cur_ks = read_ts()
+        changed = [c for ch in (only.split(",") if only else CHARACTERS) if ch in cur for c in apply_rules(ch, cur[ch])]
+        print("\n".join(changed) or "nothing to change")
+        if not no_write:
+            write_ts(cur, cur_ks, one_head)
+            print(f"wrote {OUT_TS.relative_to(ROOT)}, {len(changed)} sizes changed")
+        return
     chars = only.split(",") if only else CHARACTERS
     drawn, gaits = drawn_keys()
     old = json.loads(Path(reuse).read_text()) if reuse else {}
@@ -713,6 +810,11 @@ def main() -> None:
         if ch in old and "p1" in old[ch]:
             k = old[ch]["k"]
             res = {r["key"]: r for r in old[ch]["p1"] if r["key"] in keys}
+            # Frames drawn since that run are measured now.
+            missing = [x for x in keys if x not in res]
+            if missing:
+                print(f"{ch}: measuring {len(missing)} new frames")
+                res.update({r["key"]: r for r in run(ch, measure, missing)})
         else:
             # How big the standing head is next to the sitting one, measured both ways.
             a = run(ch, measure, ["stand"], ["sit"])[0]
@@ -760,7 +862,18 @@ def main() -> None:
         report(ch, k, cal, res, near, sizes, final, notes)
         if out_json:
             Path(out_json).write_text(json.dumps(allres))
-    if not no_write and not keys_opt and not only:
+    if merge and not no_write:
+        # Only the frames heads.ts doesn't have yet are added; everything already there stays as it is.
+        cur, cur_ks = read_ts()
+        added = []
+        for ch, final in final_all.items():
+            for key, val in final.items():
+                if key not in cur.setdefault(ch, {}):
+                    cur[ch][key] = val
+                    added.append(f"{ch}.{key}")
+        write_ts(cur, {**ks, **cur_ks}, one_head)
+        print(f"wrote {OUT_TS.relative_to(ROOT)}, added {len(added)}: {' '.join(added)}")
+    elif not no_write and not keys_opt and not only:
         write_ts(final_all, ks, one_head)
         print(f"wrote {OUT_TS.relative_to(ROOT)}")
 

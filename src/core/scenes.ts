@@ -1,4 +1,4 @@
-import type { Beat } from "./executor";
+import type { Beat, Fx } from "./executor";
 import type { Rng } from "./rng";
 import type { IntentName } from "./types";
 
@@ -6,7 +6,7 @@ import type { IntentName } from "./types";
 export const SCRATCH_SEC = 4.8;
 
 /** Short ways to write a beat. */
-export const doing = (anim: Extract<Beat, { do: unknown }>["do"], sec: number, face?: "cursor" | "away"): Beat => ({ do: anim, sec, face });
+export const doing = (anim: Extract<Beat, { do: unknown }>["do"], sec: number, face?: "cursor" | "away", fx?: Fx, fxAt?: number): Beat => ({ do: anim, sec, face, ...(fx ? { fx, fxAt } : {}) });
 export const go = (to: "cursor" | "away" | "stroll", by: number, speed: "walk" | "saunter" | "sneak" | "run", anim?: Extract<Beat, { go: unknown }>["anim"]): Beat => ({ go: to, by, speed, anim });
 export const leap = (to: "cursor" | "away" | "ahead" | "stroll", by: number, h: number, anim?: Extract<Beat, { leap: unknown }>["anim"]): Beat => ({ leap: to, by, h, anim });
 

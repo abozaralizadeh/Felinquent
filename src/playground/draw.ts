@@ -524,6 +524,9 @@ export interface DrawOptions {
 
 /** Draws the character with its feet at body.x, body.y. */
 /** Draws the animal. Returns where its mouth is on screen when the drawing knows (for a carried toy). */
+/** Poses off the ground: no shadow under them. */
+const NO_SHADOW = new Set<string>(["fall", "jump", "dangle", "hang", "cling", "cling_down", "mouse_leap", "binky_air"]);
+
 export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): { x: number; y: number } | null {
   if (body.hidden) return null;
   const ch = characterById(o.character);
@@ -544,8 +547,9 @@ export function drawCat(ctx: Ctx, body: CatBody, o: DrawOptions): { x: number; y
   const spr = getSprites(ch.id);
   if (!spr && spritesPending(ch.id)) return null;
 
-  // A soft shadow on the ground, so it sits on the window instead of floating over it.
-  if (body.anim !== "fall" && body.anim !== "jump" && body.anim !== "dangle" && body.anim !== "hang") {
+  // A soft shadow on the ground, so it sits on the window instead of floating over it. None in the
+  // air or hanging on to something (a leap, a squirrel on the side of a window).
+  if (!NO_SHADOW.has(body.anim)) {
     ctx.save();
     ctx.translate(body.x, body.y);
     ctx.fillStyle = "rgba(0,0,0,0.13)";

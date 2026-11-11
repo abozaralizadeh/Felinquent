@@ -70,6 +70,7 @@ function drawDecals(ctx: CanvasRenderingContext2D, snap: MessSnapshot, windows: 
         const y = w.bounds.y + d.dy;
         if (d.kind === "crack") drawCrack(lc, x, y, d.size, d.seed);
         else if (d.kind === "claw") drawClaw(lc, x, y, d.size, d.seed);
+        else if (d.kind === "bite") drawBite(lc, x, y, d.size, d.seed);
         else drawChip(lc, x, y, d.size, d.seed);
       }
       lc.restore();
@@ -345,6 +346,184 @@ function drawChip(ctx: CanvasRenderingContext2D, x: number, y: number, size: num
   ctx.stroke();
 }
 
+/** A rabbit's nibble out of the top edge: two or three round bites side by side, with the marks of the front teeth. */
+function drawBite(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, seed: number): void {
+  // Two or three round bites out of the window's top edge, side by side and overlapping a little:
+  // dark where the edge is gone, a light rim round each, and the ridges two front teeth leave.
+  const r = seeded(seed);
+  const n = r() < 0.5 ? 2 : 3;
+  const rad = size / (n * 1.6 + 0.4);
+  const bites: { cx: number; rr: number }[] = [];
+  for (let i = 0; i < n; i++) bites.push({ cx: x - size / 2 + rad * (1.1 + i * 1.6), rr: rad * (0.85 + r() * 0.3) });
+  ctx.beginPath();
+  for (const b of bites) {
+    ctx.moveTo(b.cx + b.rr, y);
+    ctx.arc(b.cx, y, b.rr, 0, Math.PI);
+  }
+  ctx.fillStyle = "rgba(28,26,30,0.78)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.7)";
+  ctx.lineWidth = Math.max(0.8, size * 0.06);
+  for (const b of bites) {
+    ctx.beginPath();
+    ctx.arc(b.cx, y, b.rr, 0, Math.PI);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = Math.max(0.6, size * 0.04);
+  for (const b of bites) {
+    ctx.beginPath();
+    ctx.moveTo(b.cx - b.rr * 0.2, y + b.rr * 0.2);
+    ctx.lineTo(b.cx - b.rr * 0.2, y + b.rr * 0.7);
+    ctx.moveTo(b.cx + b.rr * 0.2, y + b.rr * 0.2);
+    ctx.lineTo(b.cx + b.rr * 0.2, y + b.rr * 0.7);
+    ctx.stroke();
+  }
+}
+
+type PuffView = NonNullable<MessSnapshot["puffs"]>[number];
+
+/**
+ * The bits in the air of the animals' own moves (ADR-067), in the style of the drawings: dark
+ * outlines, soft fills. back: only the dust (it rises from the ground, behind the animal); otherwise
+ * the rest (fur flying off a shake, drops, crumbs, the lines of a shiver or a thump).
+ */
+function drawPuffs(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: number, back: boolean): void {
+  const ps = snap.puffs;
+  if (!ps || ps.length === 0) return;
+  for (const f of ps) {
+    if ((f.kind === "dust") !== back) continue;
+    const a = Math.max(0, Math.min(1, 1 - f.u));
+    if (a <= 0) continue;
+    ctx.save();
+    if (f.kind === "fur") drawFur(ctx, f, a, scale);
+    else if (f.kind === "dust") drawDust(ctx, f, a, scale);
+    else if (f.kind === "drop") drawDrop(ctx, f, a, scale);
+    else if (f.kind === "crumb") drawCrumb(ctx, f, a, scale);
+    else if (f.kind === "tremble") drawTremble(ctx, f, a, scale);
+    else drawImpact(ctx, f, a, scale);
+    ctx.restore();
+  }
+}
+
+/** A tuft of loose fur: pointed at both ends, turning slowly as it floats down. */
+function drawFur(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = Math.min(1, a * 1.8);
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.seed * Math.PI * 2 + f.u * 2.4 * f.dir);
+  const L = f.size * 1.5;
+  const W = f.size * 0.55;
+  ctx.beginPath();
+  ctx.moveTo(-L, 0);
+  ctx.quadraticCurveTo(-L * 0.1, -W * 1.2, L, -W * 0.15);
+  ctx.quadraticCurveTo(L * 0.1, W * 0.25, L * 0.45, W * 0.55);
+  ctx.quadraticCurveTo(-L * 0.2, W * 0.9, -L, 0);
+  ctx.fillStyle = f.color ?? "#c9a27a";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(55,38,25,0.5)";
+  ctx.lineWidth = 0.6 * scale;
+  ctx.stroke();
+  // A lighter strand along it, so dark fur shows on a dark window too.
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(-L * 0.6, -W * 0.05);
+  ctx.quadraticCurveTo(0, -W * 0.5, L * 0.6, -W * 0.15);
+  ctx.stroke();
+}
+
+/** A little cloud of dust: three round puffs, growing and thinning out. */
+function drawDust(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = 0.5 * a * a;
+  const r = f.size;
+  const tilt = (f.seed - 0.5) * 0.6;
+  ctx.fillStyle = f.color ?? "#ddd0bc";
+  ctx.strokeStyle = "rgba(120,100,80,0.35)";
+  ctx.lineWidth = 0.7 * scale;
+  ctx.beginPath();
+  ctx.arc(f.x - r * 0.75, f.y + r * tilt * 0.3, r * 0.7, 0, Math.PI * 2);
+  ctx.arc(f.x, f.y - r * 0.3, r, 0, Math.PI * 2);
+  ctx.arc(f.x + r * 0.8, f.y - r * tilt * 0.3, r * 0.65, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** A drop of water, round at the bottom with a shine. */
+function drawDrop(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = Math.min(1, a * 2);
+  const r = f.size;
+  ctx.beginPath();
+  ctx.moveTo(f.x, f.y - r * 1.7);
+  ctx.quadraticCurveTo(f.x + r * 1.15, f.y - r * 0.2, f.x, f.y + r);
+  ctx.quadraticCurveTo(f.x - r * 1.15, f.y - r * 0.2, f.x, f.y - r * 1.7);
+  ctx.fillStyle = f.color ?? "#78bfea";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(30,90,140,0.55)";
+  ctx.lineWidth = 0.6 * scale;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.beginPath();
+  ctx.arc(f.x - r * 0.3, f.y - r * 0.25, r * 0.28, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** A crumb or a bit of shell: a little uneven chip. */
+function drawCrumb(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = Math.min(1, a * 2.5);
+  const r = seeded(Math.floor(f.seed * 1e6));
+  const n = 5;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * Math.PI * 2 + f.u * 4 * f.dir;
+    const rad = f.size * (0.7 + r() * 0.5);
+    const px = f.x + Math.cos(ang) * rad;
+    const py = f.y + Math.sin(ang) * rad * 0.8;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = f.color ?? "#a77b4f";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(60,40,25,0.5)";
+  ctx.lineWidth = 0.5 * scale;
+  ctx.stroke();
+}
+
+/** The marks of a shiver: two short curved strokes on each side of the body, wobbling. */
+function drawTremble(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = Math.sin(Math.min(1, f.u) * Math.PI) * 0.85;
+  ctx.strokeStyle = "rgba(60,60,72,0.9)";
+  ctx.lineWidth = 1.3 * scale;
+  ctx.lineCap = "round";
+  const wob = Math.sin(f.u * 40 + f.seed * 9) * 1.2 * scale;
+  const h = 5.5 * scale;
+  for (const side of [-1, 1]) {
+    for (let j = 0; j < 2; j++) {
+      const x = f.x + side * (f.size + (3 + j * 4) * scale) + wob;
+      const y = f.y - j * 2 * scale;
+      ctx.beginPath();
+      ctx.moveTo(x - side * scale, y - h * (1 - j * 0.25));
+      ctx.quadraticCurveTo(x + side * 2.2 * scale, y, x - side * scale, y + h * (1 - j * 0.25));
+      ctx.stroke();
+    }
+  }
+  void a;
+}
+
+/** Where a foot stamps: three short lines fanning up from the ground. */
+function drawImpact(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = a * 0.9;
+  ctx.strokeStyle = "rgba(70,58,48,0.9)";
+  ctx.lineWidth = 1.4 * scale;
+  ctx.lineCap = "round";
+  const r0 = f.size * (0.5 + f.u * 0.4);
+  const r1 = f.size * (1.1 + f.u * 0.7);
+  for (const ang of [-2.5, -1.57, -0.64]) {
+    ctx.beginPath();
+    ctx.moveTo(f.x + Math.cos(ang) * r0, f.y + Math.sin(ang) * r0);
+    ctx.lineTo(f.x + Math.cos(ang) * r1, f.y + Math.sin(ang) * r1);
+    ctx.stroke();
+  }
+}
+
 /** front: only what is in your hand or the animal's mouth (drawn over the animal); otherwise the rest. */
 function drawProps(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: number, front = false, mouth: { x: number; y: number } | null = null): void {
   for (const q of snap.props) {
@@ -557,6 +736,7 @@ export function drawPropsOnly(ctx: CanvasRenderingContext2D, snap: MessSnapshot 
   if (!snap) return;
   drawSpots(ctx, snap, scale);
   drawProps(ctx, snap, scale);
+  drawPuffs(ctx, snap, scale, true);
 }
 
 /** Things standing on windows and the marks in windows: drawn before the animal. */
@@ -565,6 +745,7 @@ export function drawMessBehind(ctx: CanvasRenderingContext2D, snap: MessSnapshot
   drawDecals(ctx, snap, windows, scale);
   drawSpots(ctx, snap, scale);
   drawProps(ctx, snap, scale);
+  drawPuffs(ctx, snap, scale, true);
 }
 
 /** What flies through the air: drawn after the animal. */
@@ -572,6 +753,7 @@ export function drawMessBehind(ctx: CanvasRenderingContext2D, snap: MessSnapshot
 export function drawMessFront(ctx: CanvasRenderingContext2D, snap: MessSnapshot | null, scale: number, mouth: { x: number; y: number } | null = null): void {
   if (!snap) return;
   drawProps(ctx, snap, scale, true, mouth);
+  drawPuffs(ctx, snap, scale, false);
   drawShards(ctx, snap, scale);
   drawStrips(ctx, snap);
   drawFly(ctx, snap, scale);

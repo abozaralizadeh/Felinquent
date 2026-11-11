@@ -166,8 +166,8 @@ const POTTY_RETRY_MS = 45_000;
 /** What it can be doing and still drop it to chase a cursor that shoots past. */
 /** Away at least this long (minutes) and it comes to say hello when you're back. */
 const GREET_AFTER_MIN = 10;
-/** What it drops to come and say hello. */
-const GREET_FROM: ReadonlySet<IntentName> = new Set<IntentName>(["watch", "groom", "stare", "look_around", "yawn", "wander", "sniff", "perch", "peek", "tour", "sit_on", "block_dock", "follow"]);
+/** What it drops to come and say hello (the calm moves of its own too: a dog lets go of the toy it chews). */
+const GREET_FROM: ReadonlySet<IntentName> = new Set<IntentName>(["watch", "groom", "stare", "look_around", "yawn", "wander", "sniff", "perch", "peek", "tour", "sit_on", "block_dock", "follow", "chew", "nibble", "flop", "nut"]);
 const CHASE_FROM: ReadonlySet<IntentName> = new Set<IntentName>(["watch", "groom", "stare", "look_around", "yawn", "wander", "sniff", "perch", "peek", "tour"]);
 /** How often per second a cursor racing past sets it off (while it moves fast nearby), and how long before it may again. */
 const CHASE_IMPULSE: Record<ChaosLevel, { perSec: number; coolMs: number }> = {

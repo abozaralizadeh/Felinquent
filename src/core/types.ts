@@ -173,6 +173,27 @@ export type IntentName =
   /** It has to go, now and then (ADR-048): a puddle or a little pile, on a window top or the Dock. */
   | "pee"
   | "poop"
+  /**
+   * Each animal's own things (ADR-067), drawn for that animal only (Instinct.own says who has which):
+   * a dog shakes off and chews its toy, a chihuahua burrows under a blanket and shivers, a fox dives
+   * nose first after a mouse and buries its toy, a raccoon washes its hands and raids the trash, a
+   * rabbit does binkies, thumps, flops and nibbles, a squirrel eats a nut, buries one and clings to
+   * the side of a window.
+   */
+  | "shake_off"
+  | "chew"
+  | "burrow"
+  | "shiver"
+  | "mouse"
+  | "cache"
+  | "wash"
+  | "raid"
+  | "binky"
+  | "thump"
+  | "flop"
+  | "nibble"
+  | "nut"
+  | "cling"
   | "leave";
 
 export interface Intent {

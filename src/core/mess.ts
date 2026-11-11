@@ -16,12 +16,20 @@ export type ToyKind = "yarn" | "jingle" | "fish" | "sock" | "foil" | "tennis" | 
 /** What each kind of animal eats as a treat (from your hand): a cat a fish-shaped biscuit, a dog a bone-shaped one, a fox an egg, a raccoon grapes, a rabbit a strawberry, a squirrel a peanut. */
 export type TreatKind = "fish_treat" | "biscuit" | "egg" | "grapes" | "strawberry" | "peanut";
 export const TREAT_KINDS: readonly TreatKind[] = ["fish_treat", "biscuit", "egg", "grapes", "strawberry", "peanut"];
-export type PropKind = "mug" | "glass" | "plant" | "vase" | "yarn" | "pencils" | "teacup" | "duck" | "mouse" | ToyKind | TreatKind;
+/**
+ * Things an animal brings out or digs up by itself (ADR-067): the chihuahua's blanket, the raccoon's
+ * snack box and the rubbish it throws out of it.
+ */
+export type OwnKind = "blanket" | "snack_box" | "paper_ball" | "banana_peel" | "apple_core" | "fish_bone";
+/** What the raccoon throws out of the box, one at a time. */
+export const TRASH_KINDS: readonly OwnKind[] = ["paper_ball", "banana_peel", "apple_core", "fish_bone"];
+export type PropKind = "mug" | "glass" | "plant" | "vase" | "yarn" | "pencils" | "teacup" | "duck" | "mouse" | ToyKind | TreatKind | OwnKind;
 /** What stands about on window tops to be knocked off. */
 export const PROP_KINDS: readonly PropKind[] = ["mug", "glass", "plant", "vase", "yarn", "pencils", "teacup", "duck", "mouse"];
 /** Those things in words, for the model. */
 export const THING_NAME: Partial<Record<string, string>> = {
   mug: "mug", glass: "glass of water", plant: "potted plant", vase: "vase", yarn: "ball of yarn", pencils: "cup of pencils", teacup: "teacup", duck: "rubber duck", mouse: "toy mouse",
+  blanket: "blanket", snack_box: "snack box", paper_ball: "paper ball", banana_peel: "banana peel", apple_core: "apple core", fish_bone: "fish bone",
 };
 /** Each animal's own toy (Personality.toy): the yarn is the tabby's, the others belong to one animal each. */
 export const TOY_KINDS: readonly ToyKind[] = ["yarn", "jingle", "fish", "sock", "foil", "tennis", "bone", "carrot", "acorn"];
@@ -32,6 +40,7 @@ export const PROP_HEIGHT: Record<PropKind, number> = {
   mug: 30, glass: 34, plant: 40, vase: 42, yarn: 26, pencils: 46, teacup: 24, duck: 28, mouse: 18,
   jingle: 21, fish: 18, sock: 23, foil: 20, tennis: 22, bone: 14, carrot: 17, acorn: 21,
   fish_treat: 13, biscuit: 13, egg: 17, grapes: 19, strawberry: 17, peanut: 12,
+  blanket: 36, snack_box: 30, paper_ball: 13, banana_peel: 13, apple_core: 17, fish_bone: 11,
 };
 /** What shatters when it lands hard. The rest bounces (and the yarn rolls). */
 export const FRAGILE: ReadonlySet<PropKind> = new Set<PropKind>(["mug", "glass", "plant", "vase", "teacup", "pencils"]);
@@ -82,6 +91,16 @@ export interface Prop {
   handled?: boolean;
   /** Held in your hand: where you grabbed it, from its middle, and how fast your hand moves (px/s, smoothed). */
   grip?: { dx: number; dy: number; vx: number; vy: number };
+  /**
+   * Brought out by the animal for one of its own moves (ADR-067): the blanket, the snack box, the
+   * rubbish, the nut in its paws. Never knocked off and never counted as clutter.
+   */
+  own?: boolean;
+  /** Out of sight for now (the chihuahua is under the blanket, which it draws itself). */
+  hidden?: boolean;
+  /** When it starts to fade away, and gone once it has. */
+  fadeAtMs?: number;
+  gone?: boolean;
 }
 
 /** One piece of something broken: a polygon cut from the drawing (in 0..1 of its box), or a bit of glass, soil or water. */
@@ -113,7 +132,8 @@ export interface Shard {
 /** A mark on a window: it rides with the window and fades away. dx, dy are from the window's top left. */
 export interface Decal {
   id: number;
-  kind: "crack" | "claw" | "chip";
+  /** bite: a rabbit's nibble out of a window's top edge (ADR-067). */
+  kind: "crack" | "claw" | "chip" | "bite";
   windowId: string;
   dx: number;
   dy: number;
@@ -157,10 +177,16 @@ export interface Fly {
  * rest are drawings (public/props/<kind>.webp). A spot sticks to the window it was made on, dries up
  * or fades after a while, and a click cleans it at once.
  */
-export type SpotKind = "puddle" | "poop" | "poop_log" | "pellets" | "pellets_row";
+export type SpotKind = "puddle" | "poop" | "poop_log" | "pellets" | "pellets_row" | OwnSpot;
+/**
+ * What the animals' own moves leave (ADR-067): a mound of earth where something was dug in or a fox
+ * dived after a mouse, the little pool a raccoon washes its hands in, and the shells of a nut a
+ * squirrel ate. They ride their window and fade like the rest, and a click cleans one.
+ */
+export type OwnSpot = "mound" | "pool" | "shells";
 /** Height in pixels at the medium size of each drawn spot (tools/cut-props.py reads this table too). */
 export const SPOT_HEIGHT: Record<Exclude<SpotKind, "puddle">, number> = {
-  poop: 16, poop_log: 9, pellets: 9, pellets_row: 6,
+  poop: 16, poop_log: 9, pellets: 9, pellets_row: 6, mound: 20, pool: 16, shells: 9,
 };
 
 export interface Spot {
@@ -187,6 +213,29 @@ export interface Spot {
   /** A fly has been to this one already. */
   flown?: boolean;
 }
+
+/**
+ * A little bit of something in the air for a moment (ADR-067): fur and dust off a shake, drops off
+ * wet paws, crumbs and shell bits, and the short lines of a shiver or a thump. Drawn, never kept.
+ */
+export interface Puff {
+  /** tremble: the marks either side of a shivering body; impact: the lines where a foot hits the ground. */
+  kind: "fur" | "dust" | "drop" | "crumb" | "tremble" | "impact";
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  /** It shows from this time on (a spray comes out over a moment, not all at once). */
+  bornMs: number;
+  ttlMs: number;
+  seed: number;
+  color?: string;
+  dir: 1 | -1;
+  /** Where the ground is under it: a drop vanishes there and a crumb lies there till it fades. */
+  floor?: number;
+}
+const MAX_PUFFS = 140;
 
 /** What lies about on one desktop. */
 export interface MessState {
@@ -233,7 +282,7 @@ const MAX_STRIPS = 40;
 const FLOOR_LINGER_MS = 45_000;
 const FADE_MS = 4_000;
 /** How long a spot stays, shortest and longest, in minutes: a puddle dries, the rest fade away. */
-const SPOT_LIFE: Record<SpotKind, [number, number]> = { puddle: [6, 9], poop: [12, 20], poop_log: [12, 20], pellets: [8, 12], pellets_row: [8, 12] };
+const SPOT_LIFE: Record<SpotKind, [number, number]> = { puddle: [6, 9], poop: [12, 20], poop_log: [12, 20], pellets: [8, 12], pellets_row: [8, 12], mound: [6, 10], pool: [2, 3], shells: [5, 8] };
 /** The sparkle after a click. */
 const CLEAN_MS = 700;
 /** The last part of a spot's life, when it dries up or fades. */
@@ -318,6 +367,7 @@ export class Mess {
   strips: Strip[] = [];
   fly: Fly | null = null;
   spots: Spot[] = [];
+  puffs: Puff[] = [];
   private nextId = 1;
   private ownToy: ToyKind = "yarn";
   private nextSpawnMs: number | null = null;
@@ -342,6 +392,7 @@ export class Mess {
     this.strips = [];
     this.fly = null;
     this.spots = [];
+    this.puffs = [];
   }
 
   /**
@@ -457,7 +508,7 @@ export class Mess {
 
   /** A resting prop on this window, the one nearest x if there are several. */
   propOn(windowId: string, x?: number): Prop | undefined {
-    const on = this.props.filter((p) => p.state === "rest" && p.windowId === windowId && p.alpha > 0.9);
+    const on = this.props.filter((p) => p.state === "rest" && !p.own && p.windowId === windowId && p.alpha > 0.9);
     if (x === undefined) return on[0];
     return on.sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
   }
@@ -465,7 +516,7 @@ export class Mess {
   /** Windows that have something on them that could be knocked off. */
   /** "mug on w3": what stands where, for the model (no titles, only ids). */
   thingsOnWindows(): string[] {
-    return this.props.filter((p) => p.state === "rest" && p.windowId && p.alpha > 0.9).map((p) => `${p.kind} on ${p.windowId}`);
+    return this.props.filter((p) => p.state === "rest" && !p.own && p.windowId && p.alpha > 0.9).map((p) => `${p.kind} on ${p.windowId}`);
   }
 
   /**
@@ -517,13 +568,14 @@ export class Mess {
     for (const h of heaps.values()) out.push({ what: h.what, state: h.flying ? "flying" : "lying", x: h.xs / h.n, y: h.ys / h.n, windowId: h.windowId, ...(h.byHuman ? { byHuman: true } : {}) });
     for (const s of this.spots) {
       if (s.cleanedMs !== undefined) continue;
-      out.push({ what: s.kind === "puddle" ? "my puddle" : s.kind === "pellets" || s.kind === "pellets_row" ? "my droppings" : "my poop", state: "lying", x: s.x, y: s.y, windowId: s.windowId });
+      const what = s.kind === "puddle" ? "my puddle" : s.kind === "pellets" || s.kind === "pellets_row" ? "my droppings" : s.kind === "mound" ? "a mound of earth i dug" : s.kind === "pool" ? "the little pool i washed in" : s.kind === "shells" ? "nut shells" : "my poop";
+      out.push({ what, state: "lying", x: s.x, y: s.y, windowId: s.windowId });
     }
     const wins = new Map((this.world?.windows ?? []).map((w) => [w.id, w]));
     for (const d of this.decals) {
       const w = wins.get(d.windowId);
       if (!w) continue;
-      out.push({ what: d.kind === "crack" ? "a crack" : d.kind === "claw" ? "my claw marks" : "a chip", state: "mark", x: w.bounds.x + d.dx, y: w.bounds.y + d.dy, windowId: d.windowId });
+      out.push({ what: d.kind === "crack" ? "a crack" : d.kind === "claw" ? "my claw marks" : d.kind === "bite" ? "my bite marks" : "a chip", state: "mark", x: w.bounds.x + d.dx, y: w.bounds.y + d.dy, windowId: d.windowId });
     }
     for (const s of this.strips) out.push({ what: "a strip torn off a title bar", state: s.settled ? "lying" : "flying", x: s.x, y: s.y, windowId: null });
     if (this.fly && this.fly.state !== "caught") out.push({ what: "a fly", state: "buzzing", x: this.fly.x, y: this.fly.y, windowId: null });
@@ -531,7 +583,7 @@ export class Mess {
   }
 
   windowsWithProps(): string[] {
-    return [...new Set(this.props.filter((p) => p.state === "rest" && p.windowId && p.alpha > 0.9).map((p) => p.windowId as string))];
+    return [...new Set(this.props.filter((p) => p.state === "rest" && !p.own && p.windowId && p.alpha > 0.9).map((p) => p.windowId as string))];
   }
 
   /** Puts a thing on a window top now (also used by tests and the playground). */
@@ -681,7 +733,8 @@ export class Mess {
   /** Things you can pick up with the mouse: the toy, a treat lying about, and whatever stands on a window or lies on the floor. */
   get grabbable(): Prop[] {
     return this.props.filter(
-      (p) => p.alpha >= 0.5 && (p.state === "rest" || p.state === "roll" || p.state === "settled" || p.state === "carried" || p.state === "teeter") && !(p.treat && (p.bites ?? 0) > 0),
+      // Not what the animal is using right now (the blanket it is under, the box it is going through, the nut in its paws).
+      (p) => p.alpha >= 0.5 && (p.state === "rest" || p.state === "roll" || p.state === "settled" || p.state === "carried" || p.state === "teeter") && !(p.treat && (p.bites ?? 0) > 0) && !(p.own && (p.state === "rest" || p.state === "carried")),
     );
   }
 
@@ -1135,6 +1188,7 @@ export class Mess {
       this.stepFly(dt / n);
     }
     this.stepSpots(world);
+    this.stepPuffs(dt, world);
     // Marks fade and go with their window.
     this.decals = this.decals.filter((d) => now - d.bornMs < d.ttlMs && world.windows.some((w) => w.id === d.windowId));
     const out = this.outbox;
@@ -1147,10 +1201,10 @@ export class Mess {
     const c = CLUTTER[chaos];
     // Chill: no clutter. What stands about fades away.
     if (chaos === "chill") {
-      for (const p of this.props) if (p.state === "rest") ((p.state = "settled"), (p.settledMs = now - FLOOR_LINGER_MS));
+      for (const p of this.props) if (p.state === "rest" && !p.own) ((p.state = "settled"), (p.settledMs = now - FLOOR_LINGER_MS));
     }
     if (this.nextSpawnMs === null) this.nextSpawnMs = now + this.rng.range(20, 60) * 1000;
-    const standing = this.props.filter((p) => p.state === "rest" || p.state === "slide" || p.state === "teeter").length;
+    const standing = this.props.filter((p) => !p.own && (p.state === "rest" || p.state === "slide" || p.state === "teeter")).length;
     if (standing >= c.max || now < this.nextSpawnMs) return;
     this.nextSpawnMs = now + this.rng.range(c.every[0], c.every[1]) * 1000;
     // A wide enough stretch of a window top, not right where the animal is or another thing stands.
@@ -1169,6 +1223,10 @@ export class Mess {
     for (const p of this.props) {
       // In your hand or in its mouth: whoever holds it moves it. Buried: it waits.
       if (p.state === "held" || p.state === "carried" || p.state === "stashed") continue;
+      if (p.own && p.state === "rest") {
+        this.stepOwn(p, dt, world, windows);
+        continue;
+      }
       if (p.state === "rest" || p.state === "slide" || p.state === "teeter" || (p.state === "roll" && p.windowId)) {
         const win = p.windowId ? windows.get(p.windowId) : undefined;
         if (!win) {
@@ -1306,7 +1364,236 @@ export class Mess {
       }
     }
     // Gone (broken, faded, or fell off the screen). One still fading in, or hidden behind a window, stays.
-    this.props = this.props.filter((p) => p.alpha > 0 || p.state === "rest" || p.state === "slide" || p.state === "teeter" || p.state === "roll" || p.state === "stashed");
+    this.props = this.props.filter((p) => !p.gone && (p.alpha > 0 || p.state === "rest" || p.state === "slide" || p.state === "teeter" || p.state === "roll" || p.state === "stashed"));
+  }
+
+  /** One of the animal's own things lying there: it rides its window, hides, shows and fades away. */
+  private stepOwn(p: Prop, dt: number, world: WorldSnapshot, windows: Map<string, WindowInfo>): void {
+    const now = world.nowMs;
+    if (p.windowId) {
+      const win = windows.get(p.windowId);
+      if (!win) {
+        p.state = "fall";
+        p.windowId = null;
+        p.vx = this.rng.range(-30, 30);
+        p.vr = this.rng.range(-2, 2);
+        p.fadeAtMs = now;
+        return;
+      }
+      p.x = win.bounds.x + p.offset;
+      p.y = win.bounds.y;
+    } else p.y = this.floorAt(p.x, world);
+    const leaving = p.fadeAtMs !== undefined && now >= p.fadeAtMs;
+    const want = p.hidden || leaving ? 0 : 1;
+    const rate = p.hidden ? 1 / 0.15 : leaving ? 1 / 1.5 : 1 / 0.4;
+    p.alpha = Math.max(0, Math.min(1, p.alpha + Math.sign(want - p.alpha) * Math.min(Math.abs(want - p.alpha), dt * rate)));
+    if (leaving && p.alpha <= 0) p.gone = true;
+  }
+
+  /**
+   * Puts one of the animal's own things down at x on that window (or on the floor or the Dock when
+   * windowId is null): the blanket, the snack box. It fades in, stays while it is used, and fades
+   * away `stayMs` after `release` (or after stayMs from now if nobody releases it).
+   */
+  putOwn(kind: PropKind, windowId: string | null, x: number, nowMs: number, stayMs = 120_000): Prop | null {
+    const world = this.world;
+    if (!world) return null;
+    const win = windowId ? world.windows.find((w) => w.id === windowId) : undefined;
+    if (windowId && !win) return null;
+    const p: Prop = {
+      id: `p${this.nextId++}`,
+      kind,
+      windowId: win ? win.id : null,
+      offset: win ? x - win.bounds.x : x,
+      x,
+      y: win ? win.bounds.y : this.floorAt(x, world),
+      vx: 0,
+      vy: 0,
+      rot: 0,
+      vr: 0,
+      state: "rest",
+      alpha: 0,
+      bornMs: nowMs,
+      teeter: 0,
+      dir: 1,
+      slideLeft: 0,
+      own: true,
+      fadeAtMs: nowMs + stayMs,
+    };
+    this.props.push(p);
+    return p;
+  }
+
+  /** The nearest of the animal's own things of that kind, lying there. */
+  ownNear(kind: PropKind, x: number): Prop | undefined {
+    return this.props.filter((p) => p.own && p.kind === kind && p.state === "rest" && !p.gone).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
+  }
+
+  /** Hides or shows one of its things (the blanket while it is under it); `x` moves it there (where it lies down). */
+  hideOwn(id: string, hidden: boolean, x?: number): void {
+    const p = this.props.find((q) => q.id === id);
+    if (!p) return;
+    p.hidden = hidden;
+    if (x !== undefined) {
+      p.offset += x - p.x;
+      p.x = x;
+    }
+  }
+
+  /** Done with it: it fades away after a while. */
+  releaseOwn(id: string, nowMs: number, afterMs: number): void {
+    const p = this.props.find((q) => q.id === id);
+    if (p) ((p.hidden = false), (p.fadeAtMs = nowMs + afterMs));
+  }
+
+  /** The raccoon throws a bit of rubbish out of the box behind it, over its shoulder. dir: the way it throws. */
+  throwOut(kind: PropKind, x: number, y: number, dir: 1 | -1, nowMs: number): Prop {
+    const p: Prop = {
+      id: `p${this.nextId++}`,
+      kind,
+      windowId: null,
+      offset: 0,
+      x,
+      y,
+      vx: dir * this.rng.range(120, 220) * this.scale,
+      vy: -this.rng.range(380, 520) * Math.sqrt(this.scale),
+      rot: 0,
+      vr: dir * this.rng.range(5, 11),
+      state: "fall",
+      alpha: 1,
+      bornMs: nowMs,
+      teeter: 0,
+      dir,
+      slideLeft: 0,
+      own: true,
+    };
+    this.props.push(p);
+    return p;
+  }
+
+  /** Something in its paws to eat (a nut it dug up, grapes from the box): carried, drawn at its paws. */
+  holdItem(kind: PropKind, x: number, y: number, nowMs: number): Prop {
+    const p: Prop = { id: `p${this.nextId++}`, kind, windowId: null, offset: 0, x, y, vx: 0, vy: 0, rot: 0, vr: 0, state: "carried", alpha: 1, bornMs: nowMs, teeter: 0, dir: 1, slideLeft: 0, own: true, bites: 0 };
+    this.props.push(p);
+    return p;
+  }
+
+  /** A nibble of what it holds (amount of the whole); bits fall off it to the ground (`floor`). The last one finishes it. */
+  nibbleItem(amount: number, nowMs: number, color = "#9a6a3c", floor?: number): void {
+    const p = this.props.find((q) => q.own && q.state === "carried");
+    if (!p) return;
+    p.bites = Math.min(1, (p.bites ?? 0) + amount);
+    p.rot = (p.rot + 0.6) % (Math.PI * 2);
+    this.puff("crumb", p.x, p.y - PROP_HEIGHT[p.kind] * this.scale * 0.4, 4, nowMs, { spread: 50, up: 60, color, size: 1.6, ...(floor !== undefined ? { floor } : {}) });
+    if (p.bites >= 1) p.gone = true;
+  }
+
+  /** It finished what it held, or put it down (eaten either way). */
+  finishItem(): void {
+    for (const p of this.props) if (p.own && p.state === "carried") p.gone = true;
+    this.props = this.props.filter((p) => !p.gone);
+  }
+
+  /** Earth or water flung out: dir is the way it flies (behind a digging animal), n bits. */
+  spray(kind: "soil" | "water", x: number, y: number, dir: 1 | -1, n: number, nowMs: number): void {
+    for (let i = 0; i < n && this.shards.length < MAX_SHARDS; i++) {
+      const s = this.rng.range(2, 4.5) * this.scale;
+      this.shards.push({
+        kind,
+        x: x + this.rng.range(-5, 5) * this.scale,
+        y: y - this.rng.range(2, 8) * this.scale,
+        vx: dir * this.rng.range(60, 230) * this.scale,
+        vy: -this.rng.range(120, 330) * Math.sqrt(this.scale),
+        rot: 0,
+        vr: 0,
+        poly: [],
+        cx: 0,
+        cy: 0,
+        w: s,
+        h: s,
+        settled: false,
+        bornMs: nowMs,
+      });
+    }
+  }
+
+  /** A nibble out of the top edge of a window, where the rabbit's mouth is. */
+  biteMark(windowId: string, x: number, nowMs: number): void {
+    const win = this.world?.windows.find((w) => w.id === windowId);
+    if (!win) return;
+    this.decals.push({ id: this.nextId++, kind: "bite", windowId, dx: x - win.bounds.x, dy: 0, size: this.rng.range(13, 17) * this.scale, seed: this.rng.next(), bornMs: nowMs, ttlMs: this.rng.range(4, 7) * 60_000 });
+    while (this.decals.length > 40) this.decals.shift();
+  }
+
+  /**
+   * Bits in the air for a moment, around (x, y): fur or dust off a shake, drops, crumbs, the lines of
+   * a shiver (tremble) or a thump (impact). They come out over `overMs` (a spray, not a pop). spread: px/s sideways
+   * (both ways, or `dir` only), up: px/s upward.
+   */
+  puff(
+    kind: Puff["kind"],
+    x: number,
+    y: number,
+    n: number,
+    nowMs: number,
+    o: { dir?: 1 | -1; spread?: number; up?: number; color?: string; overMs?: number; size?: number; ttlMs?: number; w?: number; h?: number; floor?: number } = {},
+  ): void {
+    const sc = this.scale;
+    for (let i = 0; i < n && this.puffs.length < MAX_PUFFS; i++) {
+      const side: 1 | -1 = o.dir ?? (this.rng.next() < 0.5 ? -1 : 1);
+      const sp = (o.spread ?? 80) * this.rng.range(0.4, 1.1);
+      const base = kind === "dust" ? 0.9 : kind === "fur" ? 1.6 : kind === "tremble" || kind === "impact" ? 0.45 : 1.4;
+      this.puffs.push({
+        kind,
+        x: x + this.rng.range(-0.5, 0.5) * (o.w ?? 10) * sc,
+        y: y + this.rng.range(-0.5, 0.5) * (o.h ?? 6) * sc,
+        vx: side * sp * sc,
+        vy: -(o.up ?? 60) * this.rng.range(0.5, 1.2) * sc,
+        size: (o.size ?? (kind === "dust" ? 5 : kind === "fur" ? 3 : 2)) * this.rng.range(0.7, 1.3) * sc,
+        bornMs: nowMs + (o.overMs ? this.rng.range(0, o.overMs) : 0),
+        ttlMs: (o.ttlMs ?? base * 1000) * this.rng.range(0.75, 1.25),
+        seed: this.rng.next(),
+        ...(o.color ? { color: o.color } : {}),
+        ...(o.floor !== undefined ? { floor: o.floor } : {}),
+        dir: side,
+      });
+    }
+  }
+
+  private stepPuffs(dt: number, world: WorldSnapshot): void {
+    if (this.puffs.length === 0) return;
+    const now = world.nowMs;
+    const floor = world.screen.y + world.screen.h + 40;
+    for (const f of this.puffs) {
+      if (now < f.bornMs) continue;
+      if (f.kind === "drop" || f.kind === "crumb") {
+        if (f.vx === 0 && f.vy === 0 && f.floor !== undefined && f.y === f.floor) continue;
+        f.vy += GRAVITY * 0.9 * dt;
+        f.vx *= Math.pow(0.6, dt);
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        if (f.floor !== undefined && f.y >= f.floor && f.vy > 0) {
+          // On the ground: a drop soaks in, a crumb lies there till it fades.
+          if (f.kind === "drop") f.ttlMs = 0;
+          f.vx = 0;
+          f.vy = 0;
+          f.y = f.floor;
+        }
+        continue;
+      } else if (f.kind === "fur") {
+        // Light: it floats down, drifting from side to side.
+        f.vy += (GRAVITY * 0.06 - f.vy * 2.5) * dt;
+        f.vx *= Math.pow(0.15, dt);
+        f.x += Math.sin((now - f.bornMs) / 210 + f.seed * 7) * 18 * dt * this.scale;
+      } else if (f.kind === "dust") {
+        f.vx *= Math.pow(0.05, dt);
+        f.vy *= Math.pow(0.05, dt);
+        f.size += 9 * this.scale * dt;
+      } else continue;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+    }
+    this.puffs = this.puffs.filter((f) => now - f.bornMs < f.ttlMs && f.y < floor);
   }
 
   private stepShards(dt: number, world: WorldSnapshot): void {
@@ -1443,6 +1730,12 @@ export class Mess {
       decals: this.decals.map((d) => ({ ...d, alpha: Math.min(1, ((d.bornMs + d.ttlMs) - (this.world?.nowMs ?? 0)) / 6000) })),
       strips: this.strips.map((s) => ({ x: s.x, y: s.y, rot: s.rot, w: s.w, h: s.h, seed: s.seed, alpha: s.settled && s.settledMs !== undefined ? fade(this.world?.nowMs ?? 0, s.settledMs) : 1 })),
       fly: this.fly ? { x: this.fly.x, y: this.fly.y, t: this.fly.t } : null,
+      puffs: this.puffs
+        .filter((f) => (this.world?.nowMs ?? 0) >= f.bornMs)
+        .map((f) => {
+          const u = ((this.world?.nowMs ?? 0) - f.bornMs) / f.ttlMs;
+          return { kind: f.kind, x: f.x, y: f.y, size: f.size, u, seed: f.seed, dir: f.dir, ...(f.color ? { color: f.color } : {}) };
+        }),
       spots: this.spots.map((s) => {
         const now = this.world?.nowMs ?? s.bornMs;
         const left = s.bornMs + s.ttlMs - now;
@@ -1474,6 +1767,8 @@ export interface MessSnapshot {
   decals: (Decal & { alpha: number })[];
   strips: { x: number; y: number; rot: number; w: number; h: number; seed: number; alpha: number }[];
   fly: { x: number; y: number; t: number } | null;
+  /** Bits in the air for a moment (ADR-067). u: 0 to 1 through its life. */
+  puffs?: { kind: Puff["kind"]; x: number; y: number; size: number; u: number; seed: number; dir: 1 | -1; color?: string }[];
   /** grow: 0 to 1 while a puddle spreads. alpha: drying up or fading. cleaned: 0 to 1 through the sparkle after a click. */
   spots: { id: number; kind: SpotKind; x: number; y: number; w: number; seed: number; windowId: string | null; grow: number; alpha: number; cleaned?: number; drips: number; ageSec: number }[];
 }

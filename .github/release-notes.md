@@ -2,15 +2,17 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-New: Felinquent counts how many of us there are. Once a day the app sends one anonymous ping, with no ID and nothing about you, so the README and the website can show how many people have it and use it. **Share usage counts** in the menu turns it off, and exactly what's sent is in [PRIVACY.md](https://github.com/abozaralizadeh/Felinquent/blob/main/PRIVACY.md).
+Every animal now does things only that kind of animal does! The dogs shake off with fur flying, Biscuit lies down and chews its ball, Chili hides under a blanket or stands there shivering with one paw up. Mochi the fox listens, leaps and dives head first into the ground after a mouse. Bandit washes its hands in a little puddle and digs through a snack box for grapes. Clover twists in the air when it's happy, thumps when it's not, flops over and nibbles the edge of your window. Hazel eats a nut sitting up and hangs head down off the side of a window.
 
-A new install now starts at login. If you already turned that off, it stays off.
+And no animal grows or shrinks for a moment when it sits or lies down anymore.
 
-## More about 0.1.16
+## More about 0.1.17
 
-The ping holds the app version, Mac or Windows, which animal, the chaos level, whether the local model is on, and the date it was last counted. The relay adds 1 to some totals and keeps nothing else, not even your IP address. Setting `DO_NOT_TRACK=1` turns it off too. The totals are live on [the website](https://abozaralizadeh.github.io/Felinquent/#numbers).
+A click gets reactions only that animal has too: a wag, a shake, a paw up, listening, a look at its clean hands, a binky, a flop, a thump, a flick of the tail. Going from lying to standing and back is now a real move instead of a fade.
 
-There's now a short [privacy notice](https://github.com/abozaralizadeh/Felinquent/blob/main/PRIVACY.md) and [terms of use](https://github.com/abozaralizadeh/Felinquent/blob/main/TERMS.md), and installing means you agree to them. The About window (the version line in the menu) links to the privacy notice. Error reports still only go out after you say yes. The same on Mac and Windows.
+The earth, the puddle and the nut shells are drawn on the cat's own layer like the rest of the mess, so click them to clean up or wait and they go away. The bites in your window edge are drawn too and fade after a few minutes. The rubbish and the window nibbling only happen at normal and gremlin, never at chill. All of it works with the local model off, and it's the same on Mac and Windows.
+
+Also fixed: a dog could get stuck holding its toy forever when the spot to drop it was very close.
 
 ## Updating
 

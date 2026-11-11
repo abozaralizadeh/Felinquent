@@ -87,6 +87,8 @@ describe("the menu on the animal (right-click)", () => {
       // Pet it: a reaction facing you (or a swat, for the ones that do that), at once.
       s.cat.ask(s.world(), "pet");
       expect(s.cat.mind.current?.intent).toBe("react");
+      // In the middle of a hop it lands first (the body can't turn round in the air), then reacts.
+      for (let i = 0; i < 120 && (s.cat.executor as unknown as { mode: string }).mode !== "ground"; i++) await s.run(1 / 60);
       expect(s.cat.executor.intent?.intent).toBe("react");
       expect(s.cat.mind.needs.attention).toBeLessThan(before);
       expect(s.cat.memory.events().some((e) => e.kind === "pet")).toBe(true);

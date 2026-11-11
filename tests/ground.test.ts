@@ -3,15 +3,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHARACTERS } from "../src/core/characters";
 import { GROUND } from "../src/playground/ground";
-import { groundOf, SPRITE_KEYS } from "../src/playground/sprites";
+import { groundOf, OWN_KEYS, SPRITE_KEYS } from "../src/playground/sprites";
 
 const DIR = join(__dirname, "..", "src", "playground", "public", "sprites");
 
 describe("paws on the ground (a tail lower than the paws)", () => {
   it("every measured frame exists, for every character", () => {
-    const keys = new Set<string>(SPRITE_KEYS);
     const bad: string[] = [];
     for (const c of CHARACTERS) {
+      const keys = new Set<string>([...SPRITE_KEYS, ...(OWN_KEYS[c.id] ?? [])]);
       expect(GROUND[c.id], c.id).toBeDefined();
       for (const k of Object.keys(GROUND[c.id] ?? {})) if (!keys.has(k) || !existsSync(join(DIR, c.id, `${k}.webp`))) bad.push(`${c.id}/${k}`);
     }

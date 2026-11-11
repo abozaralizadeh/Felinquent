@@ -41,13 +41,24 @@ ctx.font = "600 13px system-ui";
 // ?start is the first moment kept (default ?at) and ?every=0.1 the time between moments. ?flip=1
 // turns it round at that second. ?zoom=2 sets the size, ?cols=6 the moments in a row. ?ledge=56
 // draws a window top that many pixels above the feet, to line up the hang off a ledge. ?mouth=1
-// rings the mouth, where a carried toy is drawn.
-if (q.has("film") && q.has("anim")) {
+// rings the mouth, where a carried toy is drawn. ?seq=chew:4,wag:3,idle_sit:2 plays those moves one
+// after the other from ?at (each for that many seconds, instead of ?anim), to check the hand-offs.
+if (q.has("film") && (q.has("anim") || q.has("seq"))) {
   const c = (list[0] ?? CHARACTERS[0]) as (typeof CHARACTERS)[number];
   const n = Number(q.get("film"));
   const anim = q.get("anim") as Anim;
   const from = (q.get("from") ?? "idle_sit") as Anim;
   const at = Number(q.get("at") ?? "0.5");
+  const seq = (q.get("seq") ?? "").split(",").filter(Boolean).map((s) => ({ a: s.split(":")[0] as Anim, sec: Number(s.split(":")[1] ?? "2") }));
+  const animAt = (ft: number): Anim => {
+    if (ft < at) return from;
+    let u = ft - at;
+    for (const s of seq) {
+      if (u < s.sec) return s.a;
+      u -= s.sec;
+    }
+    return seq[seq.length - 1]?.a ?? anim;
+  };
   const start = Number(q.get("start") ?? String(at));
   const every = Number(q.get("every") ?? "0.1");
   const flip = q.has("flip") ? Number(q.get("flip")) : Infinity;
@@ -70,7 +81,7 @@ if (q.has("film") && q.has("anim")) {
     let kept = 0;
     for (let f = 1; kept < n && f < 60 * 600; f++) {
       const ft = f / 60;
-      const body: CatBody = { x: 0, y: 0, vx: 0, vy: 0, facing: ft >= flip ? -1 : 1, platformId: "dock", anim: ft < at ? from : anim, hidden: false };
+      const body: CatBody = { x: 0, y: 0, vx: 0, vy: 0, facing: ft >= flip ? -1 : 1, platformId: "dock", anim: animAt(ft), hidden: false };
       if (ft + 1e-6 < start + kept * every) {
         drawCat(off, body, { scale: 1, t: ft, character: c.id, slot: "film", cursor: cursorAt(ft) });
         continue;
@@ -109,7 +120,7 @@ if (q.has("film") && q.has("anim")) {
       }
       ctx.restore();
       ctx.fillStyle = "#7a6656";
-      ctx.fillText(`${ft.toFixed(2)} s`, cx + 6, cy + 16);
+      ctx.fillText(seq.length ? `${ft.toFixed(2)} s ${animAt(ft)}` : `${ft.toFixed(2)} s`, cx + 6, cy + 16);
       kept++;
     }
   });

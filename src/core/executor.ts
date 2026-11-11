@@ -4,7 +4,7 @@ import { planRoute, type JumpLimits, type PathStep } from "./pathfinding";
 import { buildPlatforms, segmentsOf, type Platform } from "./platforms";
 import type { Rng } from "./rng";
 import { SCRATCH_SEC, sceneFor } from "./scenes";
-import { INSTINCTS, type Instinct } from "./species";
+import { INSTINCTS, OWN_INTENTS, type Instinct } from "./species";
 import type { Approach, Intent, IntentName, Rect, WorldSnapshot } from "./types";
 
 export type Anim =
@@ -25,7 +25,25 @@ export type Anim =
   | "lick_lips"
   // It has to go (ADR-048): the squat (a dog lifts a leg to pee), a look back at it, covering it up
   // (a cat rakes with a front paw, a dog kicks back), and a shake of the paw after.
-  | "pee" | "poop" | "potty_look" | "cover" | "paw_shake";
+  | "pee" | "poop" | "potty_look" | "cover" | "paw_shake"
+  // Each animal's own moves (ADR-067), drawn for that animal only (sprites.ts OWN_KEYS): a dog's
+  // shake, chewing its toy lying down and a wagging tail; the chihuahua under its blanket, shivering
+  // and a paw up; the fox listening, its leap (in the air) and the dive nose first into the ground,
+  // pulling out, and pushing earth over with its nose; the raccoon washing and looking at its hands,
+  // going through a box, tossing something behind it and holding a find to its chest; the rabbit's
+  // binky (in the air), thump, flop and nibble; the squirrel's nut, stuffed cheeks, patting the earth
+  // down, a flick of the tail, and clinging to the side of a window head up or head down.
+  | "shake_off" | "chew" | "wag" | "burrow" | "shiver" | "paw_up"
+  | "listen" | "mouse_leap" | "mouse_in" | "mouse_out" | "nose_push"
+  | "wash_hands" | "inspect" | "rummage" | "toss" | "hold"
+  | "binky_air" | "thump" | "flop" | "nibble"
+  | "nut" | "cheeks" | "pat" | "flick" | "cling" | "cling_down";
+
+/** Every move only some animals have drawings for (sprites.ts falls back for the others). */
+export const OWN_ANIMS: ReadonlySet<Anim> = new Set<Anim>([
+  "shake_off", "chew", "wag", "burrow", "shiver", "paw_up", "listen", "mouse_leap", "mouse_in", "mouse_out", "nose_push",
+  "wash_hands", "inspect", "rummage", "toss", "hold", "binky_air", "thump", "flop", "nibble", "nut", "cheeks", "pat", "flick", "cling", "cling_down",
+]);
 
 /**
  * Something the animal does to the things around it (mess.ts): a paw on a mug, a nudge toward the
@@ -48,10 +66,36 @@ export type Fx =
   /** It went: the puddle or the pile shows up under its rear. sec: how long it goes on (a puddle spreads that long). */
   | { fx: "potty"; kind: "pee" | "poop"; sec: number }
   /** A bite of the treat (amount of the whole), and the last one. */
-  | { fx: "bite"; prop: string; amount: number };
+  | { fx: "bite"; prop: string; amount: number }
+  // Each animal's own moves (ADR-067):
+  /** Fur (and dust, after digging or rolling) flying off a shake. */
+  | { fx: "shake" }
+  /** Earth flung back from its front paws, `n` bits. */
+  | { fx: "dirt"; n: number }
+  /** Left on the ground `ahead` of it (a share of its width; negative is behind): a mound, a pool, shells. */
+  | { fx: "spot"; kind: "mound" | "pool" | "shells"; ahead: number }
+  /** Drops off its hands in the water. */
+  | { fx: "splash" }
+  /** Something to eat in its paws (a nut it dug up, grapes out of the box), a nibble of it, and done. */
+  | { fx: "item"; kind: "acorn" | "grapes" }
+  | { fx: "item_bite"; amount: number }
+  | { fx: "item_done" }
+  /** The chihuahua's blanket: spread out in front of it, gone under (it draws the blanket itself), and out again. */
+  | { fx: "blanket" }
+  | { fx: "blanket_in" }
+  | { fx: "blanket_out" }
+  /** The raccoon's find in the Dock: a snack box in front of it, and rubbish thrown out of it behind. */
+  | { fx: "snack_box" }
+  | { fx: "trash" }
+  | { fx: "snack_done" }
+  /** The short lines of a shiver, and a thump of a hind foot (dust and lines at its feet). */
+  | { fx: "shiver" }
+  | { fx: "thud" }
+  /** A bite out of the edge of the window in front of it. */
+  | { fx: "nibble" };
 
 /** What it does with its toy: bring it back to you, take it off somewhere, bury it, or give it a sniff and a nudge. */
-export type ToyTask = "fetch" | "carry" | "stash" | "nose";
+export type ToyTask = "fetch" | "carry" | "stash" | "nose" | "chew" | "cache";
 
 /** A thing standing on a window, as the executor sees it. */
 export interface PropSpot {
@@ -81,7 +125,8 @@ export interface ToySpot {
  */
 /** face and go also take 1 or -1: right or left, toward something that isn't the cursor (a thing you threw). */
 export type Beat =
-  | { do: Anim; sec: number; face?: "cursor" | "away" | 1 | -1 }
+  /** fx: something it makes on the way (fur off a shake, a thud), at fxAt seconds into the pose. */
+  | { do: Anim; sec: number; face?: "cursor" | "away" | 1 | -1; fx?: Fx; fxAt?: number }
   | { go: "cursor" | "away" | "stroll" | 1 | -1; by: number; speed: Approach; anim?: Anim }
   | { leap: "cursor" | "away" | "ahead" | "stroll"; by: number; h: number; anim?: Anim };
 
@@ -120,7 +165,8 @@ type Step =
   | { k: "jump"; toId: string; takeoffX: number; landX: number }
   /** fxAt: the effect happens this many seconds in (the paw hits the ball mid-swipe), else at the start. */
   | { k: "do"; anim: Anim; sec: number; block?: boolean; face?: "cursor" | "away" | 1 | -1; fx?: Fx; fxAt?: number; transit?: boolean }
-  | { k: "leap"; dx: number; h: number; anim: Anim; face?: 1 | -1; fx?: Fx }
+  /** noLand: it comes down into its next move without the crouch of a landing (a fox diving into the ground). */
+  | { k: "leap"; dx: number; h: number; anim: Anim; face?: 1 | -1; fx?: Fx; noLand?: boolean }
   | { k: "beat"; beat: Beat }
   /** Playing with the toy ball: worked out when it comes up, from where the ball is then. */
   | { k: "toy"; bats: number; waited?: number }
@@ -129,7 +175,9 @@ type Step =
   /** The treat you dropped: get to it, then eat it. */
   | { k: "treattask"; stage: "get"; waited?: number }
   /** A job with the toy, worked out a stage at a time from where the toy, the animal and the cursor are then. */
-  | { k: "toytask"; mode: ToyTask; stage: "get" | "bring" | "away" | "bury"; waited?: number; legs?: number; dest?: { id: string; x: number } }
+  | { k: "toytask"; mode: ToyTask; stage: "get" | "bring" | "away" | "bury" | "chew"; waited?: number; legs?: number; dest?: { id: string; x: number } }
+  /** Over the side edge of its window and down it head first, a while there, and back up (the squirrel, ADR-067). */
+  | { k: "cling" }
   | { k: "hide" };
 
 /**
@@ -144,7 +192,7 @@ const SPEED: Record<Approach, number> = { walk: 64, saunter: 42, sneak: 28, run:
  */
 export const TURN_SEC = 0.6;
 /** Poses that can simply go on when an action is over. Anything else settles back to sitting. */
-const CALM: ReadonlySet<Anim> = new Set<Anim>(["idle_sit", "loaf", "sleep", "perch", "box", "sulk", "turn_away", "sprawl", "peek"]);
+const CALM: ReadonlySet<Anim> = new Set<Anim>(["idle_sit", "loaf", "sleep", "perch", "box", "sulk", "turn_away", "sprawl", "peek", "flop"]);
 /** Poses from which the animal looks up at the cursor when it comes close (the head follows it). Both watches keep following it and turn round when it goes behind. */
 // A perch (on an edge) turns its head with its own drawings (sprites.ts REST_LOOKS), so it stays a perch.
 const GLANCE: ReadonlySet<Anim> = new Set<Anim>(["idle_sit", "look", "stare", "blink", "watch", "watch_stand"]);
@@ -190,7 +238,17 @@ const DO_ANIM: Partial<Record<IntentName, Anim>> = {
   knock_off: "push_toy", claw: "scratch", hunt: "pounce",
   fetch: "watch_stand", carry_toy: "watch_stand", stash_toy: "watch_stand", nose_toy: "sniff", chase_cursor: "pounce",
   invite_play: "play_bow", yawn: "yawn", look_around: "look", pee: "pee", poop: "poop",
+  // Each animal's own things (ADR-067): ownSteps plans them; these are only for a scripted beat.
+  shake_off: "shake_off", chew: "chew", burrow: "burrow", shiver: "shiver", mouse: "listen", cache: "dig", wash: "wash_hands",
+  raid: "rummage", binky: "happy", thump: "thump", flop: "flop", nibble: "nibble", nut: "nut", cling: "flick",
 };
+
+/** How long one shake takes (sprites.ts plays the dog's and the chihuahua's in this time). */
+export const SHAKE_SEC = 2.3;
+/** When the rabbit's hind foot hits the ground in its thump (sprites.ts draws the stamps at these times). */
+export const THUMP_AT = [1.0, 2.33, 3.66] as const;
+/** How far out from a window's side edge the middle of a clinging squirrel is, as a share of its width (its paws just over the edge). */
+const CLING_OUT = 0.14;
 
 /**
  * Where the mouth is in each pose, as a share of the animal's box: forward from the middle (in the way
@@ -202,10 +260,11 @@ const MOUTH: Partial<Record<Anim, [number, number]>> = {
   sniff: [0.42, 0.16], dig: [0.4, 0.22], pounce: [0.4, 0.28], play_bow: [0.4, 0.3], push_toy: [0.38, 0.3],
   loaf: [0.34, 0.32], sleep: [0.3, 0.22], sprawl: [0.36, 0.2], sulk: [0.2, 0.55],
   prep: [0.4, 0.3], eat: [0.42, 0.14], jump: [0.38, 0.5], leap: [0.4, 0.45], fall: [0.36, 0.5], land: [0.4, 0.34], dangle: [0.2, 0.5],
+  chew: [0.42, 0.2], nut: [0.2, 0.55], cheeks: [0.2, 0.45], hold: [0.2, 0.45],
 };
 const MOUTH_STAND: [number, number] = [0.38, 0.5];
 /** The toy jobs that keep the toy in the mouth when they start. */
-const CARRY_INTENTS: ReadonlySet<IntentName> = new Set<IntentName>(["fetch", "carry_toy", "stash_toy"]);
+const CARRY_INTENTS: ReadonlySet<IntentName> = new Set<IntentName>(["fetch", "carry_toy", "stash_toy", "chew", "cache"]);
 
 /**
  * A jump is one throw under gravity: up to its highest point and down onto the ledge, with the feet
@@ -232,6 +291,21 @@ interface JumpState {
   minY: number;
   /** A real jump to another ledge (not a hop on the spot), which can fall short. */
   far?: boolean;
+  /** It comes down into its next move without a landing crouch. */
+  noLand?: boolean;
+}
+
+/**
+ * On the side of a window (the squirrel, ADR-067): which edge (-1 the left, 1 the right), and the
+ * way down and back up as keyframes of how far below the window's top its feet (the bottom of the
+ * drawing) are, eased from one to the next, with the pose at each.
+ */
+interface ClingState {
+  t: number;
+  windowId: string;
+  side: 1 | -1;
+  from: { x: number; y: number };
+  keys: { at: number; depth: number; anim: Anim }[];
 }
 
 /** Hanging off a ledge after a jump that fell short: it scrabbles, then pulls itself up or drops. */
@@ -260,7 +334,8 @@ export class Executor {
   readonly size: { w: number; h: number };
 
   private world: WorldSnapshot | null = null;
-  private mode: "ground" | "jump" | "fall" | "held" | "hang" = "ground";
+  private mode: "ground" | "jump" | "fall" | "held" | "hang" | "cling" = "ground";
+  private clinging: ClingState | null = null;
   private queue: Step[] = [];
   private current: Step | null = null;
   private doTimer = 0;
@@ -661,6 +736,11 @@ export class Executor {
     if (intent.intent === "claw" && cur && !intent.script) return [...steps, ...this.clawSteps()];
     if ((intent.intent === "pee" || intent.intent === "poop") && cur && !intent.script) return [...steps, ...this.pottySteps(intent, cur)];
     if (intent.intent === "hunt" && cur && !intent.script) return [...steps, ...this.huntSteps(cur)];
+    if (intent.intent === "dig" && cur && !intent.script) return [...steps, ...this.digSteps()];
+    if (OWN_INTENTS.has(intent.intent) && cur && !intent.script) {
+      const own = this.ownSteps(intent, cur);
+      if (own) return [...steps, ...own];
+    }
     // Scripted scenes: a reaction to a click, and the little routines of the playful intents.
     const script = intent.script ?? sceneFor(intent.intent, intent.stay_sec, this.rng);
     if (script) {
@@ -952,7 +1032,7 @@ export class Executor {
     if (!w || !cur) return sit;
     if (st.stage === "get") {
       if (!t || t.held) return t?.held ? [{ k: "do", anim: "watch", sec: 1.5, face: "cursor" }, { k: "do", anim: "idle_sit", sec: 1 }] : sit;
-      if (t.carried && this.carrying === t.id) return [{ ...st, stage: st.mode === "fetch" ? "bring" : st.mode === "stash" ? "bury" : "away" }];
+      if (t.carried && this.carrying === t.id) return [{ ...st, stage: st.mode === "fetch" ? "bring" : st.mode === "stash" || st.mode === "cache" ? "bury" : st.mode === "chew" ? "chew" : "away" }];
       const toward: 1 | -1 = t.x >= b.x ? 1 : -1;
       // In the air or rolling: eyes on it, on its feet. A keen one runs after a ball rolling along its
       // own ledge (a dog does not wait for it to stop); the others wait until it stops (or nearly).
@@ -1003,7 +1083,7 @@ export class Executor {
         ...steps,
         { k: "do", anim: "sniff", sec: 0.8, face, fx: { fx: "pick_up", prop: t.id }, fxAt: 0.45 },
         { k: "do", anim: "watch_stand", sec: 0.5, face },
-        { ...st, stage: st.mode === "fetch" ? "bring" : st.mode === "stash" ? "bury" : "away" },
+        { ...st, stage: st.mode === "fetch" ? "bring" : st.mode === "stash" || st.mode === "cache" ? "bury" : st.mode === "chew" ? "chew" : "away" },
       ];
     }
     // From here on it should have the toy in its mouth. Dropped (or taken away): the job is over.
@@ -1033,6 +1113,22 @@ export class Executor {
       }
       return drop;
     }
+    if (st.stage === "chew") {
+      // A dog takes it a few steps away from you, lies down with it between its paws and chews.
+      if (!st.dest) {
+        const away: 1 | -1 = w.cursor.x >= b.x ? -1 : 1;
+        let x = b.x + away * this.rng.range(50, 130);
+        if (x < cur.x1 + 20 || x > cur.x2 - 20) x = b.x - away * this.rng.range(40, 100);
+        x = Math.max(cur.x1 + 20, Math.min(cur.x2 - 20, x));
+        return [{ k: "walk", x, speed: SPEED.walk }, { ...st, dest: { id: cur.id, x } }];
+      }
+      const sec = Math.max(10, Math.min(32, (this.intent?.stay_sec ?? 20) - 4));
+      return [
+        { k: "do", anim: "chew", sec, fx: { fx: "drop_toy" }, fxAt: sec - 0.2 },
+        // Up off the floor first (sprites.ts draws it getting up, about 1.7 s), then the wag.
+        { k: "do", anim: "wag", sec: this.rng.range(3.6, 4.6), face: "cursor" },
+      ];
+    }
     if (st.stage === "away") {
       // Somewhere of its own: the ledge farthest from you it can get to, picked once.
       let dest = st.dest;
@@ -1054,7 +1150,8 @@ export class Executor {
         dest ??= { id: cur.id, x: Math.max(cur.x1 + 20, Math.min(cur.x2 - 20, b.x + (w.cursor.x >= b.x ? -1 : 1) * 200)) };
       }
       const legs = (st.legs ?? 0) + 1;
-      const there = dest.id === cur.id && Math.abs(dest.x - b.x) < 12;
+      // Closer than a walk is worth (routeSteps skips it) counts as there, or it would ask again forever.
+      const there = dest.id === cur.id && Math.abs(dest.x - b.x) < Math.max(12, MIN_WALK);
       if (!there && legs <= 6) {
         const plan = planRoute(this.platforms, cur.id, b.x, dest.id, dest.x, this.limits);
         if (plan?.reached && plan.steps.length > 0) return [...this.routeSteps("walk", plan.steps), { ...st, dest, legs }];
@@ -1076,13 +1173,347 @@ export class Executor {
       x = Math.max(cur.x1 + 20, Math.min(cur.x2 - 20, x));
       return [{ k: "walk", x, speed: SPEED.walk }, { ...st, dest: { id: cur.id, x } }];
     }
+    if (st.mode === "cache" && this.has("nose_push")) {
+      // A fox digs a hole, drops it in and pushes the earth back over it with its nose (ADR-067).
+      return [
+        { k: "do", anim: "sniff", sec: 1.0 },
+        { k: "do", anim: "dig", sec: 1.1, fx: { fx: "dirt", n: 10 }, fxAt: 0.2 },
+        { k: "do", anim: "dig", sec: 1.3, fx: { fx: "bury" }, fxAt: 0.5 },
+        { k: "do", anim: "nose_push", sec: 1.2, fx: { fx: "spot", kind: "mound", ahead: 0.42 }, fxAt: 0.5 },
+        { k: "do", anim: "nose_push", sec: 1.6 },
+        { k: "do", anim: "look", sec: 1.6, face: "cursor" },
+        { k: "do", anim: "proud", sec: 1.8 },
+      ];
+    }
+    if (st.mode === "cache" && this.has("pat")) {
+      // A squirrel digs fast, pushes it in, pats the earth down, looks round with a flick of the
+      // tail (in case anyone saw) and dashes off.
+      const off = Math.max(cur.x1 + 20, Math.min(cur.x2 - 20, b.x - b.facing * this.rng.range(90, 160)));
+      return [
+        { k: "do", anim: "dig", sec: 0.9, fx: { fx: "dirt", n: 8 }, fxAt: 0.15 },
+        { k: "do", anim: "dig", sec: 0.9, fx: { fx: "bury" }, fxAt: 0.4 },
+        { k: "do", anim: "pat", sec: 1.0, fx: { fx: "spot", kind: "mound", ahead: 0.4 }, fxAt: 0.2 },
+        { k: "do", anim: "pat", sec: 1.2 },
+        { k: "do", anim: "flick", sec: 1.5, face: "cursor" },
+        { k: "walk", x: off, speed: SPEED.run },
+        { k: "do", anim: "flick", sec: 1.2 },
+      ];
+    }
     return [
       { k: "do", anim: "sniff", sec: 1.2 },
-      { k: "do", anim: "dig", sec: 2.4, fx: { fx: "bury" }, fxAt: 1.4 },
-      { k: "do", anim: "dig", sec: 1.2 },
+      { k: "do", anim: "dig", sec: 1.2, fx: { fx: "dirt", n: 8 }, fxAt: 0.2 },
+      { k: "do", anim: "dig", sec: 1.2, fx: { fx: "bury" }, fxAt: 0.2 },
+      { k: "do", anim: "dig", sec: 1.2, fx: { fx: "spot", kind: "mound", ahead: 0.4 }, fxAt: 0.6 },
       { k: "do", anim: "sniff", sec: 1 },
       { k: "do", anim: "proud", sec: 2, face: "cursor" },
     ];
+  }
+
+  /** It has drawings for this move of its own (ADR-067). */
+  private has(anim: Anim): boolean {
+    const own = this.instinct.own ?? [];
+    const by: Partial<Record<Anim, IntentName>> = { nose_push: "mouse", pat: "nut", wag: "chew", shake_off: "shake_off", flick: "nut", thump: "thump" };
+    const need = by[anim];
+    return need !== undefined && own.includes(need);
+  }
+
+  /** Digging for nothing in particular: earth flies out behind it in bursts, a sniff at the hole, more. */
+  private digSteps(): Step[] {
+    const r = this.rng;
+    const steps: Step[] = [{ k: "do", anim: "sniff", sec: r.range(0.8, 1.4) }];
+    const bursts = 2 + Math.floor(r.range(0, 2));
+    for (let i = 0; i < bursts; i++) {
+      steps.push({ k: "do", anim: "dig", sec: r.range(1.3, 1.9), fx: { fx: "dirt", n: 6 + Math.floor(r.range(0, 5)) }, fxAt: 0.25 });
+      if (i < bursts - 1) steps.push({ k: "do", anim: "sniff", sec: r.range(0.8, 1.4) });
+    }
+    steps.push({ k: "do", anim: "dig", sec: 0.8, fx: { fx: "spot", kind: "mound", ahead: 0.42 }, fxAt: 0.3 }, { k: "do", anim: "sniff", sec: 1.2 }, { k: "do", anim: "proud", sec: 1.8, face: "cursor" });
+    return steps;
+  }
+
+  /**
+   * Each animal's own things (ADR-067). Only the animal that has them ever gets one (species.ts
+   * canDo), so each plan here is for that animal's drawings. Null: nothing special to plan here.
+   */
+  private ownSteps(intent: Intent, cur: Platform): Step[] | null {
+    const r = this.rng;
+    const b = this.body;
+    const f = b.facing;
+    const stay = intent.stay_sec;
+    const room = (d: 1 | -1): number => (d === 1 ? cur.x2 - b.x : b.x - cur.x1);
+    const roomy: 1 | -1 = room(1) >= room(-1) ? 1 : -1;
+    switch (intent.intent) {
+      case "shake_off": {
+        // Head to tail, the way a dog shakes water off, then pleased with itself.
+        const after: Step = this.has("wag") ? { k: "do", anim: "wag", sec: r.range(2, 3.4), face: "cursor" } : { k: "do", anim: "proud", sec: 2 };
+        return [{ k: "do", anim: "shake_off", sec: SHAKE_SEC, fx: { fx: "shake" }, fxAt: 0.3 }, after, { k: "do", anim: "idle_sit", sec: r.range(1, 2) }];
+      }
+      case "chew": {
+        const t = this.toyAt?.();
+        if (t?.carried && this.carrying === t.id) return [{ k: "toytask", mode: "chew", stage: "chew" }];
+        // Its toy isn't out: it fetches it from wherever it was (it rolls in) first.
+        if (!t) return [{ k: "do", anim: "look", sec: 0.8, fx: { fx: "toy_out" } }, { k: "toytask", mode: "chew", stage: "get" }];
+        return [{ k: "do", anim: "watch", sec: 0.6, face: t.x < b.x ? -1 : 1 }, { k: "toytask", mode: "chew", stage: "get" }];
+      }
+      case "cache": {
+        const t = this.toyAt?.();
+        if (t?.carried && this.carrying === t.id) return [{ k: "toytask", mode: "cache", stage: "bury" }];
+        if (!t) return [{ k: "do", anim: "look", sec: 0.8, fx: { fx: "toy_out" } }, { k: "toytask", mode: "cache", stage: "get" }];
+        return [{ k: "do", anim: "watch", sec: 0.6, face: t.x < b.x ? -1 : 1 }, { k: "toytask", mode: "cache", stage: "get" }];
+      }
+      case "burrow": {
+        // The chihuahua paws its blanket into a nest, walks onto it, under it goes (it peeks out now
+        // and then, then dozes off), and comes out with a shake.
+        const d = roomy;
+        const spot = Math.max(cur.x1 + 24, Math.min(cur.x2 - 24, b.x + d * this.size.w * 0.7));
+        const under = Math.max(8, stay - 9);
+        return [
+          { k: "do", anim: "idle_sit", sec: 0.6, face: d, fx: { fx: "blanket" } },
+          { k: "do", anim: "sniff", sec: 1.1, face: d },
+          { k: "do", anim: "dig", sec: 1.5, face: d },
+          { k: "walk", x: spot, speed: SPEED.saunter },
+          { k: "do", anim: "burrow", sec: under, fx: { fx: "blanket_in" } },
+          { k: "do", anim: "idle_sit", sec: 0.8, fx: { fx: "blanket_out" } },
+          { k: "walk", x: Math.max(cur.x1 + 20, Math.min(cur.x2 - 20, spot + d * this.size.w * 0.8)), speed: SPEED.walk },
+          { k: "do", anim: "shake_off", sec: SHAKE_SEC, fx: { fx: "shake" }, fxAt: 0.3 },
+          { k: "do", anim: "idle_sit", sec: 1.2 },
+        ];
+      }
+      case "shiver": {
+        // Trembling all over, a paw held up off the cold floor, a look at you for help.
+        const sec = Math.max(4, Math.min(9, stay));
+        return [
+          { k: "do", anim: "shiver", sec: sec * 0.45, fx: { fx: "shiver" }, fxAt: 0.3 },
+          { k: "do", anim: "shiver", sec: sec * 0.55, fx: { fx: "shiver" }, fxAt: 0.6 },
+          { k: "do", anim: "paw_up", sec: 2.4, face: "cursor" },
+          { k: "do", anim: "idle_sit", sec: 1 },
+        ];
+      }
+      case "mouse": {
+        // A fox mousing: stock still, head down, listening (the head tilts to place the sound),
+        // a crouch, a high leap and down nose first into the ground, a wiggle, and out again.
+        const d = roomy;
+        const by = Math.max(0, Math.min(this.size.w * 1.3, room(d) - this.size.w * 0.5));
+        return [
+          { k: "do", anim: "listen", sec: r.range(3.2, 4.6), face: d },
+          { k: "do", anim: "prep", sec: 0.55, face: d },
+          { k: "leap", dx: d * by, h: this.size.h * 1.5, anim: "mouse_leap", face: d, noLand: true },
+          { k: "do", anim: "mouse_in", sec: 0.5, fx: { fx: "dirt", n: 12 } },
+          { k: "do", anim: "mouse_in", sec: r.range(1.4, 2.2), fx: { fx: "spot", kind: "mound", ahead: 0 }, fxAt: 0.05 },
+          { k: "do", anim: "mouse_out", sec: 1.5, fx: { fx: "shake" }, fxAt: 0.5 },
+          ...(r.next() < 0.5 ? [{ k: "do", anim: "sniff", sec: 1.4 } as Step, { k: "do", anim: "look", sec: 1.6, face: "cursor" } as Step] : [{ k: "do", anim: "proud", sec: 2.2, face: "cursor" } as Step]),
+        ];
+      }
+      case "wash": {
+        // A raccoon "washing" its food or its hands: a little pool in front of it, both hands in,
+        // rubbing round and round, a look at them, and more.
+        const steps: Step[] = [{ k: "do", anim: "sniff", sec: 0.9, fx: { fx: "spot", kind: "pool", ahead: 0.45 }, fxAt: 0.3 }];
+        const rounds = 2 + Math.floor(r.range(0, 2));
+        for (let i = 0; i < rounds; i++) {
+          steps.push(
+            { k: "do", anim: "wash_hands", sec: r.range(1.2, 1.7), fx: { fx: "splash" }, fxAt: 0.5 },
+            { k: "do", anim: "wash_hands", sec: r.range(1.2, 1.7), fx: { fx: "splash" }, fxAt: 0.6 },
+            { k: "do", anim: "inspect", sec: r.range(1.3, 2) },
+          );
+        }
+        steps.push({ k: "do", anim: "idle_sit", sec: 1.2 });
+        return steps;
+      }
+      case "raid": {
+        // In the Dock: a snack box, head in it, rubbish thrown out behind it over its shoulder,
+        // again, and at last a find it holds to its chest and nibbles.
+        const steps: Step[] = [{ k: "do", anim: "sniff", sec: 1.0, fx: { fx: "snack_box" }, fxAt: 0.2 }];
+        const tosses = 2 + Math.floor(r.range(0, 2));
+        for (let i = 0; i < tosses; i++) {
+          steps.push({ k: "do", anim: "rummage", sec: r.range(1.8, 2.8) }, { k: "do", anim: "toss", sec: 0.9, fx: { fx: "trash" }, fxAt: 0.25 });
+        }
+        steps.push(
+          { k: "do", anim: "rummage", sec: 1.6 },
+          // The find shows once the hands are up at the chest (the program's first 0.35 s brings them up).
+          { k: "do", anim: "hold", sec: 1.0, fx: { fx: "item", kind: "grapes" }, fxAt: 0.36 },
+          { k: "do", anim: "hold", sec: 1.6, fx: { fx: "item_bite", amount: 0.3 }, fxAt: 1.2 },
+          { k: "do", anim: "hold", sec: 1.6, fx: { fx: "item_bite", amount: 0.35 }, fxAt: 1.2 },
+          { k: "do", anim: "hold", sec: 1.4, fx: { fx: "item_done" }, fxAt: 1.2 },
+          { k: "do", anim: "idle_sit", sec: 0.8, fx: { fx: "snack_done" } },
+          { k: "do", anim: "proud", sec: 2, face: "cursor" },
+        );
+        return steps;
+      }
+      case "binky": {
+        // A rabbit's joy: a dash, a twisting leap, a dash back, another, and maybe a flop after.
+        const steps: Step[] = [];
+        let d = roomy;
+        let x = b.x;
+        const leaps = 2 + Math.floor(r.range(0, 2));
+        for (let i = 0; i < leaps; i++) {
+          const run = Math.min(r.range(70, 130), Math.max(0, (d === 1 ? cur.x2 - x : x - cur.x1) - this.size.w * 1.6));
+          if (run >= MIN_WALK) {
+            x += d * run;
+            steps.push({ k: "walk", x, speed: SPEED.run });
+          }
+          const by = Math.min(this.size.w * 0.9, Math.max(0, (d === 1 ? cur.x2 - x : x - cur.x1) - 10));
+          steps.push({ k: "leap", dx: d * by, h: this.size.h * r.range(0.8, 1.05), anim: "binky_air", face: d });
+          x += d * by;
+          d = (-d) as 1 | -1;
+        }
+        if (r.next() < 0.4) steps.push({ k: "do", anim: "flop", sec: r.range(6, 12) });
+        else steps.push({ k: "do", anim: "idle_sit", sec: 1.5 });
+        return steps;
+      }
+      case "thump": {
+        // Up on its hind legs on alert, a stamp of a hind foot (or two, or three), and still, staring.
+        // The stamps fall where sprites.ts draws them: at 1.0 s, then about every 1.3 s.
+        const n = 1 + Math.floor(r.range(0, 3));
+        const steps: Step[] = [{ k: "do", anim: "thump", sec: THUMP_AT[0] ?? 1, face: "cursor" }];
+        for (let i = 0; i < n; i++) {
+          const next = i < n - 1 ? (THUMP_AT[i + 1] ?? 0) - (THUMP_AT[i] ?? 0) : 1.6;
+          steps.push({ k: "do", anim: "thump", sec: next, fx: { fx: "thud" } });
+        }
+        steps.push({ k: "do", anim: "stare", sec: 1.6, face: "cursor" });
+        return steps;
+      }
+      case "flop":
+        return [{ k: "do", anim: "sniff", sec: 0.8 }, { k: "do", anim: "flop", sec: Math.max(8, stay) }];
+      case "nibble": {
+        // A rabbit chews on the edge of the window it is on, a step along, again, and looks innocent.
+        if (!cur.windowId) return [{ k: "do", anim: "sniff", sec: 2 }, { k: "do", anim: "idle_sit", sec: 1 }];
+        const steps: Step[] = [{ k: "do", anim: "sniff", sec: 1.0 }];
+        let x = b.x;
+        const goes = 2 + Math.floor(r.range(0, 2));
+        for (let i = 0; i < goes; i++) {
+          steps.push(
+            { k: "do", anim: "nibble", sec: r.range(1.3, 1.8), fx: { fx: "nibble" }, fxAt: 0.5 },
+            { k: "do", anim: "nibble", sec: r.range(0.9, 1.4), fx: { fx: "nibble" }, fxAt: 0.4 },
+          );
+          if (i < goes - 1) {
+            const nx = x + roomy * r.range(28, 46);
+            if (nx > cur.x1 + 12 && nx < cur.x2 - 12) {
+              steps.push({ k: "walk", x: nx, speed: SPEED.sneak });
+              x = nx;
+            }
+          }
+        }
+        steps.push({ k: "do", anim: "stare", sec: 2, face: "cursor" });
+        return steps;
+      }
+      case "nut": {
+        // A squirrel digs up a nut, sits up with it and nibbles it fast, turning it in its paws,
+        // drops the shells, stuffs its cheeks and flicks its tail.
+        return [
+          { k: "do", anim: "sniff", sec: 0.9 },
+          { k: "do", anim: "dig", sec: 1.3, fx: { fx: "dirt", n: 6 }, fxAt: 0.2 },
+          // The nut shows once the paws are up at the chest with it (0.4 s into the program).
+          { k: "do", anim: "nut", sec: 1.2, fx: { fx: "item", kind: "acorn" }, fxAt: 0.4 },
+          { k: "do", anim: "nut", sec: 1.6, fx: { fx: "item_bite", amount: 0.22 }, fxAt: 0.8 },
+          { k: "do", anim: "nut", sec: 1.6, fx: { fx: "item_bite", amount: 0.22 }, fxAt: 0.8 },
+          { k: "do", anim: "nut", sec: 1.6, fx: { fx: "item_bite", amount: 0.22 }, fxAt: 0.8 },
+          { k: "do", anim: "nut", sec: 1.2, fx: { fx: "item_done" }, fxAt: 0.8 },
+          { k: "do", anim: "cheeks", sec: 2.6, face: "cursor", fx: { fx: "spot", kind: "shells", ahead: 0.3 }, fxAt: 0.1 },
+          { k: "do", anim: "flick", sec: 1.4 },
+          { k: "do", anim: "idle_sit", sec: 1 },
+        ];
+      }
+      case "cling": {
+        // To the end of the window top, a look over, and onto the side of the window.
+        const win = cur.windowId ? this.world?.windows.find((q) => q.id === cur.windowId) : undefined;
+        if (!win) return [{ k: "do", anim: "flick", sec: 1.4 }, { k: "do", anim: "idle_sit", sec: 1 }];
+        const okL = Math.abs(cur.x1 - win.bounds.x) < 8;
+        const okR = Math.abs(cur.x2 - (win.bounds.x + win.bounds.w)) < 8;
+        if (!okL && !okR) return [{ k: "do", anim: "flick", sec: 1.4 }, { k: "do", anim: "look", sec: 2 }];
+        const side: 1 | -1 = okL && okR ? (b.x - cur.x1 < cur.x2 - b.x ? -1 : 1) : okL ? -1 : 1;
+        const x = side === -1 ? cur.x1 + 8 : cur.x2 - 8;
+        return [
+          { k: "walk", x, speed: SPEED.run },
+          { k: "do", anim: "sniff", sec: 0.7, face: side },
+          { k: "cling" },
+          { k: "do", anim: "flick", sec: 1.4 },
+          { k: "do", anim: "idle_sit", sec: 1 },
+        ];
+      }
+      default:
+        return null;
+    }
+  }
+
+  /** Over the side edge of the window it stands at the end of (ADR-067). False when there is no side to cling to. */
+  private startCling(): boolean {
+    const b = this.body;
+    const cur = this.currentPlatform();
+    const win = cur?.windowId ? this.world?.windows.find((q) => q.id === cur.windowId) : undefined;
+    if (!cur || !win) return false;
+    const l = win.bounds.x;
+    const rgt = win.bounds.x + win.bounds.w;
+    const side: 1 | -1 = Math.abs(b.x - l) <= Math.abs(b.x - rgt) ? -1 : 1;
+    if (side === -1 ? Math.abs(cur.x1 - l) > 8 : Math.abs(cur.x2 - rgt) > 8) return false;
+    // Room below the top for the whole animal, on the screen.
+    const all = this.world ? [this.world.screen, ...(this.world.displays ?? [])] : [];
+    const edge = side === -1 ? l : rgt;
+    const disp = all.find((d) => edge >= d.x && edge <= d.x + d.w);
+    if (!disp || win.bounds.h < this.size.h * 2.2) return false;
+    const h = this.size.h;
+    const r = this.rng;
+    const hold = r.range(2.2, 4);
+    const t1 = 0.3;
+    const keys: ClingState["keys"] = [
+      { at: 0, depth: h * 0.62, anim: "cling_down" },
+      { at: t1, depth: h * 0.62, anim: "cling_down" },
+      { at: t1 + 0.35, depth: h * 1.05, anim: "cling_down" },
+      { at: t1 + 0.95, depth: h * 1.05, anim: "cling_down" },
+      { at: t1 + 1.25, depth: h * 1.45, anim: "cling_down" },
+      { at: t1 + 1.25 + hold, depth: h * 1.45, anim: "cling_down" },
+      // It turns round, head up, and goes back up in two dashes.
+      { at: t1 + 1.4 + hold, depth: h * 1.45, anim: "cling" },
+      { at: t1 + 1.75 + hold, depth: h * 1.15, anim: "cling" },
+      { at: t1 + 2.25 + hold, depth: h * 1.15, anim: "cling" },
+      { at: t1 + 2.55 + hold, depth: h * 0.95, anim: "cling" },
+    ];
+    this.clinging = { t: 0, windowId: win.id, side, from: { x: b.x, y: b.y }, keys };
+    this.mode = "cling";
+    b.platformId = null;
+    this.ridingWindow = null;
+    this.vel = 0;
+    this.phase = "moving";
+    b.facing = (-side) as 1 | -1;
+    b.anim = "cling_down";
+    return true;
+  }
+
+  /** On the side of the window: down and back up by its keyframes, riding the window, then a hop back onto the top. */
+  private stepCling(dt: number): void {
+    const c = this.clinging as ClingState;
+    const b = this.body;
+    c.t += dt;
+    const win = this.world?.windows.find((q) => q.id === c.windowId);
+    const top = win ? segmentsOf(this.platforms, win.id).find((q) => (c.side === -1 ? Math.abs(q.x1 - win.bounds.x) < 10 : Math.abs(q.x2 - (win.bounds.x + win.bounds.w)) < 10)) : undefined;
+    if (!win || !top) {
+      this.clinging = null;
+      this.slip();
+      return;
+    }
+    const edge = c.side === -1 ? win.bounds.x : win.bounds.x + win.bounds.w;
+    const x = edge + c.side * this.size.w * CLING_OUT;
+    const keys = c.keys;
+    const last = keys[keys.length - 1] as ClingState["keys"][number];
+    let i = 0;
+    while (i < keys.length - 1 && (keys[i + 1] as ClingState["keys"][number]).at <= c.t) i++;
+    const a = keys[i] as ClingState["keys"][number];
+    const n = keys[Math.min(keys.length - 1, i + 1)] as ClingState["keys"][number];
+    const u = n.at > a.at ? Math.max(0, Math.min(1, (c.t - a.at) / (n.at - a.at))) : 1;
+    const e = u * u * (3 - 2 * u);
+    const depth = a.depth + (n.depth - a.depth) * e;
+    const y = win.bounds.y + depth;
+    // The first moment: from standing at the end of the top over onto the side.
+    const into = Math.min(1, c.t / 0.22);
+    b.x = c.from.x + (x - c.from.x) * into;
+    b.y = c.from.y + (y - c.from.y) * into;
+    b.facing = (-c.side) as 1 | -1;
+    b.anim = c.t >= n.at && n === last ? last.anim : a.anim;
+    if (c.t < last.at) return;
+    // Back up and over onto the top of the window.
+    this.clinging = null;
+    const x1 = Math.max(top.x1 + 4, Math.min(top.x2 - 4, edge - c.side * this.size.w * 0.45));
+    b.facing = (-c.side) as 1 | -1;
+    this.mode = "jump";
+    this.jump = { ...this.arc(b.x, b.y, x1, top.y, this.size.h * 0.25), toId: top.id, toWin: win.id, anim: "jump", face: b.facing };
   }
 
   /** Claws into the title bar: marks, a look at you, more marks a step on. */
@@ -1307,6 +1738,7 @@ export class Executor {
   pickUp(x: number, y: number): void {
     // Picked up by the scruff: whatever was in its mouth drops (interrupt() lets go of it).
     this.interrupt();
+    this.clinging = null;
     this.landHold = 0;
     this.hanging = null;
     this.slipped = false;
@@ -1432,6 +1864,7 @@ export class Executor {
       else if (this.mode === "fall") this.stepFall(dtSec, world);
       else if (this.mode === "ground") this.stepGround(dtSec);
       else if (this.mode === "hang") this.stepHang(dtSec);
+      else if (this.mode === "cling") this.stepCling(dtSec);
     }
     const out = this.outbox;
     this.outbox = [];
@@ -1447,7 +1880,7 @@ export class Executor {
     this.outbox.push({ type: "fx", fx, x, y: b.y, dir: b.facing, windowId: this.ridingWindow });
   }
 
-  private land(p: Platform, speed = 0): void {
+  private land(p: Platform, speed = 0, noLand = false): void {
     const b = this.body;
     this.mode = "ground";
     if (speed > 0) this.outbox.push({ type: "impact", x: b.x, y: p.y, speed, windowId: p.windowId ?? null });
@@ -1457,7 +1890,7 @@ export class Executor {
     b.vy = 0;
     b.anim = "land";
     // A hop in a row (a bounce, a zoomie) only touches down; a real jump or a fall sinks in.
-    this.landHold = this.queue[0]?.k === "beat" || this.queue[0]?.k === "leap" ? 0.16 : 0.28;
+    this.landHold = noLand ? 0 : this.queue[0]?.k === "beat" || this.queue[0]?.k === "leap" ? 0.16 : 0.28;
     this.syncRiding(p);
     this.outbox.push({ type: "landed" });
     if (this.slipped || this.flung) {
@@ -1553,7 +1986,7 @@ export class Executor {
         this.startHang(to);
         return;
       }
-      if (to) this.land(to, Math.sqrt(2 * j.g * Math.max(0, to.y - j.minY)));
+      if (to) this.land(to, j.noLand ? 0 : Math.sqrt(2 * j.g * Math.max(0, to.y - j.minY)), j.noLand);
       else this.beginFall();
     }
   }
@@ -1657,6 +2090,13 @@ export class Executor {
         );
         this.current = this.queue.shift() ?? null;
       }
+      // Still a step to work out after four tries (each gave only itself again): try again next frame
+      // instead of standing there with it for good.
+      if (this.current && (this.current.k === "toy" || this.current.k === "cursor" || this.current.k === "toytask" || this.current.k === "treattask")) {
+        this.queue.unshift(this.current);
+        this.current = null;
+        return;
+      }
       if (!this.current) return;
       if (this.current.k === "beat") this.current = this.resolveBeat(this.current.beat);
       this.fxLater = null;
@@ -1708,11 +2148,16 @@ export class Executor {
         if (l.face) b.facing = l.face;
         if (l.fx) this.emitFx(l.fx);
         this.mode = "jump";
-        this.jump = { ...this.arc(b.x, b.y, x1, p.y, l.h), toId: p.id, anim: l.anim, face: l.face };
+        this.jump = { ...this.arc(b.x, b.y, x1, p.y, l.h), toId: p.id, anim: l.anim, face: l.face, noLand: l.noLand };
         this.current = null;
         this.ridingWindow = null;
         this.vel = 0;
         this.phase = "moving";
+        return;
+      } else if (this.current.k === "cling") {
+        this.current = null;
+        if (this.startCling()) return;
+        this.queue.unshift({ k: "do", anim: "flick", sec: 1.4 }, { k: "do", anim: "sniff", sec: 1.2 });
         return;
       } else if (this.current.k === "hide") {
         b.hidden = true;
@@ -1845,7 +2290,7 @@ export class Executor {
     const p = this.currentPlatform();
     const cursorX = this.world?.cursor.x ?? b.x;
     const toward: 1 | -1 = cursorX >= b.x ? 1 : -1;
-    if ("do" in beat) return { k: "do", anim: beat.do, sec: beat.sec, face: beat.face };
+    if ("do" in beat) return { k: "do", anim: beat.do, sec: beat.sec, face: beat.face, ...(beat.fx ? { fx: beat.fx, fxAt: beat.fxAt } : {}) };
     if (!p) return { k: "do", anim: "idle_sit", sec: 0.2 };
     const room = (dir: 1 | -1): number => (dir === 1 ? p.x2 - 20 - b.x : b.x - (p.x1 + 20));
     const goDir = (to: "cursor" | "away" | "ahead" | "stroll" | 1 | -1): 1 | -1 =>

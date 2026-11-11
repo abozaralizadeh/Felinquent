@@ -734,7 +734,8 @@ else requestAnimationFrame(frame);
  * ?scene=knock|shatter|claw|hunt|zoom|pee|poop sets up a bit of gremlin mischief a second after loading, to
  * look at it (or record it) without waiting for the cat to feel like it. ?scene=ball brings out its
  * own toy (each animal has its own; ?character=<id> picks the animal), ?scene=fetch throws it for the animal to react to, ?scene=treat holds out a
- * treat and drops it after ?drop=<ms> (6 s), ?scene=trick makes up a trick and does it (with ?seed=N for another trick).
+ * treat and drops it after ?drop=<ms> (6 s), ?scene=trick makes up a trick and does it (with ?seed=N for another trick),
+ * ?scene=own&do=<intent> does one of the animal's own moves.
  */
 const scene = new URLSearchParams(location.search).get("scene");
 if (scene) {
@@ -774,6 +775,14 @@ if (scene) {
       state.cursor = { x: Math.round(stage.clientWidth * 0.62), y: Math.round(w.dockTop - 150) };
       cat.treat(buildWorld());
       setTimeout(() => cat.treat(buildWorld()), Number(new URLSearchParams(location.search).get("drop") ?? "6000"));
+    }
+    else if (scene === "own") {
+      // ?scene=own&do=<intent> does one of the animal's own moves (ADR-067): shake_off, chew, burrow,
+      // shiver, mouse, cache, wash, raid, binky, thump, flop, nibble, nut or cling.
+      const pick = (new URLSearchParams(location.search).get("do") ?? "shake_off") as Intent["intent"];
+      const target = pick === "nibble" || pick === "cling" ? win.id : pick === "raid" ? "dock" : "here";
+      start({ intent: pick, target, approach: "walk", stay_sec: 20, mood: "playful" });
+      log(`you asked for ${pick}`);
     }
     else if (scene === "trick") {
       const seed = Number(new URLSearchParams(location.search).get("seed") ?? "0");

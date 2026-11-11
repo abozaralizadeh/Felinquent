@@ -1,5 +1,5 @@
-import { Executor, type ExecEvent } from "./executor";
-import { Mess, type MessEvent, type MessState, type SpotKind, type TreatKind } from "./mess";
+import { Executor, type ExecEvent, type Fx } from "./executor";
+import { Mess, TRASH_KINDS, type MessEvent, type MessState, type SpotKind, type TreatKind } from "./mess";
 import { WindowMotion } from "./motion";
 import { Governor } from "./governor";
 import { InMemoryMemory, type Memory } from "./memory";
@@ -106,6 +106,11 @@ export class Cat {
   /** Things on windows to knock off, and what is left when they break (gremlin and normal only). */
   readonly mess: Mess;
   private messRng: Rng;
+  /** The colour of its loose fur, for a shake (ADR-067). */
+  private fur = "#c9a27a";
+  /** The chihuahua's blanket and the raccoon's snack box while they are out. */
+  private blanketId: string | null = null;
+  private snackId: string | null = null;
   private lastCrackMs = -1e12;
   private lastWindows: unknown = null;
   private lastDockTop = -1;
@@ -158,9 +163,10 @@ export class Cat {
     this.mess = new Mess(this.messRng);
     this.mess.scale = this.executor.size.h / 90;
     this.mess.toyKind = (opts.personality ?? DEFAULT_PERSONALITY).toy ?? "yarn";
+    this.fur = (opts.personality ?? DEFAULT_PERSONALITY).fur ?? this.fur;
     this.executor.props = () =>
       this.mess.props
-        .filter((p) => p.state === "rest" && p.windowId !== null && p.alpha > 0.9 && !p.toy)
+        .filter((p) => p.state === "rest" && p.windowId !== null && p.alpha > 0.9 && !p.toy && !p.own)
         .map((p) => ({ id: p.id, windowId: p.windowId as string, x: p.x }));
     this.executor.toyAt = () => {
       const t = this.mess.toy;
@@ -224,6 +230,7 @@ export class Cat {
     this.executor.setInstinct(instinctFor(p.species));
     this.executor.glanceChance = 0.95 - 0.6 * p.aloofness;
     this.mess.toyKind = p.toy ?? "yarn";
+    this.fur = p.fur ?? "#c9a27a";
   }
 
   /** The animal is on another desktop than the one you're looking at: don't draw it. */
@@ -315,7 +322,11 @@ export class Cat {
     if (carried && this.executor.carrying === carried.id && !this.homeWorld) {
       const m = this.executor.mouth();
       this.mess.carryAt(m.x, m.y, this.executor.body.facing);
-    } else if (carried) this.mess.dropCarried(this.executor.body.facing);
+    } else if (carried?.own) this.mess.finishItem();
+    else if (carried) this.mess.dropCarried(this.executor.body.facing);
+    // Out from under its blanket some other way (a fright, a respect mode): the blanket shows again.
+    const blanket = this.blanketId ? this.mess.props.find((p) => p.id === this.blanketId) : undefined;
+    if (blanket?.hidden && this.executor.body.anim !== "burrow") this.mess.releaseOwn(blanket.id, world.nowMs, 60_000);
     if (!this.homeWorld) this.bumpWhileRunning();
     const catX = this.executor.body.hidden || this.homeWorld ? null : this.executor.body.x;
     for (const ev of this.mess.step(execDtSec, seen, chaos, catX, (id) => this.motion.of(id))) this.onMess(ev, seen);
@@ -536,6 +547,8 @@ export class Cat {
       else if (f.fx === "pick_up") {
         // Gone by the time its mouth got there (you took it, or it rolled off): nothing in its mouth.
         if (!this.mess.carry(f.prop)) this.executor.carrying = null;
+      } else if (f.fx === "drop_toy" && this.mess.props.find((p) => p.state === "carried")?.own) {
+        this.mess.finishItem();
       } else if (f.fx === "drop_toy") {
         const kind = this.mess.props.find((p) => p.state === "carried")?.kind;
         this.mess.dropCarried(ev.dir);
@@ -552,7 +565,7 @@ export class Cat {
         const pile: SpotKind = kind === "dog" ? "poop" : kind === "rabbit" ? "pellets" : kind === "squirrel" ? "pellets_row" : "poop_log";
         this.mess.relieve(f.kind === "pee" ? "puddle" : pile, ev.windowId, ev.x, now, f.sec);
         this.mind.relieved(f.kind, now);
-      }
+      } else this.ownFx(f, ev, now);
     } else if (ev.type === "impact") {
       // Only a gremlin comes down hard enough to crack a window.
       // Not every landing, or the screen would be all cracks: one now and then.
@@ -566,6 +579,87 @@ export class Cat {
       this.mind.note(now, "i fell short of a jump and hung off the edge of a window");
     } else if (ev.type === "slipped") {
       this.mind.note(now, "i fell off a window. on purpose.");
+    }
+  }
+
+  /** What each animal's own moves leave or set off (ADR-067): all drawn, nothing real is touched. */
+  private ownFx(f: Fx, ev: Extract<ExecEvent, { type: "fx" }>, now: number): void {
+    const sz = this.executor.size;
+    const sc = this.mess.scale;
+    const dir = ev.dir;
+    const mid = ev.y - sz.h * 0.5;
+    switch (f.fx) {
+      case "shake":
+        // Loose fur and a little dust, flying off all along the shake.
+        this.mess.puff("fur", ev.x, mid, 14, now, { spread: 150, up: 90, color: this.fur, overMs: 1000, w: sz.w / sc, h: sz.h * 0.5 / sc, size: 3.2 });
+        this.mess.puff("dust", ev.x, ev.y - sz.h * 0.25, 5, now, { spread: 60, up: 30, overMs: 900, w: sz.w / sc, size: 4 });
+        break;
+      case "dirt": {
+        // Out from under it, behind it, the way a digging animal throws it.
+        const x = ev.x + dir * sz.w * 0.15;
+        this.mess.spray("soil", x, ev.y, (-dir) as 1 | -1, f.n, now);
+        this.mess.puff("dust", x, ev.y - 4 * sc, 3, now, { dir: (-dir) as 1 | -1, spread: 70, up: 30, size: 4 });
+        break;
+      }
+      case "spot":
+        this.mess.relieve(f.kind, ev.windowId, ev.x + dir * sz.w * f.ahead, now);
+        break;
+      case "splash":
+        this.mess.puff("drop", ev.x + dir * sz.w * 0.45, ev.y - 4 * sc, 7, now, { spread: 70, up: 190, color: "#78bfea", overMs: 700, size: 2.2, floor: ev.y });
+        break;
+      case "item": {
+        const m = this.executor.mouth();
+        const p = this.mess.holdItem(f.kind, m.x, m.y, now);
+        this.executor.carrying = p.id;
+        break;
+      }
+      case "item_bite": {
+        const kind = this.mess.props.find((p) => p.own && p.state === "carried")?.kind;
+        this.mess.nibbleItem(f.amount, now, kind === "grapes" ? "#7b4a8f" : "#9a6a3c", ev.y);
+        break;
+      }
+      case "item_done":
+        this.mess.finishItem();
+        this.executor.carrying = null;
+        break;
+      case "blanket": {
+        const p = this.mess.putOwn("blanket", ev.windowId, ev.x + dir * sz.w * 0.7, now, 10 * 60_000);
+        this.blanketId = p?.id ?? null;
+        break;
+      }
+      case "blanket_in":
+        if (this.blanketId) this.mess.hideOwn(this.blanketId, true, ev.x);
+        break;
+      case "blanket_out":
+        if (this.blanketId) this.mess.releaseOwn(this.blanketId, now, 60_000);
+        break;
+      case "snack_box": {
+        const p = this.mess.putOwn("snack_box", ev.windowId, ev.x + dir * sz.w * 0.5, now, 3 * 60_000);
+        this.snackId = p?.id ?? null;
+        break;
+      }
+      case "trash":
+        this.mess.throwOut(this.messRng.pick(TRASH_KINDS), ev.x - dir * sz.w * 0.1, ev.y - sz.h * 0.75, (-dir) as 1 | -1, now);
+        break;
+      case "snack_done":
+        if (this.snackId) this.mess.releaseOwn(this.snackId, now, 25_000);
+        this.snackId = null;
+        break;
+      case "shiver":
+        this.mess.puff("tremble", ev.x, mid, 10, now, { overMs: 2600, size: (sz.w * 0.42) / sc, w: 0, h: 10, ttlMs: 520 });
+        break;
+      case "thud": {
+        const x = ev.x - dir * sz.w * 0.28;
+        this.mess.puff("dust", x, ev.y - 2 * sc, 5, now, { spread: 80, up: 20, size: 4 });
+        this.mess.puff("impact", x, ev.y - 6 * sc, 1, now, { size: 7, w: 0, h: 0, ttlMs: 320 });
+        break;
+      }
+      case "nibble":
+        if (ev.windowId) this.mess.biteMark(ev.windowId, ev.x + dir * sz.w * 0.42, now);
+        this.mess.puff("crumb", ev.x + dir * sz.w * 0.42, ev.y - 2 * sc, 4, now, { spread: 40, up: 50, color: "#b9b2a6", size: 1.6, overMs: 500, floor: ev.y });
+        break;
+      default:
+        break;
     }
   }
 

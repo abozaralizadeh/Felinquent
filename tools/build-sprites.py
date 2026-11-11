@@ -115,6 +115,19 @@ MOTION_PASSES = {
     # dog's big double kick); and a sheepish look at you mid-squat. Sized by the standing look back.
     "potty": [("pee1 pee2 poop1 poop2 pottyback cover1 cover2 pawshake sheepish", "stand", "5", "w")],
 }
+# Each animal's own moves (ADR-067), one sheet per animal (<id>-sig.png), cut in two passes: the
+# first sized by a frame that matches a drawing we have, the rest ("=") at that same scale, because a
+# shake, a dive or a blanket has nothing of the same shape to size it by. measure-heads.py then fixes
+# the head size frame by frame like everywhere else.
+OWN_PASSES = {
+    "biscuit": [(f"dshake1 dshake2 dshake3 dshake4 {_} {_} {_} wag1 wag2 wag3", "stand", "8,9,10"), (f"{_} {_} {_} {_} chew1 chew2 chew3 {_} {_} {_}", "=", "")],
+    "chili": [(f"pawup {_} shiver {_} {_} {_} dshake1 dshake2 dshake4", "stand", "9"), (f"{_} pawup_sit {_} blanket1 blanket2 blanket3 {_} {_} {_}", "=", "")],
+    "mochi": [(f"listen1 listen2 {_} {_} {_} {_} mouse_out {_} {_}", "stand", "1,2,7", "w"), (f"{_} {_} mouse_up mouse_top mouse_dive mouse_in {_} nosepush1 nosepush2", "=", "")],
+    "bandit": [(f"{_} {_} {_} inspect {_} {_} toss hold1 hold2", "sit", "4,8,9"), (f"wash1 wash2 wash3 {_} rummage1 rummage2 {_} {_} {_}", "=", "")],
+    "clover": [(f"{_} thump1 thump2 {_} {_} {_} {_} {_} {_}", "stand", "2,3"), (f"binky2 {_} {_} flop1 flop2 nibble1 nibble2 earwash1 earwash2", "=", "")],
+    "hazel": [(f"nut1 nut2 nut3 cheeks {_} {_} {_} {_} {_}", "sit", "1,2,3,4"), (f"{_} {_} {_} {_} pat1 pat2 flick cling_up cling_down", "=", "")],
+}
+NEW_SHEETS.add("sig")
 for passes in TURN.values():
     passes["trans"] = TRANS
     passes.update(MOTION_PASSES)
@@ -124,6 +137,8 @@ for passes in TURN.values():
 for cid in NEW_IDS:
     # (a new dict: Chili shares Biscuit's turn map)
     TURN[cid] = {**TURN[cid], "ledge": [(f"perch_fwd perch_back perch_down perch_doze perch_kick perch_you {_} {_} {_}", "sit", "1,2", "h", 1.06), MOTION_PASSES["ledge"][1]]}
+for cid, own in OWN_PASSES.items():
+    TURN[cid] = {**TURN[cid], "sig": own}
 # Their spin sheets were drawn smaller than the rest: matched to the standing drawing.
 NEW_PICK = {"spin": ("stand", "1,2,3,4,5,6,7,8,9")}
 # The walk sheets of the rabbit and the squirrel came out at another scale than their base sheets
@@ -214,6 +229,9 @@ for cid in IDS:
             if base == "mid":
                 mid = (scales[0] * scales[1]) ** 0.5
                 run([str(sheet), str(dest), *names.split(), "--scale", str(mid), *solo])
+                continue
+            if base == "=":
+                run([str(sheet), str(dest), *names.split(), "--scale", str(scales[0]), *solo])
                 continue
             d = dim[0] if dim else "h"
             ref = (body(dest / f"{base}.webp")[0] if d == "w" else size(dest / f"{base}.webp")[1]) / SCALE * (dim[1] if len(dim) > 1 else 1) * SHEET_SCALE.get((cid, kind), 1.0)
