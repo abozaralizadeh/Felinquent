@@ -8,3 +8,6 @@ logs/*.log.*
 target/
 .vitest/
 src-tauri/gen/
+
+# The usage totals copied in by pages.yml at deploy time
+/site/stats.json

@@ -1,8 +1,11 @@
-# Publishes site/ to GitHub Pages. It only runs when you start it by hand (Actions tab, "pages", Run workflow).
+# Publishes site/ to GitHub Pages: by hand (Actions tab, "pages", Run workflow), and every 6 hours
+# so the site's own copy of the usage totals (stats.json) stays fresh. It commits nothing.
 name: pages
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
 
 permissions:
   contents: read
@@ -22,6 +25,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # The numbers section's own copy of the usage totals, for browsers that can't reach the relay.
+      # A failed fetch only means no copy this time; the page still tries the relay first.
+      - name: Copy the usage totals
+        run: |
+          if curl -sf --retry 3 --max-time 20 https://felinquent-reports.felinquent-report-relay.workers.dev/v1/stats -o "$RUNNER_TEMP/stats.json" \
+            && jq -e '.today and (.days | length > 0)' "$RUNNER_TEMP/stats.json" > /dev/null; then
+            cp "$RUNNER_TEMP/stats.json" site/stats.json
+            echo "copied: $(jq -c '{installs, updated}' site/stats.json)"
+          else
+            echo "no copy of the totals this time"
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

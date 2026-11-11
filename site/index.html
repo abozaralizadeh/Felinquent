@@ -1301,80 +1301,107 @@
   const dayName = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const fail = (msg) => { box.querySelectorAll("[data-n]").forEach((n) => (n.textContent = "?")); const d = document.getElementById("days"); d.replaceChildren(el("p", "n-empty", msg)); d.style.border = "0"; };
-  fetch(URL_STATS, { mode: "cors", credentials: "omit" })
-    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-    .then((s) => {
-      // Daily, weekly and monthly show the last whole period unless the current one is bigger,
-      // the same rule as the README badges.
-      const pick = (now, before, a, b) => (now >= before ? [now, a] : [before, b]);
-      const vals = {
-        installs: [s.installs],
-        daily: pick(s.today.active, s.yesterday.active, "users today", "users yesterday"),
-        weekly: pick(s.week.active, s.lastWeek.active, "users this week", "users last week"),
-        monthly: pick(s.month.active, s.lastMonth.active, "users this month", "users last month"),
+  // One try at an address, given up after ms; only a real stats answer counts.
+  const get = (url, ms) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
+    return fetch(url, { mode: "cors", credentials: "omit", signal: c.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((s) => (s && s.today && Array.isArray(s.days) ? s : Promise.reject(new Error("not the stats"))))
+      .finally(() => clearTimeout(t));
+  };
+  const render = (s, copy) => {
+    // Daily, weekly and monthly show the last whole period unless the current one is bigger,
+    // the same rule as the README badges.
+    const pick = (now, before, a, b) => (now >= before ? [now, a] : [before, b]);
+    const vals = {
+      installs: [s.installs],
+      daily: pick(s.today.active, s.yesterday.active, "users today", "users yesterday"),
+      weekly: pick(s.week.active, s.lastWeek.active, "users this week", "users last week"),
+      monthly: pick(s.month.active, s.lastMonth.active, "users this month", "users last month"),
+    };
+    for (const [k, [n, label]] of Object.entries(vals)) {
+      box.querySelector(`[data-n="${k}"]`).textContent = fmt(n);
+      if (label) box.querySelector(`[data-l="${k}"]`).textContent = label;
+    }
+    // The tiles stay even if a chart below goes wrong in some browser.
+    try { charts(s, copy); } catch (e) { console.warn("numbers: charts", e); }
+  };
+  const charts = (s, copy) => {
+    // The 30 days.
+    const days = document.getElementById("days");
+    const top = Math.max(1, ...s.days.map((d) => d.active));
+    const tip = el("div", "n-tip");
+    days.append(tip);
+    document.getElementById("days-from").textContent = dayName(s.days[0].day);
+    for (const d of s.days) {
+      const b = el("span", "n-day");
+      b.tabIndex = 0;
+      b.setAttribute("aria-label", `${dayName(d.day)}: ${d.active} users, ${d.new} new`);
+      const bar = el("i");
+      bar.style.height = d.active ? `${Math.max(2, (d.active / top) * 100)}%` : "0";
+      b.append(bar);
+      const show = () => {
+        tip.textContent = `${dayName(d.day)}: ${fmt(d.active)} user${d.active === 1 ? "" : "s"}, ${fmt(d.new)} new`;
+        // Centred on the bar, but kept inside the chart at both ends.
+        const half = tip.offsetWidth / 2;
+        tip.style.left = `${Math.min(Math.max(b.offsetLeft + b.offsetWidth / 2, half), days.clientWidth - half)}px`;
+        tip.classList.add("on");
       };
-      for (const [k, [n, label]] of Object.entries(vals)) {
-        box.querySelector(`[data-n="${k}"]`).textContent = fmt(n);
-        if (label) box.querySelector(`[data-l="${k}"]`).textContent = label;
+      b.addEventListener("mouseenter", show);
+      b.addEventListener("focus", show);
+      b.addEventListener("mouseleave", () => tip.classList.remove("on"));
+      b.addEventListener("blur", () => tip.classList.remove("on"));
+      days.append(b);
+    }
+    // Splits: the week with more installs seen, so a Monday isn't empty.
+    const wk = s.week.active >= s.lastWeek.active ? s.week : s.lastWeek;
+    const wkLabel = wk === s.week ? "Installs seen this week" : "Installs seen last week";
+    box.querySelectorAll("[data-week]").forEach((p) => (p.textContent = wkLabel));
+    for (const holder of box.querySelectorAll("[data-split]")) {
+      const counts = Object.entries(wk[holder.dataset.split] || {}).sort((a, b) => b[1] - a[1]);
+      if (!counts.length) { holder.append(el("p", "n-empty", "Nothing counted yet. Check back in a day or two.")); continue; }
+      const most = counts[0][1];
+      for (const [key, n] of counts) {
+        const row = el("div", "n-split-row");
+        const track = el("div", "n-split-track");
+        const fill = el("i");
+        fill.style.width = `${(n / most) * 100}%`;
+        track.append(fill);
+        row.append(el("b", "", NAMES[key] || key), track, el("span", "", fmt(n)));
+        holder.append(row);
       }
-      // The 30 days.
-      const days = document.getElementById("days");
-      const top = Math.max(1, ...s.days.map((d) => d.active));
-      const tip = el("div", "n-tip");
-      days.append(tip);
-      document.getElementById("days-from").textContent = dayName(s.days[0].day);
-      for (const d of s.days) {
-        const b = el("span", "n-day");
-        b.tabIndex = 0;
-        b.setAttribute("aria-label", `${dayName(d.day)}: ${d.active} users, ${d.new} new`);
-        const bar = el("i");
-        bar.style.height = d.active ? `${Math.max(2, (d.active / top) * 100)}%` : "0";
-        b.append(bar);
-        const show = () => {
-          tip.textContent = `${dayName(d.day)}: ${fmt(d.active)} user${d.active === 1 ? "" : "s"}, ${fmt(d.new)} new`;
-          // Centred on the bar, but kept inside the chart at both ends.
-          const half = tip.offsetWidth / 2;
-          tip.style.left = `${Math.min(Math.max(b.offsetLeft + b.offsetWidth / 2, half), days.clientWidth - half)}px`;
-          tip.classList.add("on");
-        };
-        b.addEventListener("mouseenter", show);
-        b.addEventListener("focus", show);
-        b.addEventListener("mouseleave", () => tip.classList.remove("on"));
-        b.addEventListener("blur", () => tip.classList.remove("on"));
-        days.append(b);
-      }
-      // Splits: the week with more installs seen, so a Monday isn't empty.
-      const wk = s.week.active >= s.lastWeek.active ? s.week : s.lastWeek;
-      const wkLabel = wk === s.week ? "Installs seen this week" : "Installs seen last week";
-      box.querySelectorAll("[data-week]").forEach((p) => (p.textContent = wkLabel));
-      for (const holder of box.querySelectorAll("[data-split]")) {
-        const counts = Object.entries(wk[holder.dataset.split] || {}).sort((a, b) => b[1] - a[1]);
-        if (!counts.length) { holder.append(el("p", "n-empty", "Nothing counted yet. Check back in a day or two.")); continue; }
-        const most = counts[0][1];
-        for (const [key, n] of counts) {
-          const row = el("div", "n-split-row");
-          const track = el("div", "n-split-track");
-          const fill = el("i");
-          fill.style.width = `${(n / most) * 100}%`;
-          track.append(fill);
-          row.append(el("b", "", NAMES[key] || key), track, el("span", "", fmt(n)));
-          holder.append(row);
-        }
-      }
-      // The table view.
-      const t = el("table");
-      const head = el("tr");
-      ["Day", "Users", "New"].forEach((h) => head.append(el("th", "", h)));
-      t.append(head);
-      for (const d of [...s.days].reverse()) {
-        const tr = el("tr");
-        [dayName(d.day), fmt(d.active), fmt(d.new)].forEach((v) => tr.append(el("td", "", v)));
-        t.append(tr);
-      }
-      document.getElementById("nums-table").append(t);
-      if (!s.since) { days.replaceChildren(el("p", "n-empty", "Counting starts with 0.1.16. Check back in a day or two.")); days.style.borderBottom = "0"; }
-    })
-    .catch(() => fail("The numbers couldn't load right now."));
+    }
+    // The table view.
+    const t = el("table");
+    const head = el("tr");
+    ["Day", "Users", "New"].forEach((h) => head.append(el("th", "", h)));
+    t.append(head);
+    for (const d of [...s.days].reverse()) {
+      const tr = el("tr");
+      [dayName(d.day), fmt(d.active), fmt(d.new)].forEach((v) => tr.append(el("td", "", v)));
+      t.append(tr);
+    }
+    document.getElementById("nums-table").append(t);
+    if (!s.since) { days.replaceChildren(el("p", "n-empty", "Counting starts with 0.1.16. Check back in a day or two.")); days.style.borderBottom = "0"; }
+    // The site's own copy: say how old it is.
+    if (copy) {
+      const last = s.days[s.days.length - 1].day;
+      const at = new Date(s.updated);
+      const when = isNaN(at) ? dayName(last) : `${dayName(last)}, ${at.toISOString().slice(11, 16)} UTC`;
+      box.querySelector(".n-chart .n-sub").textContent = `The last 30 days, as of ${when}. Hover or tap a day for its numbers.`;
+      document.querySelector("#days-from + span").textContent = dayName(last);
+    }
+  };
+  // The live numbers first, tried twice. If this browser can't reach the relay (a blocker, a
+  // network that filters workers.dev), the copy the site was deployed with, from its own address
+  // (stats.json, fetched by pages.yml every few hours).
+  get(URL_STATS, 4000)
+    .catch((e) => (console.warn("numbers: live", e), get(URL_STATS, 5000)))
+    .then((s) => [s, false])
+    .catch((e) => (console.warn("numbers: live again", e), get("stats.json", 5000).then((s) => [s, true])))
+    .then(([s, copy]) => render(s, copy))
+    .catch((e) => (console.warn("numbers:", e), fail("The numbers couldn't load right now.")));
 })();
 </script>
 </body>
