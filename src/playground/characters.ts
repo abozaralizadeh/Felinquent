@@ -1,5 +1,6 @@
 // A sheet of every character in a few poses, for checking the art and for docs.
-import { CHARACTERS } from "../core/characters";
+import { allCharacters } from "../core/characters";
+import { loadDevPack } from "./dev-pack";
 import { TURN_SEC, type Anim, type CatBody } from "../core/executor";
 import { drawCat } from "./draw";
 import { spritesReady } from "./sprites";
@@ -17,6 +18,9 @@ const stepSec = Number(q.get("step") ?? "0.09");
 // ?poses=angry,hiss,belly draws exactly those animations (with ?only=biscuit&big=1 for one character).
 const custom = q.get("poses")?.split(",") as Anim[] | undefined;
 const POSES: Anim[] = custom ?? (strip ? Array.from({ length: 9 }, () => strip) : big ? ALL.slice(0, 4) : ALL);
+// ?pack=<folder> adds a character from an unpacked package (dev server only, ADR-069).
+await loadDevPack().catch((e: unknown) => console.warn(String(e)));
+const CHARACTERS = allCharacters();
 const list = only ? CHARACTERS.filter((c) => c.id === only) : CHARACTERS;
 if (big) {
   canvas.width = strip ? 1800 : custom ? Math.max(1320, custom.length * 220) : 1320;

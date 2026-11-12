@@ -43,9 +43,14 @@ for dir in "${dirs[@]}"; do
   $A "$dir" sit lick1 lick2 lick3 lick4 lick5 chest1 chest2 lips1 lips2 --min-iou 0.55
   # Nature calling: the squat (or a dog's lifted leg) and the hunched squat are one body each, only the
   # eyes and the head move; covering it is one body with a paw (or a hind leg) going.
-  $A "$dir" pee1 pee2 --min-iou 0.6
-  $A "$dir" poop1 poop2 sheepish --min-iou 0.55
-  $A "$dir" cover1 cover2 --min-iou 0.5
+  # (A character from a package that never needs to go has no potty drawings, ADR-069.)
+  potty=false
+  [ -f "${dir}pee1.webp" ] && potty=true
+  if $potty; then
+    $A "$dir" pee1 pee2 --min-iou 0.6
+    $A "$dir" poop1 poop2 sheepish --min-iou 0.55
+    $A "$dir" cover1 cover2 --min-iou 0.5
+  fi
   $A "$dir" angry1 hiss1 hiss2 --min-iou 0.5
   $A "$dir" loaf loaf_blink loaf_up loaf_back loaf_drowse --min-iou 0.6
   $A "$dir" perch_fwd perch_back perch_down perch_doze perch_kick perch_you --min-iou 0.6
@@ -62,6 +67,9 @@ for dir in "${dirs[@]}"; do
   $N "$dir" 6 7 groom2 groom7
   $N "$dir" 6 7 groom8 --top "$top8"
   $N "$dir" 6 4 groom6
+  # The chew when it eats a treat (ADR-053): the eat pose nodding. The nine animals have theirs from
+  # before this line, made by hand; a character added later gets it here.
+  [ -f "${dir}sniff2n1.webp" ] || $N "$dir" 6 6 sniff2
 
   # Turning round, standing and sitting: side, head round, three quarters, front, the far three
   # quarters and the far side (the last two are the first ones mirrored).
@@ -140,17 +148,19 @@ for dir in "${dirs[@]}"; do
   # squat (a dog lifts a leg) and the eyes closing; down into the hunched squat, straining, and a
   # sheepish look at you and back; up out of either into a look back at it, then standing; covering it
   # (a cat rakes with a front paw, a dog kicks back); a paw shake (a dog's double kick).
-  $T "$dir" 3 once stand pee1 --tag j
-  $T "$dir" 3 loop pee1 pee2
-  $T "$dir" 3 once stand poop1 --tag o
-  $T "$dir" 3 loop poop1 poop2
-  $T "$dir" 3 once poop1 sheepish --tag u
-  $T "$dir" 3 once sheepish poop1 --tag u
-  $T "$dir" 3 once stand cover1 --tag c
-  $T "$dir" 3 loop cover1 cover2
-  $T "$dir" 3 once cover1 stand --tag c
-  $T "$dir" 3 once stand pawshake --tag z
-  $T "$dir" 3 once pawshake stand --tag z
+  if $potty; then
+    $T "$dir" 3 once stand pee1 --tag j
+    $T "$dir" 3 loop pee1 pee2
+    $T "$dir" 3 once stand poop1 --tag o
+    $T "$dir" 3 loop poop1 poop2
+    $T "$dir" 3 once poop1 sheepish --tag u
+    $T "$dir" 3 once sheepish poop1 --tag u
+    $T "$dir" 3 once stand cover1 --tag c
+    $T "$dir" 3 loop cover1 cover2
+    $T "$dir" 3 once cover1 stand --tag c
+    $T "$dir" 3 once stand pawshake --tag z
+    $T "$dir" 3 once pawshake stand --tag z
+  fi
 
   # On a ledge: the tail swinging, looking down, dozing, a lazy kick, looking at you. Peeking: along
   # the ledge, ducking, up high.

@@ -29,6 +29,8 @@ Only drawn frames are measured (the keys in the Drawn arrays of sprites.ts, less
 value from the two drawings it sits between, like the size fix (groundOf in sprites.ts). Values under
 2 px are left out. Run it again after drawings are added or recut.
 """
+import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -37,7 +39,9 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-SPRITES = ROOT / "src/playground/public/sprites"
+# FELINQUENT_SPRITES=<dir> measures the frames in another folder (a package's, ADR-069); with
+# --json <file> the table goes to that file instead of ground.ts.
+SPRITES = Path(os.environ["FELINQUENT_SPRITES"]) if os.environ.get("FELINQUENT_SPRITES") else ROOT / "src/playground/public/sprites"
 SPRITES_TS = ROOT / "src/playground/sprites.ts"
 OUT = ROOT / "src/playground/ground.ts"
 
@@ -113,6 +117,11 @@ def main() -> None:
     for d in sorted(p for p in SPRITES.iterdir() if p.is_dir()):
         row = {k: v for k in keys if (v := measure(d.name, k)) >= MIN}
         table[d.name] = row
+    if "--json" in sys.argv:
+        out = Path(sys.argv[sys.argv.index("--json") + 1])
+        out.write_text(json.dumps(table, indent=1))
+        print(f"wrote {out}: {sum(len(r) for r in table.values())} frames")
+        return
     if "--print" in sys.argv:
         for ch, row in table.items():
             print(ch, len(row), " ".join(f"{k}:{v}" for k, v in row.items()))

@@ -2,7 +2,8 @@ import { FakeLlmClient, LlmBrain, OllamaClient, isLocalUrl, type Brain } from ".
 import { Cat } from "../core/cat";
 import { generateDiary, InMemoryMemory } from "../core/memory";
 import type { Ask, MindEvent } from "../core/mind";
-import { CHARACTERS, characterById } from "../core/characters";
+import { allCharacters, characterById, type Character } from "../core/characters";
+import { loadDevPack } from "./dev-pack";
 import { ARCHETYPES, DEFAULT_PERSONALITY } from "../core/personality";
 import { seeded } from "../core/rng";
 import type { Activity, ChaosLevel, Intent, Settings, WindowInfo, WorldSnapshot } from "../core/types";
@@ -472,7 +473,14 @@ $("activity").addEventListener("change", (e) => (state.activity = (e.target as H
 $("warp").addEventListener("input", (e) => ($("warpv").textContent = `${(e.target as HTMLInputElement).value}x`));
 let characterId = "tabby";
 const characterSelect = $("character") as HTMLSelectElement;
-for (const c of CHARACTERS) characterSelect.add(new Option(`${c.name} (${c.species})`, c.id));
+// ?pack=<folder> adds a character from an unpacked package (dev server only, ADR-069).
+const devPack = await loadDevPack().catch((e: unknown) => (console.warn(String(e)), null));
+// A package's character is named alone: its kind is how it behaves, not what it is (a mascot that acts
+// like a dog is no dog).
+function label(c: Character): string {
+  return c.pack ? c.name : `${c.name} (${c.species})`;
+}
+for (const c of allCharacters()) characterSelect.add(new Option(label(c), c.id));
 function pickCharacter(id: string): void {
   const c = characterById(id);
   characterId = c.id;
@@ -485,7 +493,7 @@ function pickCharacter(id: string): void {
 characterSelect.addEventListener("change", () => pickCharacter(characterSelect.value));
 $("characterHint").textContent = characterById("tabby").blurb;
 // ?character=<id> starts with that animal (to look at one, or record it).
-const startWith = new URLSearchParams(location.search).get("character");
+const startWith = new URLSearchParams(location.search).get("character") ?? devPack;
 if (startWith) pickCharacter(startWith);
 $("persona").addEventListener("change", (e) => {
   const key = (e.target as HTMLSelectElement).value;
@@ -537,7 +545,7 @@ function petMenuItems(): MenuEntry[] {
     { label: "Zoomies!", run: () => ask("zoomies") },
     { label: "Nap time", run: () => ask("nap") },
     "-",
-    { label: "Character", sub: CHARACTERS.map((c) => ({ label: `${c.name} (${c.species})`, on: c.id === characterId, run: () => pickCharacter(c.id) })) },
+    { label: "Character", sub: allCharacters().map((c) => ({ label: label(c), on: c.id === characterId, run: () => pickCharacter(c.id) })) },
     { label: "Chaos level", sub: (["chill", "normal", "gremlin"] as const).map((l) => ({ label: l[0]?.toUpperCase() + l.slice(1), on: chaos.value === l, run: () => setChaos(l) })) },
     "-",
     { label: "Shoo for 1 hour", on: state.shooedUntilMs > state.simNow, run: () => $("shoo").click() },

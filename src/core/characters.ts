@@ -38,6 +38,8 @@ export interface Character {
   /** Body size multiplier on top of the size setting. */
   size: number;
   personality: Personality;
+  /** Added from a package by the user (ADR-069), not built in. */
+  pack?: boolean;
 }
 
 const stock = (p: Omit<Personality, "voice"> & { voice?: Personality["voice"] }): Personality => p;
@@ -213,6 +215,29 @@ export const CHARACTERS: readonly Character[] = [
 
 export const DEFAULT_CHARACTER_ID = "tabby";
 
+/** Characters added from packages (ADR-069), in the order they came. */
+const PACKS: Character[] = [];
+
+/** Adds a package character, or swaps it for a newer copy with the same id. A built-in id is refused. */
+export function registerCharacter(c: Character): boolean {
+  if (CHARACTERS.some((b) => b.id === c.id)) return false;
+  const i = PACKS.findIndex((p) => p.id === c.id);
+  const it = { ...c, pack: true };
+  if (i >= 0) PACKS[i] = it;
+  else PACKS.push(it);
+  return true;
+}
+
+export function forgetCharacter(id: string): void {
+  const i = PACKS.findIndex((p) => p.id === id);
+  if (i >= 0) PACKS.splice(i, 1);
+}
+
+/** The built-in characters, then the ones from packages. */
+export function allCharacters(): readonly Character[] {
+  return PACKS.length ? [...CHARACTERS, ...PACKS] : CHARACTERS;
+}
+
 export function characterById(id: string | undefined): Character {
-  return CHARACTERS.find((c) => c.id === id) ?? (CHARACTERS[0] as Character);
+  return CHARACTERS.find((c) => c.id === id) ?? PACKS.find((c) => c.id === id) ?? (CHARACTERS[0] as Character);
 }

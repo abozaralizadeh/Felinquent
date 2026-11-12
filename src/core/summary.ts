@@ -84,13 +84,19 @@ export function buildSchema(options: Option[]): IntentSchema {
   };
 }
 
+const ANIMAL = "You are an animal, not a person: selfish, curious, proud, affectionate on your own terms. You are not an assistant. You never help.";
+/** Who it is, for the model: an animal, or a package character's own words (ADR-069). Never an assistant. */
+function personaOf(p: Personality): string {
+  return p.persona ? `${p.persona} You are not an assistant. You never help.` : ANIMAL;
+}
+
 export function buildSystemPrompt(p: Personality, trust: number): string {
   const traits = (["laziness", "neediness", "chaos", "aloofness", "curiosity"] as const)
     .map((k) => `${k} ${p[k].toFixed(1)}`)
     .join(", ");
   return [
     `You are the mind of ${p.species ? `a ${p.species} called ${p.name}` : "a house cat"} that lives on a computer desktop.`,
-    "You are an animal, not a person: selfish, curious, proud, affectionate on your own terms. You are not an assistant. You never help.",
+    personaOf(p),
     `Personality: ${traits}. Trust in your human: ${Math.round(trust)}/100.`,
     "You get the situation as JSON and a list of options. Pick ONE option and a target.",
     "Do what a real animal of your kind would do right now. Animals go for whatever their human is paying attention to.",
@@ -187,6 +193,8 @@ export function buildPlanSummary(args: {
   needs: Needs;
   settings: Settings;
   bouts: BoutChoice[];
+  /** What each move means for this character (a package's own words, ADR-069). */
+  meanings?: Partial<Record<IntentName, string>>;
   memory: string[];
   happened: string[];
   catWhere: string;
@@ -211,7 +219,7 @@ export function buildPlanSummary(args: {
   for (const b of args.bouts) {
     const names = b.options.map((o) => o.intent);
     // Meanings cost tokens, so only for the bout it is most likely to plan (or the only one).
-    const options = b.kind === suggested || args.bouts.length === 1 ? Object.fromEntries(names.map((n) => [n, MOVE_MEANING[n] ?? n.replace(/_/g, " ")])) : names;
+    const options = b.kind === suggested || args.bouts.length === 1 ? Object.fromEntries(names.map((n) => [n, args.meanings?.[n] ?? MOVE_MEANING[n] ?? n.replace(/_/g, " ")])) : names;
     bouts[b.kind] = { fits: Math.round((b.weight / best) * 10) / 10, means: BOUT_MEANING[b.kind], options };
   }
   const about = thoughtTopic({ world, happened: args.happened, things: args.things ?? [], bout: suggested, busyForMin: args.busyForMin });
@@ -290,7 +298,7 @@ export function buildPlanPrompt(p: Personality, trust: number): string {
   const traits = (["laziness", "neediness", "chaos", "aloofness", "curiosity"] as const).map((k) => `${k} ${p[k].toFixed(1)}`).join(", ");
   return [
     `You are the mind of ${p.species ? `a ${p.species} called ${p.name}` : "a house cat"} that lives on a computer desktop, on top of your human's windows.`,
-    "You are an animal, not a person: selfish, curious, proud, affectionate on your own terms. You are not an assistant. You never help.",
+    personaOf(p),
     `Personality: ${traits}. Trust in your human: ${Math.round(trust)}/100.`,
     "Your day is made of bouts that last a few minutes each: rest, explore, play, social, mischief.",
     'You get the situation as JSON. Your body already chose the bout: it is in "bouts", with what it means and its options.',

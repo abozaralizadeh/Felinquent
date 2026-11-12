@@ -175,7 +175,7 @@ Measured with `npm run month` (30 simulated days, a made-up human who pets some 
 |---|---|---|---|---|
 | RM-01 | Meeting | Camera or mic in use, or a meeting app in front | No blocking, no sound; naps in a far corner | MVP |
 | RM-02 | Fullscreen video / presentation | An app in full screen in front while something keeps the display awake (a video playing, slides showing). A full-screen app you just work in doesn't count | Leaves the screen ("goes outside"), back when it stops | MVP |
-| RM-03 | Screen sharing | Best-effort detection | Same as meeting | v1 |
+| RM-03 | Screen sharing | "Hide from screen sharing" in the menu (off by default). On Windows 10 2004 and later the windows are left out of every capture, so nobody watching your share sees the animal while you still do. On the Mac the windows ask to be left out too, but the capture most meeting apps use on macOS 15 and later can ignore that, so there it also goes away while the camera or mic is in use, back when the meeting ends (ADR-070) | Invisible to captures (Windows), or away during a meeting (Mac) | 0.1.18 |
 | RM-04 | Shoo for 1 hour | Menu (or the right-click menu) | Walks off the screen for an hour. Click it again to call the cat back early, and a treat ends it too. The menu ticks it while it lasts. When it comes back by itself it's in a huff: it sulks with its back to you, looks round once and sulks some more, with a line about it if thoughts are on. A treat that ends the shoo wins over the grudge: it comes to beg | MVP |
 | RM-05 | Panic | Hotkey or menu | Vanishes instantly. The same hotkey or menu item brings it back. The menu ticks it while the cat is hidden | MVP |
 | RM-06 | Quiet hours | Schedule in settings | Sleep only | v1 |

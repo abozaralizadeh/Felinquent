@@ -1,4 +1,5 @@
-import type { ToyKind } from "./mess";
+import type { ToyKind, TreatKind } from "./mess";
+import type { Kind } from "./species";
 import type { IntentName } from "./types";
 
 export interface Personality {
@@ -9,8 +10,26 @@ export interface Personality {
   voice?: Partial<Record<IntentName, string[]>>;
   /** Its own toy, the one it brings out to play with. The yarn unless said. */
   toy?: ToyKind;
-  /** The colour of the loose fur that flies off it in a shake (ADR-067). */
+  /** The colour of the loose fur that flies off it in a shake (ADR-067); "none" for no fur at all. */
   fur?: string;
+  /**
+   * Which animal it acts like, when `species` doesn't say (a character from a package, ADR-069):
+   * its ways, its own moves and what a click sets off. Without it the species name decides.
+   */
+  kind?: Kind;
+  /** False: it never needs to pee or poop (a mascot from a package, ADR-069). */
+  potty?: boolean;
+  /**
+   * How much it likes each move, over its kind's own weights (a package, ADR-069). 0 takes the move
+   * off its menu (a mascot doesn't dig or claw); a click or a scene can still ask for it.
+   */
+  weights?: Partial<Record<IntentName, number>>;
+  /** What each move means for this character, for the model (instead of MOVE_MEANING). */
+  meanings?: Partial<Record<IntentName, string>>;
+  /** Who it is, for the model, instead of "You are an animal, not a person: ..." (a package, ADR-069). */
+  persona?: string;
+  /** Its treat, when its kind's (TREAT_FOR in cat.ts) doesn't fit it: a mascot doesn't eat a dog biscuit. */
+  treat?: TreatKind;
   /** All traits go from 0 to 1. */
   laziness: number;
   neediness: number;

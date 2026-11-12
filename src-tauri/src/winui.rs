@@ -50,6 +50,38 @@ pub fn click_through(w: &WebviewWindow, on: bool) {
     set_ex(h, |ex| if on { ex | through | keep } else { (ex & !through) | keep });
 }
 
+/// Kept out of screen shares, recordings and screenshots (the "Hide from screen sharing" switch):
+/// Windows leaves the window out of every capture and shows it only on the screen itself. Before
+/// Windows 10 2004 (build 19041) the same call would black the window out of a capture instead,
+/// and these windows cover whole displays, so there it does nothing and says so (false).
+pub fn hide_from_capture(w: &WebviewWindow, on: bool) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE};
+    let Some(h) = hwnd(w) else { return false };
+    if on && build() < 19041 {
+        return false;
+    }
+    let raw = h.0 as isize;
+    let label = w.label().to_string();
+    // The affinity is set from the window's own thread, like the subclass below.
+    let _ = w.run_on_main_thread(move || {
+        let ok = unsafe { SetWindowDisplayAffinity(HWND(raw as _), if on { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE }) }.is_ok();
+        crate::logfile::write(&format!("capture: {label} {} {}", if on { "hidden from captures" } else { "in captures again" }, if ok { "" } else { "(Windows said no)" }));
+    });
+    true
+}
+
+/// The Windows build number (19045 for Windows 10 22H2, 22000 and up for Windows 11). 0 if unknown.
+fn build() -> u32 {
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
+    use winreg::RegKey;
+    RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", KEY_READ)
+        .and_then(|k| k.get_value::<String, _>("CurrentBuildNumber"))
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0)
+}
+
 /// Calls `f` when Windows ends the session (logging off, shutting down, an update of Windows).
 /// Windows ends the app without the usual quit then, and with fast startup a shutdown doesn't
 /// start a new boot, so without this the next launch would think the app had crashed (report.rs).

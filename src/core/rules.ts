@@ -1,7 +1,7 @@
 import { BY_INTENT, CHAOS_PARAMS } from "./behaviors";
 import type { Habits } from "./habits";
 import type { Personality } from "./personality";
-import { canDo, instinctFor } from "./species";
+import { canDo, instinctOf } from "./species";
 import type { Rng } from "./rng";
 import type { TrickBook } from "./tricks";
 import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, SeenThing, WindowInfo, WorldSnapshot } from "./types";
@@ -92,7 +92,7 @@ export function candidates(ctx: RulesContext): Option[] {
   const aloof = 1 - 0.5 * p.aloofness;
   const catDist = dist(ctx.catPos, w.cursor);
   const out: Option[] = [];
-  const ins = instinctFor(p.species);
+  const ins = instinctOf(p);
   const add = (intent: IntentName, score: number, targets: string[]) => {
     // Another animal's own things are not on this one's menu at all (ADR-067).
     if (score > 0 && targets.length > 0 && canDo(ins, intent)) out.push({ intent, score, targets });
@@ -249,7 +249,7 @@ export function candidates(ctx: RulesContext): Option[] {
     for (const r of lately) if (r === o.intent) o.score *= 0.75;
     // What it learned you like, what it is bored of, and what it hasn't tried much (habits.ts).
     if (ctx.habits) o.score *= ctx.habits.multiplier(o.trick ? `trick:${o.trick}` : o.intent, ctx.world.nowMs, ctx.rng);
-    o.score *= instinctFor(ctx.personality.species).weights[o.intent] ?? 1;
+    o.score *= instinctOf(ctx.personality).weights[o.intent] ?? 1;
     const pace = PACE[ctx.chaos ?? "normal"];
     if (o.intent === "nap" || o.intent === "nap_warm" || o.intent === "cozy") o.score *= pace.nap;
     else if (ACTIVE.includes(o.intent)) o.score *= pace.active;
@@ -258,7 +258,11 @@ export function candidates(ctx: RulesContext): Option[] {
   // Of its tricks, only the best of each kind right now is on the menu.
   const best = new Map<string, Option>();
   for (const o of out) if (o.trick && o.kind && (best.get(o.kind)?.score ?? -1) < o.score) best.set(o.kind, o);
-  return out.filter((o) => !o.trick || (o.kind !== undefined && best.get(o.kind) === o)).sort((x, y) => y.score - x.score);
+  // A move its package weighs 0 (ADR-069: a mascot doesn't dig or claw) is never on the menu: a bout
+  // picks from the menu by its own odds too, so a low score alone would still let it through. The
+  // built-in animals' own zeros only make a move rare, as before.
+  const never = ctx.personality.weights ?? {};
+  return out.filter((o) => never[o.intent] !== 0 && (!o.trick || (o.kind !== undefined && best.get(o.kind) === o))).sort((x, y) => y.score - x.score);
 }
 
 export function defaultStay(intent: IntentName, chaos: ChaosLevel, rng: Rng): number {

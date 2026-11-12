@@ -1,4 +1,5 @@
 import { OWN_ANIMS, SHAKE_SEC, TURN_SEC, type Anim } from "../core/executor";
+import type { PackageDecal } from "../core/package";
 import { SCRATCH_SEC } from "../core/scenes";
 import { GAIT_STRIDE } from "./gaits";
 import { GROUND } from "./ground";
@@ -253,7 +254,7 @@ const NUT_UP = link("nut3", "nut1");
 const NUT_LOOP = [...dense(["nut1", "nut2"], 2), "nut1"] as SpriteKey[];
 const CHEEKS_IN = link("nut1", "cheeks", "u");
 const PAT_LOOP = [...dense(["pat1", "pat2"], 2), "pat1"] as SpriteKey[];
-export const OWN_KEYS: Readonly<Record<string, readonly SpriteKey[]>> = {
+export const OWN_KEYS: Record<string, readonly SpriteKey[]> = {
   biscuit: [...new Set<SpriteKey>([...OWN_DOG, ...LOAF_CHEW, ...CHEW_LOOP, ...CHEW_UP, ...WAG])],
   chili: [...new Set<SpriteKey>([...SHAKE, ...OWN_CHIHUAHUA, ...PAWUP_SIT, ...SHIVER_PAW, ...PAWUP_DOWN, ...PEEK_OUT, ...DOZE_OFF])],
   mochi: [...new Set<SpriteKey>([...OWN_FOX, ...LISTEN, ...NOSEPUSH_LOOP])],
@@ -346,6 +347,58 @@ function loadImage(src: string, el: HTMLImageElement, tries = 2): Promise<boolea
   });
 }
 
+/**
+ * A character from a package (ADR-069): the measured tables the built-in characters have in the
+ * generated files, the frames of its own moves, and where its files are.
+ */
+export interface PackArt {
+  id: string;
+  /** Where a frame's file is (the app's asset address, or a folder next to the page). */
+  url: (key: string) => string;
+  own?: readonly string[];
+  gaits?: { walk: number; trot: number; run: number };
+  ground?: Record<string, number>;
+  heads?: Record<string, readonly [number | null, number | null, number | null]>;
+  /** A badge printed on the drawings (package.ts PackageDecal), and where its picture is. */
+  decal?: PackageDecal & { url: string };
+}
+const packUrl = new Map<string, (key: string) => string>();
+
+/**
+ * Package badges (ADR-069): a mascot's logo is not in its drawings (the image model never draws a
+ * logo); its cap has a plain disc, and the real badge is printed on that disc here, at draw time. A
+ * frame drawn mirrored (walking left) gets the badge pre-mirrored, so it reads the right way round.
+ */
+const DECALS = new Map<string, { d: PackageDecal; img: HTMLImageElement; tint: Map<string, HTMLCanvasElement> }>();
+/** Frames with their badge printed, at the size they were last drawn, the most recent last. */
+const printed = new Map<string, HTMLCanvasElement>();
+const PRINTED_MAX = 96;
+
+/** Adds a package character's drawings, or swaps them for a newer copy of the same package. */
+export function registerSprites(a: PackArt): void {
+  SPRITE_CHARACTERS.add(a.id);
+  packUrl.set(a.id, a.url);
+  const own = (a.own ?? []).filter((k): k is SpriteKey => typeof k === "string") as SpriteKey[];
+  OWN_KEYS[a.id] = own;
+  OWN_SET.set(a.id, new Set<string>(own));
+  if (a.gaits) GAIT_STRIDE[a.id] = a.gaits;
+  else delete GAIT_STRIDE[a.id];
+  if (a.ground) GROUND[a.id] = a.ground;
+  else delete GROUND[a.id];
+  if (a.heads) HEADS[a.id] = a.heads;
+  else delete HEADS[a.id];
+  DECALS.delete(a.id);
+  for (const k of [...printed.keys()]) if (k.startsWith(`${a.id}/`)) printed.delete(k);
+  if (a.decal && typeof Image !== "undefined") {
+    const img = new Image();
+    img.src = a.decal.url;
+    DECALS.set(a.id, { d: a.decal, img, tint: new Map() });
+  }
+  for (const k of [...fixes.keys()]) if (k.startsWith(`${a.id}/`)) fixes.delete(k);
+  sets.delete(a.id);
+  loading.delete(a.id);
+}
+
 function load(id: string): Promise<void> {
   const have = loading.get(id);
   if (have) return have;
@@ -355,7 +408,8 @@ function load(id: string): Promise<void> {
   const queue = [...all];
   const results: boolean[] = [];
   const worker = async (): Promise<void> => {
-    const url = await spriteUrl;
+    const pack = packUrl.get(id);
+    const url = pack ? (_: string, key: string): string => pack(key) : await spriteUrl;
     for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
       const el = new Image();
       img[key] = el;
@@ -1614,11 +1668,11 @@ function groundFor(id: string, key: string, depth: number): number {
  * A frame's drawn width and height in cat units, with the size fix, and how far below the ground its
  * bottom edge goes (`lift`, cat units: the paws are on the ground, the tail lower).
  */
-function drawnSize(set: SpriteSet, key: SpriteKey): { w: number; h: number; fix: number; lift: number; img: HTMLImageElement } {
+function drawnSize(set: SpriteSet, key: SpriteKey): { w: number; h: number; fix: number; lift: number; img: HTMLImageElement; file: SpriteKey } {
   const k = frameKey(set, key);
   const img = set.img[k] as HTMLImageElement;
   const fix = sizeFix(set.id, k);
-  return { w: img.naturalWidth * K * fix, h: img.naturalHeight * K * fix, fix, lift: groundOf(set.id, k) * K * fix, img };
+  return { w: img.naturalWidth * K * fix, h: img.naturalHeight * K * fix, fix, lift: groundOf(set.id, k) * K * fix, img, file: k };
 }
 
 const strideOf = (set: SpriteSet, g: "walk" | "trot" | "run"): number => GAIT_STRIDE[set.id]?.[g] ?? 90;
@@ -1659,8 +1713,71 @@ function scaledFor(img: HTMLImageElement, targetPx: number): CanvasImageSource {
 const blendCanvas = new WeakMap<SpriteSet, HTMLCanvasElement>();
 
 /** One frame of a mix, how much of it, and whether it faces the other way. */
+/** The badge in one colour (its picture is white on clear, so it takes any colour). */
+function tinted(dec: { img: HTMLImageElement; tint: Map<string, HTMLCanvasElement> }, color: string): HTMLCanvasElement {
+  let c = dec.tint.get(color);
+  if (c) return c;
+  c = document.createElement("canvas");
+  c.width = dec.img.naturalWidth;
+  c.height = dec.img.naturalHeight;
+  const x = c.getContext("2d") as CanvasRenderingContext2D;
+  x.drawImage(dec.img, 0, 0);
+  x.globalCompositeOperation = "source-in";
+  x.fillStyle = color;
+  x.fillRect(0, 0, c.width, c.height);
+  dec.tint.set(color, c);
+  return c;
+}
+
+/**
+ * The picture to draw for a frame at about `targetPx` wide: the halved copy (scaledFor), with the
+ * package's badge printed on its disc when it has one. `mirrored` is whether it ends up mirrored on
+ * the screen: then the badge is printed mirrored round the disc's middle and at the mirrored angle,
+ * so the screen's mirror turns it the right way round (the same picture badge.py would make on the
+ * mirrored drawing).
+ */
+function sourceFor(set: SpriteSet, file: SpriteKey, img: HTMLImageElement, targetPx: number, mirrored: boolean): CanvasImageSource {
+  const base = scaledFor(img, targetPx);
+  const dec = DECALS.get(set.id);
+  const at = dec?.d.frames[file];
+  if (!dec || !at || !dec.img.naturalWidth || typeof document === "undefined") return base;
+  const bw = base instanceof HTMLImageElement ? base.naturalWidth : (base as HTMLCanvasElement).width;
+  const bh = base instanceof HTMLImageElement ? base.naturalHeight : (base as HTMLCanvasElement).height;
+  const key = `${set.id}/${file}/${mirrored ? 1 : 0}/${bw}`;
+  let c = printed.get(key);
+  if (c) {
+    printed.delete(key);
+    printed.set(key, c);
+    return c;
+  }
+  c = document.createElement("canvas");
+  c.width = bw;
+  c.height = bh;
+  const x = c.getContext("2d") as CanvasRenderingContext2D;
+  x.imageSmoothingEnabled = true;
+  x.imageSmoothingQuality = "high";
+  x.drawImage(base, 0, 0, bw, bh);
+  const [cx, cy, a, b, ang, color] = at;
+  const mark = tinted(dec, color);
+  const mw = 2 * a * dec.d.size;
+  const mh = (mw * mark.height) / Math.max(1, mark.width);
+  const s = bw / img.naturalWidth;
+  x.scale(s, s);
+  x.translate(cx, cy);
+  if (mirrored) x.scale(-1, 1);
+  x.rotate(mirrored ? -ang : ang);
+  // Squashed by the disc's short over long axis, the way a printed disc turns away with the head.
+  x.scale(1, b / a);
+  x.drawImage(mark, dec.d.dx * a - mw / 2, dec.d.dy * a - mh / 2, mw, mh);
+  printed.set(key, c);
+  if (printed.size > PRINTED_MAX) printed.delete(printed.keys().next().value as string);
+  return c;
+}
+
 interface Layer {
   img: HTMLImageElement;
+  /** The file it is (a missing frame draws as the drawing it was made from), for its badge. */
+  file: SpriteKey;
   w: number;
   flip: boolean;
   /** The size fix of its frame (ADR-056). */
@@ -1675,7 +1792,7 @@ interface Layer {
  * cross-fade with no see-through moment in the middle. A flipped layer is mirrored round the middle.
  * `top` is how far the ground line is below the top of the result.
  */
-function blend(set: SpriteSet, layers: readonly Layer[], ppu: number): { src: CanvasImageSource; w: number; h: number; top: number } {
+function blend(set: SpriteSet, layers: readonly Layer[], ppu: number, left: boolean): { src: CanvasImageSource; w: number; h: number; top: number } {
   const w = Math.max(...layers.map((l) => l.img.naturalWidth * K * l.fix));
   const top = Math.max(...layers.map((l) => l.img.naturalHeight * K * l.fix - l.lift));
   const h = top + Math.max(...layers.map((l) => l.lift));
@@ -1700,7 +1817,7 @@ function blend(set: SpriteSet, layers: readonly Layer[], ppu: number): { src: Ca
     cx.setTransform(l.flip ? -1 : 1, 0, 0, 1, l.flip ? cw : 0, 0);
     cx.globalCompositeOperation = i === 0 ? "source-over" : "lighter";
     cx.globalAlpha = l.w;
-    cx.drawImage(scaledFor(l.img, lw * ppu), ((w - lw) / 2) * ppu, (top - lh + l.lift) * ppu, lw * ppu, lh * ppu);
+    cx.drawImage(sourceFor(set, l.file, l.img, lw * ppu, l.flip !== left), ((w - lw) / 2) * ppu, (top - lh + l.lift) * ppu, lw * ppu, lh * ppu);
   });
   cx.setTransform(1, 0, 0, 1, 0, 0);
   cx.globalCompositeOperation = "source-over";
@@ -1897,7 +2014,7 @@ export function drawSprite(
   const layers: Layer[] = [];
   const layer = (key: SpriteKey, wt: number, flip: boolean): Layer => {
     const f = drawnSize(set, key);
-    return { img: f.img, w: wt, flip, fix: f.fix, lift: f.lift };
+    return { img: f.img, file: f.file, w: wt, flip, fix: f.fix, lift: f.lift };
   };
   if (k < 1 && sh.from !== null) layers.push(layer(sh.from, 1 - k, sh.fromDir !== drawDir));
   const mix = shot.next ? shot.mix : 0;
@@ -1925,9 +2042,9 @@ export function drawSprite(
     const only = layers[0] as Layer;
     const ow = only.img.naturalWidth * K * only.fix;
     const oh = only.img.naturalHeight * K * only.fix;
-    ctx.drawImage(scaledFor(only.img, ow * ppu), -ow / 2, -oh + only.lift, ow, oh);
+    ctx.drawImage(sourceFor(set, only.file, only.img, ow * ppu, drawDir < 0), -ow / 2, -oh + only.lift, ow, oh);
   } else {
-    const b = blend(set, layers, ppu);
+    const b = blend(set, layers, ppu, drawDir < 0);
     ctx.drawImage(b.src, -b.w / 2, -b.top, b.w, b.h);
   }
   ctx.restore();

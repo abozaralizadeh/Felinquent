@@ -75,7 +75,7 @@ describe("the menu on the animal (right-click)", () => {
     const page = fs.readFileSync("src/playground/overlay.ts", "utf8");
     expect(page).toContain('msg.startsWith("llm:")');
     // The pick is saved and wins over the default, unless FELINQUENT_OLLAMA_MODEL is set.
-    expect(page).toContain("ollamaModel }");
+    expect(page).toMatch(/modelAskedMs, ollamaModel[,} ]/);
     expect(page).toContain("config.ollama_model_env");
   });
 

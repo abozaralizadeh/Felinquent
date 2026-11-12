@@ -60,7 +60,11 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-SPRITES = ROOT / "src/playground/public/sprites"
+# FELINQUENT_SPRITES=<dir> measures the frames in another folder, and FELINQUENT_PACK=<id>=<like>
+# measures a package character (ADR-069) cut like the newer animals, its own moves named in
+# FELINQUENT_PACK_OWN and its head outlined in FELINQUENT_PACK_REFS. Use them with --only <id>
+# --json <file> --no-write: heads.ts is never touched.
+SPRITES = Path(os.environ["FELINQUENT_SPRITES"]) if os.environ.get("FELINQUENT_SPRITES") else ROOT / "src/playground/public/sprites"
 SPRITES_TS = ROOT / "src/playground/sprites.ts"
 OUT_TS = ROOT / "src/playground/heads.ts"
 CHARACTERS = ["tabby", "inky", "pearl", "mochi", "bandit", "biscuit", "chili", "clover", "hazel"]
@@ -129,6 +133,15 @@ OWN_SIG = {
     "clover": "thump1 thump2 binky2 flop1 flop2 nibble1 nibble2 earwash1 earwash2".split(),
     "hazel": "nut1 nut2 nut3 cheeks pat1 pat2 flick cling_up cling_down".split(),
 }
+_PACK = os.environ.get("FELINQUENT_PACK")
+if _PACK:
+    _pid, _like = _PACK.split("=")
+    NEW_IDS = {*NEW_IDS, _pid}
+    OWN_SIG[_pid] = os.environ.get("FELINQUENT_PACK_OWN", " ".join(OWN_SIG.get(_like, []))).split()
+    # The head and mouth on the package's own sit and stand drawings (a JSON file shaped like one
+    # entry of REFS); without it the drawings of <like> are taken, which only fits a close copy.
+    _refs = os.environ.get("FELINQUENT_PACK_REFS")
+    REFS[_pid] = {k: {**v, "mouth": tuple(v["mouth"])} for k, v in json.loads(Path(_refs).read_text()).items()} if _refs else REFS[_like]
 
 
 def passes(ch: str) -> list[tuple[str, list[str]]]:

@@ -9,7 +9,7 @@ import type { ToyView } from "./rules";
 import { DEFAULT_PERSONALITY, type Personality } from "./personality";
 import { ReflexDetector, type PointerSample, type ReflexEvent, type ReflexKind } from "./reflexes";
 import { seeded, type Rng } from "./rng";
-import { instinctFor, type Kind } from "./species";
+import { instinctOf, type Kind } from "./species";
 import { DEFAULT_SETTINGS, type Rect, type Settings, type WindowInfo, type WorldSnapshot } from "./types";
 
 /** How long a window list that looks like a desktop swipe is held before it is believed. */
@@ -157,7 +157,7 @@ export class Cat {
     const settings: Settings = { ...DEFAULT_SETTINGS, ...opts.settings };
     this.governor = new Governor(settings);
     this.executor = new Executor(rng, settings.size);
-    this.executor.setInstinct(instinctFor((opts.personality ?? DEFAULT_PERSONALITY).species));
+    this.executor.setInstinct(instinctOf(opts.personality ?? DEFAULT_PERSONALITY));
     // The mess has its own dice, so adding it doesn't change what the animal does in a seeded run.
     this.messRng = seeded(7919);
     this.mess = new Mess(this.messRng);
@@ -227,7 +227,7 @@ export class Cat {
 
   setPersonality(p: Personality): void {
     this.mind.setPersonality(p);
-    this.executor.setInstinct(instinctFor(p.species));
+    this.executor.setInstinct(instinctOf(p));
     this.executor.glanceChance = 0.95 - 0.6 * p.aloofness;
     this.mess.toyKind = p.toy ?? "yarn";
     this.fur = p.fur ?? "#c9a27a";
@@ -561,7 +561,7 @@ export class Cat {
         if (kind) this.mind.note(now, `i buried my ${toyName(kind)} where you can't find it`);
       } else if (f.fx === "potty") {
         // A puddle, or a pile that looks like the animal: a dog's swirl, a cat's log, a rabbit's pellets.
-        const kind = instinctFor(this.mind.traits.species).kind;
+        const kind = instinctOf(this.mind.traits).kind;
         const pile: SpotKind = kind === "dog" ? "poop" : kind === "rabbit" ? "pellets" : kind === "squirrel" ? "pellets_row" : "poop_log";
         this.mess.relieve(f.kind === "pee" ? "puddle" : pile, ev.windowId, ev.x, now, f.sec);
         this.mind.relieved(f.kind, now);
@@ -591,7 +591,7 @@ export class Cat {
     switch (f.fx) {
       case "shake":
         // Loose fur and a little dust, flying off all along the shake.
-        this.mess.puff("fur", ev.x, mid, 14, now, { spread: 150, up: 90, color: this.fur, overMs: 1000, w: sz.w / sc, h: sz.h * 0.5 / sc, size: 3.2 });
+        if (this.fur !== "none") this.mess.puff("fur", ev.x, mid, 14, now, { spread: 150, up: 90, color: this.fur, overMs: 1000, w: sz.w / sc, h: sz.h * 0.5 / sc, size: 3.2 });
         this.mess.puff("dust", ev.x, ev.y - sz.h * 0.25, 5, now, { spread: 60, up: 30, overMs: 900, w: sz.w / sc, size: 4 });
         break;
       case "dirt": {
@@ -852,7 +852,7 @@ export class Cat {
       return;
     }
     if (this.mess.holding) this.mess.letGo();
-    const kind = TREAT_FOR[instinctFor(this.mind.traits.species).kind];
+    const kind = this.mind.traits.treat ?? TREAT_FOR[instinctOf(this.mind.traits).kind];
     if (!this.mess.offerTreat(kind, world.cursor.x, world.cursor.y, world.nowMs)) return;
     this.treatOfferedMs = world.nowMs;
     this.apply(this.mind.onTreatOffered(world, kind));

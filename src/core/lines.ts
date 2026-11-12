@@ -11,7 +11,7 @@ interface LineSet {
 
 // Placeholders: {kind} (a thing), {app}, {n} (a number), filled from the topic's own words.
 const SETS: LineSet[] = [
-  { match: /poked me/, lines: ["poke me again. i dare you.", "that was a poke. i'm keeping count.", "noted. you will pay for that later.", "i'm a cat, not a button."] },
+  { match: /poked me/, lines: ["poke me again. i dare you.", "that was a poke. i'm keeping count.", "noted. you will pay for that later.", "i'm not a button."] },
   { match: /petted me for far too long/, lines: ["enough. i have a reputation.", "that was four pets too many.", "we're done here."] },
   { match: /petted me/, lines: ["fine. that was acceptable.", "you may continue. briefly.", "i allowed that. don't make it weird."] },
   { match: /picked me up/, lines: ["put me down. i have legs.", "this is not how i travel."] },

@@ -65,6 +65,11 @@ export interface WorldSnapshot {
   minutesSincePet: number;
   inMeeting: boolean;
   screenSharing: boolean;
+  /**
+   * The user asked to keep the animal out of screen shares and this system can't leave its window
+   * out of a capture (the Mac): in a meeting it goes away rather than nap in a corner.
+   */
+  hideInMeetings?: boolean;
   fullscreen: boolean;
   batteryLow: boolean;
   panic: boolean;

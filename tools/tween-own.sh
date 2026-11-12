@@ -2,7 +2,8 @@
 # In-betweens for each animal's own moves (ADR-067, the <id>-sig sheets): only the links where one
 # body moves a little (a head, a paw, a tail). Moves that change the whole body (a shake, a dive, a
 # flop) swap drawings fast instead, like a cartoon does, because flow can't follow them.
-# tween-all.sh runs this at the end; run it alone after cutting the sig sheets again:
+# tween-all.sh runs this at the end; run it alone after cutting the sig sheets again (LIKE=biscuit
+# for a character from a package whose own moves are drawn like Biscuit's):
 #   tools/tween-own.sh src/playground/public/sprites/<id>/ ...
 # Tags on the shared drawings (sit, stand, loaf) differ per animal, because sprites.ts keeps one list
 # of what every in-between is made from.
@@ -15,7 +16,8 @@ dirs=("$@")
 for dir in "${dirs[@]}"; do
   dir="${dir%/}/"
   id=$(basename "$dir")
-  case $id in
+  # LIKE=<id>: a package character (ADR-069) whose own moves are drawn like that animal's.
+  case ${LIKE:-$id} in
     biscuit)
       rm -f "$dir"{chew1,chew2,chew3,wag1,wag2,wag3}[tux][0-9].webp "$dir"loafx[0-9].webp
       $A "$dir" chew1 chew2 chew3 --min-iou 0.6

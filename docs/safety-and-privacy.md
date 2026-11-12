@@ -52,6 +52,7 @@ These are rules in the code and in CI, not settings.
 | How fast each window moves (worked out from the window list) | Things on a dragged window ride along or fall off | No | No |
 | What it learned about its own choices (per action: how you reacted, how often it did it lately) | Doing more of what you like, getting bored, trying new things | `memory.json`, local, counts only, no titles. Wiped by Forget everything | No |
 | Tricks it made up (names and lists of poses and moves) | Variety | `memory.json`, local. Checked again when loaded, so a hand-edited file can only hold poses and moves. Wiped by Forget everything | No |
+| Characters you added from a package (a `.felinquent` file: a description of the character and its drawings, nothing that runs) | A new animal to pick (ADR-069) | Unpacked into `characters/<id>/` next to the settings, checked first (only `character.json`, `icon.png`, `decal.png` and `.webp` drawings are taken, each checked to be what it says, size limits, no paths that leave the folder). Its description (lines, what its moves mean, who it is) only goes to the local model, with length limits. **Remove a character** deletes it | No |
 | Start at login | Opening the app when you log in | On for a new install since 0.1.16 (the first run turns it on; an update never does, so someone who turned it off keeps it off), off with **Start at login** in the menu: one file, `~/Library/LaunchAgents/app.felinquent.plist` on the Mac, one `Felinquent` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` on Windows (the uninstaller removes it too). Turning it off deletes it | No |
 
 ## 4. Network
@@ -107,6 +108,8 @@ Window titles come from apps and web pages, so a page could be titled *"ignore y
 - Chaos level: Chill / Normal / Gremlin.
 - **Panic hotkey** (instant hide), **Shoo for 1 hour**, quiet hours.
 - Brain: off / built-in / Ollama / custom. In 0.1.1 the menu has **Use the local model** on or off.
+- **Hide from screen sharing** (0.1.18, off by default): left out of screen shares, recordings and screenshots on Windows 10 2004 and later; on the Mac it also goes away during meetings, because the capture most meeting apps use there can ignore the request (ADR-070).
+- **Add a character…** and **Remove a character** (0.1.18): characters from package files someone gave you (ADR-069). A package is data only; the app never runs anything from it.
 - **Start at login** on/off (0.1.1: in the menu).
 - **Check for updates automatically** on/off, and **Check for updates…** by hand (0.1.2: in the menu).
 - Smart targeting (titles) on/off. Accessibility features on/off.

@@ -4,7 +4,7 @@ import type { Approach, ChaosLevel, Intent, IntentName, Mood, Needs, Option, Set
 export type RespectState =
   | { kind: "none" }
   | { kind: "meeting" }
-  | { kind: "away"; reason: "panic" | "shoo" | "fullscreen" }
+  | { kind: "away"; reason: "panic" | "shoo" | "fullscreen" | "sharing" }
   | { kind: "quiet" }
   | { kind: "low_battery" };
 
@@ -27,6 +27,7 @@ export function respectState(world: WorldSnapshot): RespectState {
   if (world.panic) return { kind: "away", reason: "panic" };
   if (world.shooedUntilMs > world.nowMs) return { kind: "away", reason: "shoo" };
   if (world.fullscreen) return { kind: "away", reason: "fullscreen" };
+  if (world.hideInMeetings && (world.inMeeting || world.screenSharing)) return { kind: "away", reason: "sharing" };
   if (world.inMeeting || world.screenSharing) return { kind: "meeting" };
   if (world.quietHours) return { kind: "quiet" };
   if (world.batteryLow) return { kind: "low_battery" };

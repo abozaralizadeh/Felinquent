@@ -7,13 +7,14 @@ import { Cat } from "../core/cat";
 import type { CatBody } from "../core/executor";
 import type { Activity, Rect, WindowInfo, WorldSnapshot } from "../core/types";
 import { makeWorld } from "../core/world";
-import { characterById, DEFAULT_CHARACTER_ID } from "../core/characters";
+import { allCharacters, characterById, DEFAULT_CHARACTER_ID, forgetCharacter, registerCharacter } from "../core/characters";
+import { parsePackage } from "../core/package";
 import { InMemoryMemory } from "../core/memory";
 import { drawCat } from "./draw";
 import type { MessSnapshot } from "../core/mess";
 import { drawMessBehind, drawMessFront, preloadProps } from "./mess-draw";
 import { drawThought, THOUGHT_SEC, type ShownThought } from "./thought";
-import { onSpriteSet, setSpriteUrl, SPRITE_URL } from "./sprites";
+import { onSpriteSet, registerSprites, setSpriteUrl, SPRITE_URL } from "./sprites";
 
 interface NativeWin { id: string; app: string; x: number; y: number; w: number; h: number; z: number }
 interface NativeSpace { id: string; index: number; spans: boolean; app?: boolean; hidden?: boolean }
@@ -21,7 +22,7 @@ interface NativeSpace { id: string; index: number; spans: boolean; app?: boolean
 interface NativeDisplaySpace { id: string; index: number; app?: boolean; hidden?: boolean; x: number; y: number; w: number; h: number }
 interface NativeSensors { windows: NativeWin[]; idle_sec: number; since_key_sec: number; mic_in_use: boolean; camera_in_use: boolean; display_awake?: boolean; space: NativeSpace | null; spaces?: NativeDisplaySpace[] }
 interface NativeWindows { windows: NativeWin[]; space: NativeSpace | null; spaces?: NativeDisplaySpace[] }
-interface Layout { index: number; displays: Rect[]; dock_top: number }
+interface Layout { index: number; displays: Rect[]; dock_top: number; scale?: number }
 interface Pointer { x: number; y: number; down: boolean; right?: boolean }
 /** A model name as Ollama writes it (gemma3:1b, library/llama3.2:3b-instruct), nothing else. */
 const isModelName = (name: string): boolean => /^[A-Za-z0-9._:/-]{1,100}$/.test(name);
@@ -127,6 +128,44 @@ if (tauri?.path && location.port === "") {
     ),
   );
 }
+/**
+ * Characters from packages the user added (ADR-069): the app unpacked them into its own folder,
+ * this checks each `character.json` again and registers the character and its drawings. A package
+ * that fails is left out with a line in the log. Returns the ids that loaded.
+ */
+async function loadPacks(): Promise<string[]> {
+  if (!tauri) return [];
+  let list: { id: string; json: string; dir: string }[] = [];
+  try {
+    list = await invoke<typeof list>("read_characters");
+  } catch (e) {
+    say(`characters: ${String(e)}`);
+    return [];
+  }
+  const ids: string[] = [];
+  for (const it of list) {
+    try {
+      const { character, art } = parsePackage(JSON.parse(it.json));
+      if (character.id !== it.id) throw new Error(`its id ${character.id} doesn't match its folder`);
+      if (!registerCharacter(character)) throw new Error("that id is taken");
+      const t = tauri;
+      const { decal, ...rest } = art;
+      registerSprites({
+        id: character.id,
+        url: (key) => t.core.convertFileSrc(`${it.dir}/sprites/${key}.webp`),
+        ...rest,
+        ...(decal ? { decal: { ...decal, url: t.core.convertFileSrc(`${it.dir}/decal.png`) } } : {}),
+      });
+      ids.push(character.id);
+    } catch (e) {
+      say(`character package ${it.id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  for (const c of allCharacters()) if (c.pack && !ids.includes(c.id)) forgetCharacter(c.id);
+  say(`characters: ${ids.length} from packages${ids.length ? ` (${ids.join(", ")})` : ""}`);
+  return ids;
+}
+
 onSpriteSet((id, missing, usable) => say(`sprites: ${id} ${usable ? "ready" : "can't be drawn"}${missing ? `, ${missing} frames missing` : ""}`));
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
@@ -166,12 +205,22 @@ async function main(): Promise<void> {
     await invoke("set_click_through", { on });
   }
 
+  /**
+   * How many of this page's pixels make one point. 1 on the Mac. On Windows points are the main
+   * display's pixels over its scale on every display, so on a display with another scale (a laptop
+   * at 150% next to a monitor at 100%) the drawing is scaled by the two scales, or it lands in the
+   * wrong place and shows on the wrong display, away from where the clicks land.
+   */
+  const zoom = (): number => (layout.scale ? layout.scale / (window.devicePixelRatio || 1) : 1);
+
   function render(st: CatState | null): void {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     if (!st) return;
+    const k = zoom();
     if (st.body.hidden) {
       // The cat may be away, but what it broke is still lying about.
       ctx.save();
+      ctx.scale(k, k);
       ctx.translate(-me.x, -me.y);
       drawMessBehind(ctx, st.mess, st.windows, st.scale);
       drawMessFront(ctx, st.mess, st.scale);
@@ -179,6 +228,7 @@ async function main(): Promise<void> {
       return;
     }
     ctx.save();
+    ctx.scale(k, k);
     ctx.translate(-me.x, -me.y);
     drawMessBehind(ctx, st.mess, st.windows, st.scale);
     const mouth = drawCat(ctx, st.body, { scale: st.scale, t: st.t, character: st.character, cursor: st.look ?? st.cursor });
@@ -203,11 +253,19 @@ async function main(): Promise<void> {
   // ---- A window on another display: draw what the master says. -------------------------
   if (!master) {
     let latest: CatState | null = null;
+    await loadPacks();
+    let reading = false;
     await tauri?.event.listen<CatState>("cat-state", (e) => {
       latest = e.payload;
       applyHit(e.payload);
+      // A character added since this window started: read the packages again.
+      const id = e.payload.character;
+      if (characterById(id).id !== id && !reading) {
+        reading = true;
+        void loadPacks().finally(() => (reading = false));
+      }
     });
-    say(`mirror window for display ${layout.index} at ${me.x},${me.y} ${me.w}x${me.h}`);
+    say(`mirror window for display ${layout.index} at ${me.x},${me.y} ${me.w}x${me.h}, page ${window.innerWidth}x${window.innerHeight} at ${window.devicePixelRatio}x, zoom ${zoom().toFixed(3)}`);
     const loop = (): void => {
       render(latest);
       setTimeout(loop, 16);
@@ -308,7 +366,7 @@ async function main(): Promise<void> {
   });
 
   // What the user chose and what the cat remembers survive a restart (local files only).
-  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number; ollamaModel?: string } = {};
+  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number; ollamaModel?: string; hideShare?: boolean } = {};
   try {
     const text = await invoke<string | null>("load_state", { name: "settings.json" });
     if (text) saved = JSON.parse(text) as typeof saved;
@@ -322,6 +380,7 @@ async function main(): Promise<void> {
   } catch {
     // start with an empty memory
   }
+  await loadPacks();
   let character = characterById(saved.character ?? DEFAULT_CHARACTER_ID);
   const cat = new Cat({
     settings: { chaos: saved.chaos ?? "normal" },
@@ -340,8 +399,23 @@ async function main(): Promise<void> {
   let ollamaModel = !config.ollama_model_env && saved.ollamaModel && isModelName(saved.ollamaModel) ? saved.ollamaModel : config.ollama_model;
   // The models Ollama has, for that list (empty when it doesn't answer).
   let models: { name: string; size: number }[] = [];
+  // "Hide from screen sharing". Where the system keeps the windows out of captures (Windows 10 2004
+  // and later) the animal stays, seen only on your screen. Elsewhere (the Mac, where most meeting
+  // apps capture past the flag since macOS 15) it leaves during a meeting instead.
+  let hideShare = saved.hideShare ?? false;
+  async function applyHideShare(): Promise<void> {
+    let keptOut = false;
+    try {
+      keptOut = await invoke<boolean>("set_hide_share", { on: hideShare });
+    } catch (e) {
+      say(`hide from screen sharing: ${String(e)}`);
+    }
+    world = { ...world, hideInMeetings: hideShare && !keptOut };
+    say(`hide from screen sharing ${hideShare ? (keptOut ? "on: kept out of captures" : "on: it leaves during meetings") : "off"}`);
+  }
+  if (hideShare) void applyHideShare();
   const saveSettings = (): void =>
-    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel, modelAskedMs, ollamaModel }) }).catch(() => {});
+    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel, modelAskedMs, ollamaModel, hideShare }) }).catch(() => {});
   // The menu bar ticks what is current. This page owns that state, so it tells the menu after every change.
   const showChoices = (): void =>
     void invoke("show_choices", {
@@ -353,6 +427,10 @@ async function main(): Promise<void> {
         shoo: world.shooedUntilMs > Date.now(),
         llm: ollamaModel,
         models: models.map((m) => m.name),
+        hide_share: hideShare,
+        packs: allCharacters()
+          .filter((c) => c.pack)
+          .map((c) => ({ id: c.id, name: c.name })),
       },
     }).catch(() => {});
   let memoryJson = memory.exportJson();
@@ -476,6 +554,10 @@ async function main(): Promise<void> {
         cat.updateSettings({ brain: "rules" });
         say("brain: rules (the local model is off in the menu)");
       }
+    } else if (msg === "hideshare") {
+      hideShare = !hideShare;
+      saveSettings();
+      void applyHideShare();
     } else if (msg.startsWith("llm:")) {
       // Picked in the menu's Model list: use that model from now on (and the local model at all).
       const name = msg.slice(4);
@@ -493,6 +575,19 @@ async function main(): Promise<void> {
         say(`chaos level ${level}`);
         saveSettings();
       }
+    } else if (msg === "packs" || msg.startsWith("packs:")) {
+      // A package was added (packs:<id>, then it is picked) or removed: read them all again.
+      const added = msg.slice(6);
+      void loadPacks().then(() => {
+        const next = added && characterById(added).id === added ? characterById(added) : characterById(character.id);
+        if (next.id !== character.id || added) {
+          character = next;
+          cat.setPersonality(character.personality);
+          say(`character ${character.id}`);
+          saveSettings();
+        }
+        showChoices();
+      });
     } else if (msg.startsWith("character:")) {
       character = characterById(msg.slice(10));
       cat.setPersonality(character.personality);
@@ -694,7 +789,7 @@ async function main(): Promise<void> {
   }
 
   say(`character ${character.id}, memory events ${memory.events().length}`);
-  say(`master window, ${layout.displays.length} display(s), dock top ${layout.dock_top}`);
+  say(`master window, ${layout.displays.length} display(s), dock top ${layout.dock_top}, page ${window.innerWidth}x${window.innerHeight} at ${window.devicePixelRatio}x, zoom ${zoom().toFixed(3)}`);
   void frame();
 }
 

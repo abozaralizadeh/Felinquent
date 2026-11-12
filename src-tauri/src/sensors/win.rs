@@ -1,7 +1,10 @@
 //! Windows sensors, written to match the Mac ones and tried on a Windows 11 machine (ADR-060).
 //!
-//! Units: Windows reports pixels. Everything is divided by the main display's scale (the system DPI
-//! divided by 96), so the page sees the same "points" as on a Mac. Mixed-DPI setups are not handled.
+//! Units: Windows reports pixels. Everything is divided by the main display's scale (its DPI divided
+//! by 96), so the page sees the same "points" as on a Mac, one space for every display. A second
+//! display with another scale (a laptop at 150% next to a monitor at 100%) keeps that space: its
+//! window's page draws it scaled by the main display's scale over its own (`scale` in the layout),
+//! so what is drawn there and where the clicks land agree.
 //!
 //! Desktops: Windows keeps the list of virtual desktops and the one showing in the registry
 //! (Explorer\VirtualDesktops). That is read here the way the Mac reads its Spaces, so the cat
@@ -26,9 +29,39 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GWL_STYLE, WS_CAPTION, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
-fn scale() -> f64 {
+/// The main display's scale: its DPI now, over 96. The system DPI is only what it was at sign-in,
+/// so after a change of the scale in Settings it would be out of date.
+pub fn scale() -> f64 {
+    use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTOPRIMARY};
+    use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+    let (mut x, mut y) = (0u32, 0u32);
+    let m = unsafe { MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY) };
+    if unsafe { GetDpiForMonitor(m, MDT_EFFECTIVE_DPI, &mut x, &mut y) }.is_ok() && x > 0 {
+        return x as f64 / 96.0;
+    }
     let dpi = unsafe { GetDpiForSystem() };
     if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 }
+}
+
+/// Each display's own scale (its DPI over 96), the main display first like `displays`. For the log.
+pub fn display_scales() -> Vec<f64> {
+    use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+    unsafe extern "system" fn each(m: HMONITOR, _dc: HDC, _r: *mut RECT, lparam: LPARAM) -> BOOL {
+        let list = &mut *(lparam.0 as *mut Vec<(bool, f64)>);
+        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        let (mut x, mut y) = (0u32, 0u32);
+        if GetMonitorInfoW(m, &mut mi).as_bool() {
+            let s = if GetDpiForMonitor(m, MDT_EFFECTIVE_DPI, &mut x, &mut y).is_ok() && x > 0 { x as f64 / 96.0 } else { 0.0 };
+            list.push((mi.dwFlags & 1 != 0, s));
+        }
+        BOOL(1)
+    }
+    let mut list: Vec<(bool, f64)> = vec![];
+    unsafe {
+        let _ = EnumDisplayMonitors(None, None, Some(each), LPARAM(&mut list as *mut _ as isize));
+    }
+    list.sort_by_key(|(primary, _)| !*primary);
+    list.into_iter().map(|(_, s)| s).collect()
 }
 
 fn app_name(hwnd: HWND) -> Option<(String, u32)> {

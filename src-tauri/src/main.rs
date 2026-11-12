@@ -5,6 +5,7 @@
 #[cfg(any(target_os = "macos", windows))]
 mod about;
 mod alert;
+mod characters;
 mod logfile;
 #[cfg(any(target_os = "macos", windows))]
 mod login;
@@ -58,6 +59,10 @@ struct Layout {
     displays: Vec<sensors::Display>,
     /// Top of the Dock on the main display, in points.
     dock_top: f64,
+    /// Windows: the main display's scale. Points are its pixels over this, on every display, so a
+    /// page on a display with another scale draws by this over its own devicePixelRatio. 0 on the
+    /// Mac, where points are the page's own pixels on every display.
+    scale: f64,
 }
 
 #[derive(Serialize)]
@@ -99,6 +104,18 @@ struct Choices {
     llm: String,
     #[serde(default)]
     models: Vec<String>,
+    /// "Hide from screen sharing" is on.
+    #[serde(default)]
+    hide_share: bool,
+    /// Characters from packages the page could read (ADR-069).
+    #[serde(default)]
+    packs: Vec<Pack>,
+}
+
+#[derive(Deserialize, Clone, PartialEq)]
+struct Pack {
+    id: String,
+    name: String,
 }
 
 /// The menu items that carry a tick. The page owns the state and the menu only shows it.
@@ -108,9 +125,47 @@ struct Ticks {
     panic: CheckMenuItem<Wry>,
     shoo: CheckMenuItem<Wry>,
     model: CheckMenuItem<Wry>,
+    hide_share: CheckMenuItem<Wry>,
     /// "Model": one item per model Ollama has, rebuilt when that list changes (`listed`).
     llm: Submenu<Wry>,
     listed: std::sync::Mutex<Option<Vec<String>>>,
+    /// "Character": the built-in ones, then the ones from packages, rebuilt when those change.
+    character: Submenu<Wry>,
+    packs: std::sync::Mutex<Option<Vec<Pack>>>,
+}
+
+/// The end of the Character submenu, after the built-in characters: the ones from packages, "Add a
+/// character…" and "Remove a character" (ADR-069). Picking one sends `character:<id>` like the rest.
+fn fill_packs(app: &AppHandle, menu: &Submenu<Wry>, packs: &[Pack]) -> tauri::Result<()> {
+    for item in menu.items()?.into_iter().skip(CHARACTERS.len()) {
+        menu.remove(&item)?;
+    }
+    for item in pack_items(app, packs, None)? {
+        menu.append(item.as_ref())?;
+    }
+    Ok(())
+}
+
+/// The package part of a Character submenu (the tray's and the pet menu's).
+fn pack_items(app: &AppHandle, packs: &[Pack], on: Option<&str>) -> tauri::Result<Vec<Box<dyn IsMenuItem<Wry>>>> {
+    let packs: Vec<&Pack> = packs.iter().filter(|p| characters::id_ok(&p.id)).collect();
+    let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![Box::new(PredefinedMenuItem::separator(app)?)];
+    for p in &packs {
+        let name = alert::short(&p.name, 24);
+        items.push(Box::new(CheckMenuItem::with_id(app, format!("character:{}", p.id), name, true, on == Some(p.id.as_str()), None::<&str>)?));
+    }
+    if !packs.is_empty() {
+        items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
+    items.push(Box::new(MenuItem::with_id(app, "addchar", "Add a character\u{2026}", true, None::<&str>)?));
+    if !packs.is_empty() {
+        let remove = Submenu::with_id(app, "removechars", "Remove a character", true)?;
+        for p in &packs {
+            remove.append(&MenuItem::with_id(app, format!("removechar:{}", p.id), alert::short(&p.name, 24), true, None::<&str>)?)?;
+        }
+        items.push(Box::new(remove));
+    }
+    Ok(items)
 }
 
 /// A model name as Ollama writes it (gemma3:1b, library/llama3.2:3b-instruct), nothing else.
@@ -156,6 +211,27 @@ async fn show_choices(app: AppHandle, choices: Choices) {
     let _ = t.panic.set_checked(choices.panic);
     let _ = t.shoo.set_checked(choices.shoo);
     let _ = t.model.set_checked(choices.model);
+    let _ = t.hide_share.set_checked(choices.hide_share);
+    // Characters from packages: the submenu's end is rebuilt only when they changed.
+    if let Ok(mut shown) = t.packs.lock() {
+        if shown.as_ref() != Some(&choices.packs) {
+            match fill_packs(&app, &t.character, &choices.packs) {
+                Ok(()) => *shown = Some(choices.packs.clone()),
+                Err(e) => logfile::write(&format!("menu: characters: {e}")),
+            }
+        }
+    }
+    let picked = format!("character:{}", choices.character);
+    let mut on_pack = None;
+    for item in t.character.items().unwrap_or_default().into_iter().skip(CHARACTERS.len()) {
+        if let Some(c) = item.as_check_menuitem() {
+            let here = c.id().as_ref() == picked;
+            let _ = c.set_checked(here);
+            if here {
+                on_pack = Some(picked.clone());
+            }
+        }
+    }
     // The Model submenu: rebuilt only when Ollama's list changed, then the one in use ticked.
     if let Ok(mut listed) = t.listed.lock() {
         if listed.as_ref() != Some(&choices.models) {
@@ -178,7 +254,7 @@ async fn show_choices(app: AppHandle, choices: Choices) {
     }
     let _ = t.llm.set_text(if choices.llm.is_empty() { "Model".to_string() } else { format!("Model: {}", choices.llm) });
     // Read the ticks back from the menu itself, so the log shows what the user sees.
-    let on: Vec<String> = t.picks.iter().chain([&t.panic, &t.shoo, &t.model]).filter(|i| i.is_checked().unwrap_or(false)).map(|i| i.id().as_ref().to_string()).chain(on_model).collect();
+    let on: Vec<String> = t.picks.iter().chain([&t.panic, &t.shoo, &t.model, &t.hide_share]).filter(|i| i.is_checked().unwrap_or(false)).map(|i| i.id().as_ref().to_string()).chain(on_pack).chain(on_model).collect();
     logfile::write(&format!("menu ticks: {} (models: {})", on.join(" "), choices.models.len()));
 }
 
@@ -294,7 +370,11 @@ async fn read_layout(window: WebviewWindow) -> Layout {
         }
         _ => main.h - 40.0,
     };
-    Layout { index: index_of(&window), displays, dock_top }
+    #[cfg(windows)]
+    let scale = sensors::scale();
+    #[cfg(not(windows))]
+    let scale = 0.0;
+    Layout { index: index_of(&window), displays, dock_top, scale }
 }
 
 /// Where the real cursor is, in global points (top-left of the main display is 0,0),
@@ -351,6 +431,10 @@ fn build_pet_menu(app: &AppHandle, cur: Option<&Choices>) -> tauri::Result<Menu<
     let characters = group(&CHARACTERS)?;
     let chaos_levels = group(&CHAOS)?;
     let character = Submenu::with_items(app, "Character", true, &as_items(&characters))?;
+    let packs = cur.map(|c| c.packs.clone()).unwrap_or_default();
+    for item in pack_items(app, &packs, cur.map(|c| c.character.as_str()))? {
+        character.append(item.as_ref())?;
+    }
     let chaos = Submenu::with_items(app, "Chaos level", true, &as_items(&chaos_levels))?;
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let treat = item("treat", "Give a treat")?;
@@ -372,6 +456,32 @@ async fn set_click_through(window: WebviewWindow, on: bool) {
     winui::click_through(&window, on);
     #[cfg(not(windows))]
     let _ = window.set_ignore_cursor_events(on);
+}
+
+/// "Hide from screen sharing": the overlay windows are left out of screen shares, recordings and
+/// screenshots, and show only on the screen itself. Returns true when the system really keeps them
+/// out: Windows 10 2004 and later. On the Mac the flag is set too, but since macOS 15 the capture
+/// most meeting apps use ignores it, so it returns false and the page sends the animal away during
+/// a meeting instead.
+#[tauri::command]
+async fn set_hide_share(app: AppHandle, on: bool) -> bool {
+    #[allow(unused_mut)]
+    let mut kept_out = false;
+    for (label, w) in app.webview_windows() {
+        if !label.starts_with("overlay") {
+            continue;
+        }
+        #[cfg(windows)]
+        {
+            kept_out = winui::hide_from_capture(&w, on);
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = w.set_content_protected(on);
+        }
+    }
+    logfile::write(&format!("capture: hide from screen sharing {} ({})", if on { "on" } else { "off" }, if kept_out { "kept out of captures" } else if on { "leaves during meetings" } else { "shown in captures" }));
+    kept_out
 }
 
 /// The page has drawn the desktop it moved to after the switch `turn`: show the windows again.
@@ -502,6 +612,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let characters = group(&CHARACTERS)?;
     let chaos_levels = group(&CHAOS)?;
     let character = Submenu::with_items(app, "Character", true, &as_items(&characters))?;
+    // "Add a character…" from the start; the page fills in the ones from packages (show_choices).
+    fill_packs(app.handle(), &character, &[])?;
     let chaos = Submenu::with_items(app, "Chaos level", true, &as_items(&chaos_levels))?;
 
     // The version line opens the About window (ADR-062).
@@ -516,6 +628,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let panic = check("panic", if cfg!(target_os = "macos") { "Panic: hide the cat (Cmd+Opt+Shift+P)" } else { "Panic: hide the cat (Ctrl+Alt+Shift+P)" })?;
     let shoo = check("shoo", "Shoo for 1 hour")?;
     let model = check("model", "Use the local model (needs Ollama)")?;
+    // Kept out of screen shares (the page owns it, like the model switch).
+    let hide_share = check("hideshare", "Hide from screen sharing")?;
     // Filled with the models Ollama has once the page has asked it (show_choices).
     let looking = MenuItem::with_id(app, "llm-none", "Looking for models\u{2026}", false, None::<&str>)?;
     let llm = Submenu::with_items(app, "Model", true, &[&looking])?;
@@ -538,14 +652,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version];
     #[cfg(any(target_os = "macos", windows))]
     items.push(&update);
-    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &line2, &model, &llm]);
+    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &hide_share, &line2, &model, &llm]);
     #[cfg(any(target_os = "macos", windows))]
     items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate, &reports, &usage]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
 
     app.manage(Current(std::sync::Mutex::new(None)));
-    app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone(), llm: llm.clone(), listed: std::sync::Mutex::new(None) });
+    app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone(), hide_share: hide_share.clone(), llm: llm.clone(), listed: std::sync::Mutex::new(None), character: character.clone(), packs: std::sync::Mutex::new(None) });
     // The model setup shows its progress in this item's text.
     #[cfg(any(target_os = "macos", windows))]
     ollama::menu_item(app, &model);
@@ -568,6 +682,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         "reports" => report::on_menu(),
         #[cfg(any(target_os = "macos", windows))]
         "usage" => usage::on_menu(),
+        "addchar" => characters::pick_and_add(app),
+        id if id.starts_with("removechar:") => characters::remove(app, &id["removechar:".len()..]),
         // The rest is the page's business. It answers with show_choices, which moves the ticks.
         other => control(app, other),
     })
@@ -734,12 +850,33 @@ fn fit_to(w: &WebviewWindow, d: &sensors::Display) {
         let _ = w.set_position(LogicalPosition::new(d.x, d.y));
         let _ = w.set_size(LogicalSize::new(d.w, d.h));
     }
-    // On Windows the sensors divide pixels by the main display's scale, so multiply it back.
+    // On Windows the sensors divide pixels by the main display's scale, so multiply it back. A move
+    // onto a display with another scale makes Windows resize the window for the new scale, so the
+    // size and place are set again once it is there.
     #[cfg(windows)]
     {
-        let s = w.scale_factor().unwrap_or(1.0);
-        let _ = w.set_position(tauri::PhysicalPosition::new((d.x * s).round() as i32, (d.y * s).round() as i32));
-        let _ = w.set_size(tauri::PhysicalSize::new((d.w * s).round() as u32, (d.h * s).round() as u32));
+        let s = sensors::scale();
+        let pos = tauri::PhysicalPosition::new((d.x * s).round() as i32, (d.y * s).round() as i32);
+        let size = tauri::PhysicalSize::new((d.w * s).round() as u32, (d.h * s).round() as u32);
+        for _ in 0..2 {
+            let _ = w.set_position(pos);
+            let _ = w.set_size(size);
+        }
+        let (at, got) = (w.outer_position().ok(), w.outer_size().ok());
+        let scales = sensors::display_scales();
+        logfile::write(&format!(
+            "overlay: {} wants {},{} {}x{} px, has {:?} {:?}, its scale {:.2}, main {:.2}, displays {:?}",
+            w.label(),
+            pos.x,
+            pos.y,
+            size.width,
+            size.height,
+            at.map(|p| (p.x, p.y)),
+            got.map(|z| (z.width, z.height)),
+            w.scale_factor().unwrap_or(0.0),
+            s,
+            scales
+        ));
     }
     #[cfg(target_os = "macos")]
     set_exact_frame(w, d);
@@ -880,6 +1017,20 @@ fn main() {
                 });
             }
 
+            // FELINQUENT_ADD_CHARACTER=<file>[@s] adds a character package s seconds after launch (5
+            // unless given) with no file picker, the way "Add a character…" does after a pick.
+            if let Ok(spec) = std::env::var("FELINQUENT_ADD_CHARACTER") {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let (file, secs) = match spec.rsplit_once('@') {
+                        Some((f, s)) if s.parse::<f64>().is_ok() => (f.to_string(), s.parse::<f64>().unwrap_or(5.0)),
+                        _ => (spec.clone(), 5.0),
+                    };
+                    std::thread::sleep(std::time::Duration::from_secs_f64(secs));
+                    characters::add(&handle, std::path::Path::new(&file), false);
+                });
+            }
+
             // FELINQUENT_PETMENU_TEST=<s> opens the menu on the animal by itself after s seconds, next to
             // the animal (computer use can't right-click a menu bar app). It only calls the menu; it
             // never makes a click.
@@ -945,6 +1096,8 @@ fn main() {
             about::about_action,
             report::report_error,
             set_click_through,
+            set_hide_share,
+            characters::read_characters,
             overlay_reveal,
             read_config,
             load_state,

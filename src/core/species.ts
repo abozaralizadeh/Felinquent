@@ -215,6 +215,22 @@ export function instinctFor(species?: string): Instinct {
   return INSTINCTS[kindOf(species)];
 }
 
+const OF = new WeakMap<object, Instinct>();
+/**
+ * The instinct of a personality: its `kind` when it has one (a character from a package, ADR-069),
+ * else from its species name. With `potty: false` the needs never fill. Kept per personality, so
+ * the many calls a frame cost nothing.
+ */
+export function instinctOf(p: { species?: string; kind?: Kind; potty?: boolean; weights?: Partial<Record<IntentName, number>> }): Instinct {
+  const hit = OF.get(p);
+  if (hit) return hit;
+  const base = p.kind ? INSTINCTS[p.kind] : instinctFor(p.species);
+  let ins: Instinct = p.potty === false ? { ...base, potty: [0, 0] } : base;
+  if (p.weights) ins = { ...ins, weights: { ...ins.weights, ...p.weights } };
+  OF.set(p, ins);
+  return ins;
+}
+
 /** How the chaos level changes sleepiness: chill sleeps most of the day, gremlin is rarely down. */
 export const ENERGY_BY_CHAOS = {
   chill: { drain: 1, restore: 1 },

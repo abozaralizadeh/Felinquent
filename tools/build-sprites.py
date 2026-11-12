@@ -17,6 +17,26 @@ from pathlib import Path
 from PIL import Image
 
 root = Path(__file__).resolve().parent.parent
+argv = sys.argv[1:]
+
+
+def flag(name: str) -> str | None:
+    if name not in argv:
+        return None
+    i = argv.index(name)
+    v = argv[i + 1]
+    del argv[i : i + 2]
+    return v
+
+
+# A character from a package (ADR-069): --pack <id>=<like> cuts <id>'s sheets laid out like the
+# built-in character <like>'s, the way the newer animals' are cut (loose bits dropped), and --out
+# <dir> writes its frames to <dir>/<id>/ instead of the playground's public folder. --own gives its
+# own-moves sheet's passes when they differ from <like>'s: "names|base|pick;names|=|" (see OWN_PASSES).
+pack = flag("--pack")
+out_root = Path(flag("--out") or root / "src" / "playground" / "public" / "sprites")
+own_spec = flag("--own")
+sys.argv = [sys.argv[0], *argv]
 src = Path(sys.argv[1])
 # Optional second argument: only rebuild these sheets, for example "walk,run" ("all" for every sheet).
 # Optional third: only these characters, for example "chili,clover".
@@ -127,6 +147,15 @@ OWN_PASSES = {
     "clover": [(f"{_} thump1 thump2 {_} {_} {_} {_} {_} {_}", "stand", "2,3"), (f"binky2 {_} {_} flop1 flop2 nibble1 nibble2 earwash1 earwash2", "=", "")],
     "hazel": [(f"nut1 nut2 nut3 cheeks {_} {_} {_} {_} {_}", "sit", "1,2,3,4"), (f"{_} {_} {_} {_} pat1 pat2 flick cling_up cling_down", "=", "")],
 }
+if pack:
+    pid, like = pack.split("=")
+    IDS = [pid]
+    NEW_IDS = {*NEW_IDS, pid}
+    TURN[pid] = dict(TURN[like])
+    if own_spec:
+        OWN_PASSES[pid] = [tuple(p.split("|")) for p in own_spec.split(";")]
+    elif like in OWN_PASSES:
+        OWN_PASSES[pid] = OWN_PASSES[like]
 NEW_SHEETS.add("sig")
 for passes in TURN.values():
     passes["trans"] = TRANS
@@ -185,7 +214,7 @@ def body(path: Path) -> tuple[int, int]:
 
 
 for cid in IDS:
-    dest = root / "src" / "playground" / "public" / "sprites" / cid
+    dest = out_root / cid
     dest.mkdir(parents=True, exist_ok=True)
     for old in list(dest.glob("*.png")) + list(dest.glob("*.json")):
         old.unlink()

@@ -291,6 +291,7 @@ export class LlmBrain implements Brain {
       needs: ctx.rules.needs,
       settings: ctx.settings,
       bouts,
+      meanings: ctx.personality.meanings,
       memory: ctx.memory,
       happened: ctx.happened,
       catWhere: ctx.catWhere,

@@ -5,7 +5,7 @@ import { Governor, respectPlan, respectState, type RespectState } from "./govern
 import type { Memory } from "./memory";
 import { applyEvent, initialNeeds, stepNeeds, type NeedsEvent } from "./needs";
 import type { Personality } from "./personality";
-import { ENERGY_BY_CHAOS, instinctFor } from "./species";
+import { ENERGY_BY_CHAOS, instinctOf } from "./species";
 import type { ReflexKind } from "./reflexes";
 import { pokeReaction, scriptSeconds } from "./reactions";
 import { doing } from "./scenes";
@@ -250,7 +250,7 @@ export class Mind {
   /** How long the cat waits between decisions. A calmer cat thinks less often. */
   private get gapMs(): number {
     const fixed = this.d.minDecisionGapMs;
-    return fixed === undefined ? DECISION_GAP_MS[this.settings.chaos] * instinctFor(this.personality.species).gap : fixed;
+    return fixed === undefined ? DECISION_GAP_MS[this.settings.chaos] * instinctOf(this.personality).gap : fixed;
   }
 
   constructor(private d: MindDeps) {
@@ -303,7 +303,7 @@ export class Mind {
     const [lo, hi] = PAUSE[this.bout?.kind ?? "rest"];
     const lazy = 0.7 + 0.6 * this.personality.laziness;
     const lively = was !== undefined && LIVELY.has(was) ? 1.25 : 1;
-    return this.d.rng.range(lo, hi) * 1000 * PAUSE_BY_CHAOS[this.settings.chaos] * instinctFor(this.personality.species).gap * lazy * lively;
+    return this.d.rng.range(lo, hi) * 1000 * PAUSE_BY_CHAOS[this.settings.chaos] * instinctOf(this.personality).gap * lazy * lively;
   }
 
   /** Remembers something that happened, for the model to react to. */
@@ -352,7 +352,7 @@ export class Mind {
     const now = world.nowMs;
     if (this.sleeping || respectState(world).kind !== "none") return;
     if (this.current && !GREET_FROM.has(this.current.intent)) return;
-    const ins = instinctFor(this.personality.species);
+    const ins = instinctOf(this.personality);
     const keen = ins.kind === "dog" ? 0.95 : 0.9 - 0.6 * this.personality.aloofness;
     if (this.impulseRng.next() > keen) return;
     this.epoch++;
@@ -387,8 +387,8 @@ export class Mind {
       sinceShooSec: (now - this.lastShooMs) / 1000,
       sincePetSec: (now - this.lastPetMs) / 1000,
       annoyedLeftSec: (this.annoyedUntilMs - now) / 1000,
-      drainMul: instinctFor(this.personality.species).drain * ENERGY_BY_CHAOS[this.settings.chaos].drain,
-      restoreMul: instinctFor(this.personality.species).restore * ENERGY_BY_CHAOS[this.settings.chaos].restore,
+      drainMul: instinctOf(this.personality).drain * ENERGY_BY_CHAOS[this.settings.chaos].drain,
+      restoreMul: instinctOf(this.personality).restore * ENERGY_BY_CHAOS[this.settings.chaos].restore,
     });
 
     this.stepPotty(world, dtSec);
@@ -505,7 +505,7 @@ export class Mind {
     if (this.current && !CHASE_FROM.has(this.current.intent)) return false;
     const pos = this.d.catPos();
     if (Math.hypot(world.cursor.x - pos.x, world.cursor.y - pos.y) > 800) return false;
-    const like = instinctFor(this.personality.species).weights.chase_cursor ?? 1;
+    const like = instinctOf(this.personality).weights.chase_cursor ?? 1;
     if (this.impulseRng.next() > 1 - Math.exp(-c.perSec * like * (0.5 + this.personality.chaos) * Math.min(1, dtSec))) return false;
     // The governor still has the last word (a respect mode, the annoyance budget).
     const options = this.d.governor.filter([{ intent: "chase_cursor", targets: ["cursor"], score: 1 }], world, this.needs);
@@ -540,7 +540,7 @@ export class Mind {
     const pos = this.d.catPos();
     const d = Math.hypot(toy.x - pos.x, toy.y - pos.y);
     if (this.sleeping) {
-      const ins = instinctFor(this.personality.species);
+      const ins = instinctOf(this.personality);
       const wakes = (ins.kind === "dog" ? 0.75 : ins.kind === "squirrel" || ins.kind === "fox" ? 0.35 : 0.2) * (d < 400 ? 1 : 0.5);
       if (this.impulseRng.next() > wakes) return events;
       this.wake(now);
@@ -551,7 +551,7 @@ export class Mind {
     this.epoch++;
     this.restUntilMs = -Infinity;
     this.lastDecisionMs = now;
-    const ins = instinctFor(this.personality.species);
+    const ins = instinctOf(this.personality);
     this.bout = { kind: "play", startedMs: now, untilMs: now + boutLengthMs("play", this.settings.chaos, this.d.rng, ins.gap), steps: [], source: "rules" };
     this.lastBout = "play";
     const thought = intent.thought ?? this.writtenLine(world, "play");
@@ -605,7 +605,7 @@ export class Mind {
         : `the human threw the ${name}${from}. it ${thing.broke ? "smashed" : "landed"} ${where}, ${spot}`;
     const close = d < 260;
     const shock = close || (thing.broke && d < 650);
-    const ins = instinctFor(this.personality.species);
+    const ins = instinctOf(this.personality);
     const keep = this.current && (KEEP_ON_THROW.has(this.current.intent) || (!shock && (this.current.intent === "react" || this.current.intent === "sulk")));
     if (respectState(world).kind !== "none") {
       this.note(now, text);
@@ -692,7 +692,7 @@ export class Mind {
     }
     const hours = POTTY_HOURS[this.settings.chaos];
     if (!hours) return;
-    const [kp, kq] = instinctFor(this.personality.species).potty ?? [1, 1];
+    const [kp, kq] = instinctOf(this.personality).potty ?? [1, 1];
     const slow = this.sleeping ? 0.4 : 1;
     const dt = Math.max(0, Math.min(dtSec, 600));
     this.potty.pee = Math.min(3, this.potty.pee + (dt * kp * slow) / (hours.pee * 3600));
@@ -829,7 +829,7 @@ export class Mind {
   /** Asks the brain (the model when it may, else the rules) for the next bout, or more of `fixed`. */
   private async planBout(world: WorldSnapshot, options: Option[], brainCtx: BrainContext, fixed?: BoutKind): Promise<{ plan: Plan; source: "llm" | "rules" } | null> {
     const now = world.nowMs;
-    const ins = instinctFor(this.personality.species);
+    const ins = instinctOf(this.personality);
     const w = boutWeights({ last: this.lastBout, chaos: this.settings.chaos, needs: this.needs, kind: ins.kind, world });
     // Never plan what it just did again: a small model asked for "more of this bout" will happily
     // say "hunt" four times in a row. With nothing else left, the bout ends.
@@ -946,7 +946,7 @@ export class Mind {
     const steps = [go, ...(got?.plan.steps ?? []).filter((x) => x.intent !== "pee" && x.intent !== "poop")];
     const thought = got?.plan.thought ?? this.writtenLine(world, "explore");
     if (thought) steps[0] = { ...(steps[0] as Intent), thought };
-    const ins = instinctFor(this.personality.species);
+    const ins = instinctOf(this.personality);
     this.bout = { kind: "explore", startedMs: now, untilMs: now + boutLengthMs("explore", this.settings.chaos, this.d.rng, ins.gap), steps, source: got?.source ?? "rules" };
     this.lastBout = "explore";
     this.d.log?.("bout", { kind: "explore", source: got?.source ?? "rules", steps: steps.map((x) => x.intent), about: first.intent });
@@ -965,7 +965,7 @@ export class Mind {
       return;
     }
     const { plan, source } = got;
-    const ins = instinctFor(this.personality.species);
+    const ins = instinctOf(this.personality);
     const lying = ["loaf", "sleep", "sprawl"].includes(this.d.catDoing());
     const steps = [...plan.steps];
     // The model's line when it fits the moment, else a written line about the same moment.
@@ -1042,10 +1042,10 @@ export class Mind {
         this.learn(true, now);
         this.d.memory.log({ atMs: now, kind: "pet" });
         // Some animals take a pet well. Some take the chance to swat the hand.
-        if (this.d.rng.next() < instinctFor(this.personality.species).bite) quick("swat", "cursor", 4);
+        if (this.d.rng.next() < instinctOf(this.personality).bite) quick("swat", "cursor", 4);
         break;
       case "poke": {
-        const ins = instinctFor(this.personality.species);
+        const ins = instinctOf(this.personality);
         this.pokes = this.pokes.filter((t) => now - t < 15_000);
         this.pokes.push(now);
         // The more pokes in a row, the further up the ladder: curious, playful or put out, then fed up.
@@ -1125,7 +1125,7 @@ export class Mind {
       case "call": {
         const t = this.needs.trust / 100;
         const roll = this.d.rng.next();
-        const ins = instinctFor(this.personality.species);
+        const ins = instinctOf(this.personality);
         const base = (0.15 + 0.7 * t) * (1 - 0.6 * this.personality.aloofness) * ins.comes;
         // A dog nearly always comes. A cat has to feel like it.
         const comeChance = Math.min(0.95, Math.max(ins.kind === "dog" ? 0.85 : 0, base));
@@ -1256,7 +1256,7 @@ export class Mind {
     this.epoch++;
     this.restUntilMs = -Infinity;
     this.lastDecisionMs = now;
-    const ins = instinctFor(this.personality.species);
+    const ins = instinctOf(this.personality);
     const thought = this.writtenLine(world, ask === "pet" ? "social" : ask === "nap" ? "rest" : "play");
     if (ask === "nap") {
       this.sleeping = true;

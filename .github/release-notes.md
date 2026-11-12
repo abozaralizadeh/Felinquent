@@ -2,17 +2,13 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-Every animal now does things only that kind of animal does! The dogs shake off with fur flying, Biscuit lies down and chews its ball, Chili hides under a blanket or stands there shivering with one paw up. Mochi the fox listens, leaps and dives head first into the ground after a mouse. Bandit washes its hands in a little puddle and digs through a snack box for grapes. Clover twists in the air when it's happy, thumps when it's not, flops over and nibbles the edge of your window. Hazel eats a nut sitting up and hangs head down off the side of a window.
+You can hide the cat from screen sharing now! Turn on **Hide from screen sharing** in the menu and the people in your meeting won't see it when you share your screen, but you still will. On Windows it's kept out of every share, recording and screenshot. On a Mac the newer meeting apps can still see it, so there it also walks off while your camera or mic is on and comes back after the call.
 
-And no animal grows or shrinks for a moment when it sits or lies down anymore.
+On Windows with two displays at different scales (a laptop at 150% and a monitor at 100%, for example), the cat no longer shows up twice near the top of the screen, and you can click it on the second monitor again.
 
-## More about 0.1.17
+## More about 0.1.18
 
-A click gets reactions only that animal has too: a wag, a shake, a paw up, listening, a look at its clean hands, a binky, a flop, a thump, a flick of the tail. Going from lying to standing and back is now a real move instead of a fade.
-
-The earth, the puddle and the nut shells are drawn on the cat's own layer like the rest of the mess, so click them to clean up or wait and they go away. The bites in your window edge are drawn too and fade after a few minutes. The rubbish and the window nibbling only happen at normal and gremlin, never at chill. All of it works with the local model off, and it's the same on Mac and Windows.
-
-Also fixed: a dog could get stuck holding its toy forever when the spot to drop it was very close.
+You can add new characters too. **Add a character…** in the Character menu takes a `.felinquent` file that someone made and gave you, and the new character shows up next to the nine. **Remove a character** takes it away again. A package is only drawings and a description, so nothing in it ever runs, and the app checks every file before it uses it.
 
 ## Updating
 
