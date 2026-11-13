@@ -20,9 +20,18 @@ interface Edge {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/**
+ * From the bottom of one display to the bottom of another (the Dock or a floor to a floor): the
+ * leap up out of the top of the screen onto a monitor above. A full laptop screen is a little more
+ * than nine body heights (849 px on a 13" MacBook with its Dock, 810 for the puppy), so with no
+ * window open to climb it could never get there (13 Nov 2026).
+ */
+const BETWEEN_DISPLAYS = 1.4;
+
 function edgeBetween(a: Platform, b: Platform, lim: JumpLimits): Edge | null {
   const up = a.y - b.y;
-  if (up > lim.maxUp) return null;
+  const floors = a.kind !== "window_top" && b.kind !== "window_top";
+  if (up > lim.maxUp * (floors ? BETWEEN_DISPLAYS : 1)) return null;
   const lo = Math.max(a.x1, b.x1);
   const hi = Math.min(a.x2, b.x2);
   if (lo < hi) {

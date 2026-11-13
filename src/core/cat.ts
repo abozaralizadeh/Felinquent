@@ -114,6 +114,8 @@ export class Cat {
   private lastCrackMs = -1e12;
   private lastWindows: unknown = null;
   private lastDockTop = -1;
+  /** The screen and the other displays it was handed last: a display plugged in or out changes them. */
+  private lastScreens: unknown[] = [];
   private lastShape = "";
   private heldFromWindow: string | undefined;
   private lastWorld: WorldSnapshot | null = null;
@@ -263,10 +265,13 @@ export class Cat {
    */
   private syncWorld(world: WorldSnapshot, force = false): void {
     this.executor.observe(world);
-    if (force || world.windows !== this.lastWindows || world.dockTop !== this.lastDockTop) {
+    // A display plugged in or out while nothing else moved still changes where it can stand.
+    const screensChanged = world.screen !== this.lastScreens[0] || world.displays !== this.lastScreens[1];
+    if (force || screensChanged || world.windows !== this.lastWindows || world.dockTop !== this.lastDockTop) {
       const shape = shapeOf(world);
       this.lastWindows = world.windows;
       this.lastDockTop = world.dockTop;
+      this.lastScreens = [world.screen, world.displays];
       if (force || shape !== this.lastShape) {
         this.lastShape = shape;
         this.executor.setWorld(world);

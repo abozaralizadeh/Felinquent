@@ -191,12 +191,23 @@ const inside = (r: Rect, p: { x: number; y: number }, m = 0): boolean => p.x >= 
 
 async function main(): Promise<void> {
   const config = await invoke<Config>("read_config");
-  const layout = await invoke<Layout>("read_layout");
-  const me = layout.displays[layout.index] ?? (layout.displays[0] as Rect);
+  // A display plugged in or out while it runs: main.rs fits the windows again and says so
+  // (layout-changed), and these are read again (relayout).
+  let layout = await invoke<Layout>("read_layout");
+  let me = layout.displays[layout.index] ?? (layout.displays[0] as Rect);
   preloadProps();
   const master = layout.index === 0;
-  const main = layout.displays[0] as Rect;
-  const others = layout.displays.slice(1);
+  let main = layout.displays[0] as Rect;
+  let others = layout.displays.slice(1);
+  async function relayout(): Promise<void> {
+    layout = await invoke<Layout>("read_layout");
+    me = layout.displays[layout.index] ?? (layout.displays[0] as Rect);
+    main = layout.displays[0] as Rect;
+    others = layout.displays.slice(1);
+    // fit_to made the window click-through again.
+    clickThrough = true;
+    resize();
+  }
 
   let clickThrough = true;
   async function setThrough(on: boolean): Promise<void> {
@@ -266,6 +277,9 @@ async function main(): Promise<void> {
       }
     });
     say(`mirror window for display ${layout.index} at ${me.x},${me.y} ${me.w}x${me.h}, page ${window.innerWidth}x${window.innerHeight} at ${window.devicePixelRatio}x, zoom ${zoom().toFixed(3)}`);
+    await tauri?.event.listen<number>("layout-changed", () => {
+      void relayout().then(() => say(`mirror window for display ${layout.index} now at ${me.x},${me.y} ${me.w}x${me.h}`));
+    });
     const loop = (): void => {
       render(latest);
       setTimeout(loop, 16);
@@ -389,6 +403,15 @@ async function main(): Promise<void> {
     log: (message, fields) => say(`${message} ${JSON.stringify(fields ?? {})}`),
     // The local model can take a few seconds; the animal keeps moving while it thinks.
     asyncMind: true,
+  });
+  // A display plugged in, unplugged or moved: the animal gets the new floors and windows at once,
+  // and one on a display that is gone comes down on what is left (Executor.stepFall).
+  void tauri?.event.listen<number>("layout-changed", () => {
+    void relayout().then(() => {
+      world = { ...world, screen: main, displays: others, dockTop: layout.dock_top };
+      cat.worldChanged(world);
+      say(`displays changed: ${layout.displays.length} display(s) (${layout.displays.map((d) => `${d.x},${d.y} ${d.w}x${d.h}`).join("; ")}), dock top ${layout.dock_top}`);
+    });
   });
   // Whether to ask the local model at all. The menu turns it off and on.
   let useModel = saved.model ?? true;

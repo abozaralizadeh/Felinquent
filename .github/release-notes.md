@@ -2,13 +2,15 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-You can hide the cat from screen sharing now! Turn on **Hide from screen sharing** in the menu and the people in your meeting won't see it when you share your screen, but you still will. On Windows it's kept out of every share, recording and screenshot. On a Mac the newer meeting apps can still see it, so there it also walks off while your camera or mic is on and comes back after the call.
+Plug in a monitor while Felinquent is running and the pet can go there now, no restart needed. Before, it only looked at your screens when it started, and since it starts at login and updates itself, that could be days ago. So a monitor you plugged in the next morning was a place it could never reach, and if you dragged it up there it fell straight back to the laptop. Unplug the monitor while it's up there and it lands back on your laptop's Dock.
 
-On Windows with two displays at different scales (a laptop at 150% and a monitor at 100%, for example), the cat no longer shows up twice near the top of the screen, and you can click it on the second monitor again.
+It can also leap from the Dock straight up onto a monitor that sits above your laptop, even when there's no window to climb on.
 
-## More about 0.1.18
+## Also new since 0.1.17
 
-You can add new characters too. **Add a character…** in the Character menu takes a `.felinquent` file that someone made and gave you, and the new character shows up next to the nine. **Remove a character** takes it away again. A package is only drawings and a description, so nothing in it ever runs, and the app checks every file before it uses it.
+You can hide the cat from screen sharing. Turn on **Hide from screen sharing** in the menu and the people in your meeting won't see it when you share your screen, but you still will. On a Mac the newer meeting apps can still see it, so there it also walks off while your camera or mic is on and comes back after the call.
+
+You can add new characters too. **Add a character…** in the Character menu takes a `.felinquent` file that someone made and gave you, and **Remove a character** takes it away again. A package is only drawings and a description, so nothing in it ever runs.
 
 ## Updating
 

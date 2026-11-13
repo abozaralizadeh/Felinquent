@@ -360,7 +360,7 @@ async fn read_windows() -> Windows {
 
 #[tauri::command]
 async fn read_layout(window: WebviewWindow) -> Layout {
-    let displays = sensors::displays();
+    let displays = displays_now();
     let main = displays.first().cloned().unwrap_or(sensors::Display { x: 0.0, y: 0.0, w: 1440.0, h: 900.0 });
     let dock_top = match window.primary_monitor() {
         Ok(Some(m)) => {
@@ -465,23 +465,31 @@ async fn set_click_through(window: WebviewWindow, on: bool) {
 /// a meeting instead.
 #[tauri::command]
 async fn set_hide_share(app: AppHandle, on: bool) -> bool {
+    HIDE_SHARE.store(on, std::sync::atomic::Ordering::SeqCst);
     #[allow(unused_mut)]
     let mut kept_out = false;
     for (label, w) in app.webview_windows() {
         if !label.starts_with("overlay") {
             continue;
         }
-        #[cfg(windows)]
-        {
-            kept_out = winui::hide_from_capture(&w, on);
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = w.set_content_protected(on);
-        }
+        kept_out = hide_share(&w, on);
     }
     logfile::write(&format!("capture: hide from screen sharing {} ({})", if on { "on" } else { "off" }, if kept_out { "kept out of captures" } else if on { "leaves during meetings" } else { "shown in captures" }));
     kept_out
+}
+
+/// "Hide from screen sharing" is on: a window made later (a display plugged in) is kept out too.
+static HIDE_SHARE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Keeps one overlay window out of captures, or lets it back in. true when the system really does.
+fn hide_share(w: &WebviewWindow, on: bool) -> bool {
+    #[cfg(windows)]
+    return winui::hide_from_capture(w, on);
+    #[cfg(not(windows))]
+    {
+        let _ = w.set_content_protected(on);
+        false
+    }
 }
 
 /// The page has drawn the desktop it moved to after the switch `turn`: show the windows again.
@@ -844,6 +852,104 @@ fn set_exact_frame(w: &WebviewWindow, d: &sensors::Display) {
     }
 }
 
+/// The overlay window over display i. The main display's (i = 0) runs the cat.
+fn overlay_label(i: usize) -> String {
+    if i == 0 { "overlay".into() } else { format!("overlay-{i}") }
+}
+
+/// The overlay window for display i, made when there isn't one yet (the main display's comes from
+/// tauri.conf.json). Off the main thread too: Tauri hands the making over and waits for it.
+fn overlay_window(app: &AppHandle, i: usize) -> tauri::Result<WebviewWindow> {
+    if let Some(w) = app.get_webview_window(&overlay_label(i)) {
+        return Ok(w);
+    }
+    WebviewWindowBuilder::new(app, overlay_label(i), WebviewUrl::App("overlay.html".into()))
+        .title("Felinquent overlay")
+        .transparent(true)
+        .decorations(false)
+        .always_on_top(true)
+        .visible_on_all_workspaces(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .shadow(false)
+        .resizable(false)
+        .build()
+}
+
+/// The displays the overlay covers. FELINQUENT_DISPLAYS_TEST=<s> keeps to the main display for the
+/// first s seconds, as if the others were plugged in then, to try watch_displays without a cable.
+fn displays_now() -> Vec<sensors::Display> {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let all = sensors::displays();
+    let hold = std::env::var("FELINQUENT_DISPLAYS_TEST").ok().and_then(|v| v.parse::<f64>().ok());
+    match hold {
+        Some(s) if START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() < s => all.into_iter().take(1).collect(),
+        _ => all,
+    }
+}
+
+/// The displays as a line for the log and to spot a change.
+fn displays_line(all: &[sensors::Display]) -> String {
+    all.iter().map(|d| format!("{:.0},{:.0} {:.0}x{:.0}", d.x, d.y, d.w, d.h)).collect::<Vec<_>>().join("; ")
+}
+
+/// Displays plugged in, unplugged or moved while it runs (a monitor at the desk in the morning, the
+/// lid closed, the main display picked again): the overlay windows are made, moved or closed to
+/// match, and the pages read the layout again (`layout-changed`). It used to be read once at launch,
+/// and since it starts at login and updates itself it runs for days, so a monitor plugged in the
+/// next morning got no animal and one dropped up there fell back to the laptop (13 Nov 2026).
+fn watch_displays(app: &AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let key = || {
+            let line = displays_line(&displays_now());
+            // On Windows the main display's scale changes every point, so it counts too.
+            #[cfg(windows)]
+            let line = format!("{line} @{:.2}", sensors::scale());
+            line
+        };
+        let mut last = key();
+        let mut maybe: Option<String> = None;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let now = key();
+            if now == last {
+                maybe = None;
+                continue;
+            }
+            // Displays take a moment to settle after a plug or a wake: the same new layout twice in a row.
+            if maybe.as_deref() != Some(now.as_str()) {
+                maybe = Some(now);
+                continue;
+            }
+            maybe = None;
+            last = now;
+            let displays = displays_now();
+            logfile::write(&format!("displays changed: {} display(s): {}", displays.len(), displays_line(&displays)));
+            for i in 1..displays.len() {
+                if let Err(e) = overlay_window(&handle, i) {
+                    logfile::write(&format!("displays: no overlay window for display {i}: {e}"));
+                }
+            }
+            let h = handle.clone();
+            let _ = handle.run_on_main_thread(move || {
+                for (i, d) in displays.iter().enumerate() {
+                    if let Some(w) = h.get_webview_window(&overlay_label(i)) {
+                        fit_to(&w, d);
+                    }
+                }
+                for (label, w) in h.webview_windows() {
+                    let gone = label.strip_prefix("overlay-").and_then(|n| n.parse::<usize>().ok()).is_some_and(|n| n >= displays.len());
+                    if gone {
+                        let _ = w.destroy();
+                    }
+                }
+                let _ = h.emit("layout-changed", displays.len());
+            });
+        }
+    });
+}
+
 fn fit_to(w: &WebviewWindow, d: &sensors::Display) {
     #[cfg(not(windows))]
     {
@@ -890,6 +996,9 @@ fn fit_to(w: &WebviewWindow, d: &sensors::Display) {
     if w.label() == "overlay" {
         winui::on_session_end(w, report::clean_exit);
     }
+    if HIDE_SHARE.load(std::sync::atomic::Ordering::SeqCst) {
+        hide_share(w, true);
+    }
 }
 
 fn main() {
@@ -934,26 +1043,13 @@ fn main() {
 
             // One overlay window per display. The first (main display) runs the cat,
             // the others only draw it when it is on their screen.
-            let displays = sensors::displays();
+            let displays = displays_now();
             for (i, d) in displays.iter().enumerate() {
-                let w = if i == 0 {
-                    app.get_webview_window("overlay").expect("overlay window")
-                } else {
-                    WebviewWindowBuilder::new(app, format!("overlay-{i}"), WebviewUrl::App("overlay.html".into()))
-                        .title("Felinquent overlay")
-                        .transparent(true)
-                        .decorations(false)
-                        .always_on_top(true)
-                        .visible_on_all_workspaces(true)
-                        .skip_taskbar(true)
-                        .focused(false)
-                        .shadow(false)
-                        .resizable(false)
-                        .build()?
-                };
+                let w = overlay_window(app.handle(), i)?;
                 fit_to(&w, d);
                 println!("[overlay] window {} on display {:.0},{:.0} {:.0}x{:.0}", w.label(), d.x, d.y, d.w, d.h);
             }
+            watch_displays(app.handle());
 
             #[cfg(target_os = "macos")]
             if follows_spaces() {
