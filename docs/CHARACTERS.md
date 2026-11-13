@@ -42,7 +42,7 @@ pickle/
 }
 ```
 
-Then check it and pack it:
+Then check it and pack it, from the repo folder (the character's folder can be anywhere, give its path):
 
 ```bash
 npm run character -- check pickle
