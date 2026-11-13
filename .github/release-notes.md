@@ -2,15 +2,21 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-Plug in a monitor while Felinquent is running and the pet can go there now, no restart needed. Before, it only looked at your screens when it started, and since it starts at login and updates itself, that could be days ago. So a monitor you plugged in the next morning was a place it could never reach, and if you dragged it up there it fell straight back to the laptop. Unplug the monitor while it's up there and it lands back on your laptop's Dock.
+Right-click the pet while it's up on your other monitor and its menu now opens right next to it, not down at the bottom of your main screen.
 
-It can also leap from the Dock straight up onto a monitor that sits above your laptop, even when there's no window to climb on.
+Want your own pet in there? There's a guide now for making your own character, starting from just two drawings, plus a tool that checks it and packs it into a .felinquent file.
 
-## Also new since 0.1.17
+## Make your own character
+
+The guide is [docs/CHARACTERS.md](https://github.com/abozaralizadeh/Felinquent/blob/main/docs/CHARACTERS.md). Draw your animal sitting and standing, write a few lines about who it is, run `npm run character -- pack` and add the file with **Character > Add a character…**. One more command gives it a real walk made from the standing drawing, and every drawing you add after that brings another move to life.
+
+## Also new lately
+
+Plug in a monitor while Felinquent is running and the pet can go there, no restart needed. Unplug it while the pet is up there and it lands back on your laptop's Dock. It can also leap from the Dock straight up onto a monitor that sits above your laptop, even when there's no window to climb on.
 
 You can hide the cat from screen sharing. Turn on **Hide from screen sharing** in the menu and the people in your meeting won't see it when you share your screen, but you still will. On a Mac the newer meeting apps can still see it, so there it also walks off while your camera or mic is on and comes back after the call.
 
-You can add new characters too. **Add a character…** in the Character menu takes a `.felinquent` file that someone made and gave you, and **Remove a character** takes it away again. A package is only drawings and a description, so nothing in it ever runs.
+You can add new characters too. **Add a character…** in the Character menu takes a `.felinquent` file, and **Remove a character** takes it away again. A package is only drawings and a description, so nothing in it ever runs.
 
 ## Updating
 

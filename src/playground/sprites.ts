@@ -300,6 +300,24 @@ export const SPRITE_KEYS: SpriteKey[] = [
   ]),
 ].filter((k) => !RETIRED.has(k));
 
+/**
+ * The drawings, by the sheet they are drawn on (the rest of SPRITE_KEYS are made from these by the
+ * tools: in-betweens, nods and gaits). For tools/character.ts, which tells someone making a
+ * character what is left to draw (docs/CHARACTERS.md).
+ */
+export const DRAWN_SHEETS: Record<string, readonly SpriteKey[]> = Object.fromEntries(
+  Object.entries({
+    base: [...BASE, "stand"], run: RUN, face: FACE, action: ACTION, life: LIFE, extra: EXTRA, groom: GROOM, spin: SPIN, seq: SEQ, trans: TRANS,
+    react: REACT, play: PLAY, scratch: SCRATCH, turn: TURN, paw: PAW, look: LOOK, lookstand: LOOKSTAND, ledge: LEDGE, rest: RESTING, joy: JOYFUL,
+    nose: NOSE, voice: VOICE, mood: MOOD, feel: FEEL, gazesit: GAZE, gazestand: GAZESTAND, lick: LICK, potty: POTTY,
+    // The far side of a turn is the near side mirrored (tools/build-sprites.py makes turn_s4 and the others).
+  } as Record<string, readonly SpriteKey[]>).map(([k, v]) => [k, v.filter((key) => !RETIRED.has(key) && !/^turn_[st][45]$/.test(key))]),
+);
+/** The drawings of each kind's own moves, named like the built-in animal of that kind (a character from a package uses its kind's). */
+export const OWN_DRAWN: Record<string, readonly SpriteKey[]> = { cat: [], dog: OWN_DOG, fox: OWN_FOX, raccoon: OWN_RACCOON, rabbit: OWN_RABBIT, squirrel: OWN_SQUIRREL };
+/** The built-in animal whose own frames (OWN_KEYS) a package of each kind is drawn like. */
+export const OWN_LIKE: Record<string, string | undefined> = { dog: "biscuit", fox: "mochi", raccoon: "bandit", rabbit: "clover", squirrel: "hazel" };
+
 /** Frames that follow each other inside one loop and swap without a glide: they swap without a cross-fade too. */
 const LOOPS: readonly (readonly SpriteKey[])[] = [GW, GT, GR, SPIN];
 const loopOf = new Map<SpriteKey, number>(LOOPS.flatMap((keys, i) => keys.map((k) => [k, i] as [SpriteKey, number])));

@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --with opencv-python-headless --with pillow --with numpy python
 """Builds the walk, trot and run cycles of an animal that hops (a rabbit, a squirrel) from its drawn hops.
 
-Usage: tools/hop-gait.py <sprite-dir> [--debug <file.png>] [--only walk|trot|run] [--verbose]
+Usage: tools/hop-gait.py <sprite-dir> [--debug <file.png>] [--only walk|trot|run] [--like clover|hazel] [--verbose]
 
 rig-gait.py moves four legs on their own clocks, which is right for a cat or a dog. A rabbit and a
 squirrel move both hind feet together: they gather, push off, fly, land on the front paws, swing the
@@ -36,6 +36,8 @@ VERBOSE = "--verbose" in args
 # Share of the drawing where the two warped drawings still disagree, above which there is no in-between.
 MISS = 0.22
 cid = folder.resolve().name
+# A character from a package (docs/CHARACTERS.md) whose hops are drawn like a built-in hopper's.
+like = args[args.index("--like") + 1] if "--like" in args else cid
 
 # Each character's drawn hop. A key is (drawing, phase, what is on the ground): "hind", "front" or
 # "air". The cycle ends where it began, one stride on. "size" scales the drawings as cut (1 keeps
@@ -65,8 +67,8 @@ HOPS = {
 }
 COUNTS = {"walk": ("gw", 32), "trot": ("gt", 24), "run": ("gr", 20)}
 
-if cid not in HOPS:
-    sys.exit(f"{cid}: not a hopper (see HOPS)")
+if like not in HOPS:
+    sys.exit(f"{like}: not a hopper (see HOPS, or pass --like clover or --like hazel)")
 
 
 def crop(im: Image.Image) -> Image.Image:
@@ -211,7 +213,7 @@ def build(gait: str, spec: dict) -> float:
     return S
 
 
-strides = {g: round(build(g, spec), 1) for g, spec in HOPS[cid].items() if only in (None, g)}
+strides = {g: round(build(g, spec), 1) for g, spec in HOPS[like].items() if only in (None, g)}
 if debug:
     shots = [Image.open(folder / f"gw{i:02d}.webp") for i in range(0, 32, 2)]
     sheet = Image.new("RGBA", (sum(s.width for s in shots), max(s.height for s in shots)), (235, 235, 240, 255))

@@ -399,18 +399,39 @@ fn just_updated(app: AppHandle) -> Option<String> {
 
 /// A right-click on the animal: the handy part of the menu bar menu, right there at the cursor.
 /// Same item ids as the menu bar menu, so the same handler answers them.
-/// x and y (in the window, points) put it somewhere else than at the pointer (only the menu test does).
+/// x and y (global points) put it somewhere else than at the pointer (only the menu test does).
+/// It opens from the overlay window of the display that point is on. The main display's window runs
+/// the animal and asks for the menu, but opened from there with the animal on a monitor, macOS put
+/// it far from the animal (Abozar, 13 Nov 2026).
 #[tauri::command]
 async fn pet_menu(app: AppHandle, window: WebviewWindow, x: Option<f64>, y: Option<f64>) {
     let current = app.try_state::<Current>().and_then(|c| c.0.lock().ok().and_then(|g| g.clone()));
     match build_pet_menu(&app, current.as_ref()) {
         Ok(menu) => {
-            logfile::write("pet menu: open");
-            let shown = match (x, y) {
-                (Some(x), Some(y)) => window.popup_menu_at(&menu, tauri::LogicalPosition::new(x, y)),
-                _ => window.popup_menu(&menu),
+            let (px, py) = match (x, y) {
+                (Some(x), Some(y)) => (x, y),
+                _ => {
+                    let (x, y, _) = sensors::pointer();
+                    (x, y)
+                }
             };
-            if let Err(e) = shown {
+            let displays = displays_now();
+            let here = displays.iter().position(|d| px >= d.x && px < d.x + d.w && py >= d.y && py < d.y + d.h);
+            let (w, d) = match here.and_then(|i| app.get_webview_window(&overlay_label(i)).map(|w| (w, displays[i].clone()))) {
+                Some(found) => found,
+                None => (window, displays.first().cloned().unwrap_or(sensors::Display { x: 0.0, y: 0.0, w: 0.0, h: 0.0 })),
+            };
+            logfile::write(&format!("pet menu: open on {} at {:.0},{:.0}", w.label(), px - d.x, py - d.y));
+            // On Windows a point is the main display's pixels over its scale (sensors::scale), whatever
+            // the scale of the display the menu opens on, so the place inside the window is in pixels.
+            #[cfg(windows)]
+            let at: tauri::Position = {
+                let s = sensors::scale();
+                tauri::PhysicalPosition::new(((px - d.x) * s).round() as i32, ((py - d.y) * s).round() as i32).into()
+            };
+            #[cfg(not(windows))]
+            let at: tauri::Position = tauri::LogicalPosition::new(px - d.x, py - d.y).into();
+            if let Err(e) = w.popup_menu_at(&menu, at) {
                 logfile::write(&format!("pet menu: {e}"));
             }
         }
