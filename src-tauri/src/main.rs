@@ -317,10 +317,12 @@ fn index_of(window: &WebviewWindow) -> usize {
 }
 
 #[tauri::command]
-async fn read_sensors() -> Sensors {
-    // The page is alive: the stall check in report.rs watches this.
+async fn read_sensors(visible: Option<bool>) -> Sensors {
+    // The page is alive, and says whether it can be seen: the stall check in report.rs watches this.
     #[cfg(any(target_os = "macos", windows))]
-    report::page_seen();
+    report::page_seen(visible.unwrap_or(true));
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = visible;
     Sensors {
         windows: sensors::windows("felinquent"),
         idle_sec: sensors::idle_sec(),
@@ -1130,6 +1132,31 @@ fn main() {
                     for (secs, msg) in [(12, "character:mochi"), (3, "treat"), (3, "toy"), (3, "panic"), (4, "panic"), (3, "chaos:chill"), (3, "model"), (3, "model"), (3, "character:biscuit"), (3, "pet"), (4, "zoomies"), (6, "nap"), (3, "shoo")] {
                         std::thread::sleep(std::time::Duration::from_secs(secs));
                         control(&handle, msg);
+                    }
+                });
+            }
+
+            // FELINQUENT_HIDE_TEST=<s>[@len] takes the overlay windows off the screen s seconds after
+            // launch for len seconds (300 unless given), the way a locked screen hides them, to watch
+            // what macOS does to the hidden page and that the stall check leaves it alone.
+            #[cfg(target_os = "macos")]
+            if let Ok(spec) = std::env::var("FELINQUENT_HIDE_TEST") {
+                let (at, len) = spec.split_once('@').map_or((spec.as_str(), "300"), |(a, b)| (a, b));
+                let (at, len) = (at.parse::<f64>().unwrap_or(20.0), len.parse::<f64>().unwrap_or(300.0));
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    for (wait, show) in [(at, false), (len, true)] {
+                        std::thread::sleep(std::time::Duration::from_secs_f64(wait));
+                        let h = handle.clone();
+                        let _ = handle.run_on_main_thread(move || {
+                            for (_, w) in h.webview_windows() {
+                                let Ok(ptr) = w.ns_window() else { continue };
+                                // SAFETY: Tauri hands us the live NSWindow, on the main thread.
+                                let ns: &objc2_app_kit::NSWindow = unsafe { &*(ptr as *mut objc2_app_kit::NSWindow) };
+                                if show { ns.orderFrontRegardless() } else { ns.orderOut(None) }
+                            }
+                            logfile::write(if show { "hide test: windows back" } else { "hide test: windows off the screen" });
+                        });
                     }
                 });
             }

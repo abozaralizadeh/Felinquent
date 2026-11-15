@@ -104,6 +104,8 @@ static DIRTY: AtomicBool = AtomicBool::new(false);
 static EXITING: AtomicBool = AtomicBool::new(false);
 /// Unix seconds of the page's last call.
 static PAGE_SEEN: AtomicU64 = AtomicU64::new(0);
+/// The page said it was hidden on its last call (a locked screen, a screen saver, a display asleep).
+static PAGE_HIDDEN: AtomicBool = AtomicBool::new(false);
 /// The question is on screen.
 static ASKING: AtomicBool = AtomicBool::new(false);
 
@@ -198,9 +200,41 @@ pub fn clean_exit() {
     }
 }
 
-/// The page is alive (it calls this with every sensor read).
-pub fn page_seen() {
+/// The page is alive (it calls this with every sensor read), and whether it can be seen.
+///
+/// macOS hides the page when nothing of its window shows: the screen locked, a screen saver, a
+/// display asleep. WebKit then slows its timers to a few a second and, after a while, App Nap stops
+/// them, for 15 minutes at a time. That's macOS saving power, not a stuck page, so a hidden page
+/// isn't watched. When it shows again, its first call starts the clock again.
+pub fn page_seen(visible: bool) {
     PAGE_SEEN.store(now(), Ordering::Relaxed);
+    if PAGE_HIDDEN.swap(!visible, Ordering::Relaxed) == visible {
+        logfile::write(if visible { "page: shown again" } else { "page: hidden (macOS may slow it down or stop it until it shows again)" });
+    }
+}
+
+/// The stall check, apart from the clock and the sensors, so a test can play the reports through it.
+#[derive(Default)]
+struct StallWatch {
+    /// Reported once per run.
+    stalled: bool,
+}
+
+impl StallWatch {
+    /// One look (every 15 s): `seen` is when the page last called, `hidden` what it said then, and
+    /// `idle_sec` how long since the last key press or mouse move, which counts input at the lock
+    /// screen too. Returns how long the page has been silent when that's a stall.
+    fn look(&mut self, now: u64, seen: u64, hidden: bool, idle_sec: f64) -> Option<u64> {
+        if self.stalled || seen == 0 || hidden {
+            return None;
+        }
+        let silent = now.saturating_sub(seen);
+        if silent > STALL_SEC && idle_sec < 60.0 {
+            self.stalled = true;
+            return Some(silent);
+        }
+        None
+    }
 }
 
 /// Something went wrong. It's logged and kept for a report.
@@ -310,12 +344,13 @@ fn beat(s: &State) {
 
 /// Every minute: the alive file. Every 15 s: is the page still talking? A page that stops for two
 /// minutes while you're using the computer is stuck (the old "everything was broken"). A gap in
-/// this loop itself means the computer slept, so that doesn't count.
+/// this loop itself means the computer slept, and a hidden page is macOS saving power (see
+/// `page_seen`), so neither counts.
 fn heartbeat() {
     let Some(s) = STATE.get() else { return };
     let mut last = Instant::now();
     let mut beats = 0u32;
-    let mut stalled = false;
+    let mut watch = StallWatch::default();
     loop {
         std::thread::sleep(Duration::from_secs(15));
         let slept = last.elapsed() > Duration::from_secs(45);
@@ -330,9 +365,8 @@ fn heartbeat() {
             PAGE_SEEN.store(now(), Ordering::Relaxed);
             continue;
         }
-        if !stalled && seen > 0 && now().saturating_sub(seen) > STALL_SEC && sensors::idle_sec() < 60.0 {
-            stalled = true;
-            let message = format!("The cat's page stopped answering for over {} s while the computer was in use.", now().saturating_sub(seen));
+        if let Some(silent) = watch.look(now(), seen, PAGE_HIDDEN.load(Ordering::Relaxed), sensors::idle_sec()) {
+            let message = format!("The cat's page stopped answering for over {silent} s while the computer was in use.");
             problem(&s.app, "stall", &message);
         }
     }
@@ -732,6 +766,76 @@ mod tests {
         assert!(t.starts_with("line 350\n") && t.ends_with("line 499"));
         let small = tail(&text, 150, 30);
         assert_eq!(small, "line 497\nline 498\nline 499");
+    }
+
+    /// Plays a page through the stall check: `calls` are the page's calls (when, visible), `active`
+    /// the times the person touched the keyboard or the mouse. The check looks every 15 s, like
+    /// `heartbeat`. With `old` the page's hidden flag is left out, which is how 0.1.15 to 0.1.20 looked.
+    fn first_stall(calls: &[(u64, bool)], active: &[(u64, u64)], from: u64, to: u64, old: bool) -> Option<(u64, u64)> {
+        let mut watch = StallWatch::default();
+        let mut t = from;
+        while t <= to {
+            let last = calls.iter().rev().find(|c| c.0 <= t);
+            let (seen, hidden) = last.map(|c| (c.0, !c.1)).unwrap_or((0, false));
+            let touched = active.iter().filter(|r| r.0 <= t).map(|r| r.1.min(t)).max();
+            let idle = touched.map(|e| (t - e) as f64).unwrap_or(10_000.0);
+            if let Some(silent) = watch.look(t, seen, hidden && !old, idle) {
+                return Some((t, silent));
+            }
+            t += 15;
+        }
+        None
+    }
+
+    /// Calls once a second from `a` to `b` (the page reads its sensors four times a second, or a
+    /// few times a second when WebKit slows a hidden page down).
+    fn calls(a: u64, b: u64, visible: bool) -> Vec<(u64, bool)> {
+        (a..=b).map(|t| (t, visible)).collect()
+    }
+
+    /// The report of 15 Nov 2026 (0.1.20, issue 2 in the private repo): Bandit picked from the menu
+    /// at 2443, the screen locked 5 s later. The hidden page ran slowed down until 3483, App Nap
+    /// stopped it, it woke for a moment at 4408 and stopped again. At 5316 someone typed at the
+    /// lock screen and the check called that a 903 s stall. Unlocked, the page shows again.
+    #[test]
+    fn a_locked_screen_is_not_a_stall() {
+        let mut page = calls(2000, 2447, true);
+        page.extend(calls(2448, 3483, false));
+        page.extend(calls(4408, 4411, false));
+        page.extend(calls(5330, 6000, true));
+        let active = [(2000, 2445), (5300, 6000)];
+        // What the reports said: the old check fires as soon as someone types at the lock screen.
+        let old = first_stall(&page, &active, 2000, 6000, true);
+        assert!(matches!(old, Some((t, silent)) if (5300..5330).contains(&t) && silent > 880), "{old:?}");
+        assert_eq!(first_stall(&page, &active, 2000, 6000, false), None);
+    }
+
+    /// A display asleep with no lock: the mouse wakes it and the page shows a few seconds later. A
+    /// look in those seconds was enough for the old check.
+    #[test]
+    fn waking_a_sleeping_display_is_not_a_stall() {
+        let mut page = calls(0, 600, true);
+        page.extend(calls(601, 700, false));
+        page.extend(calls(2012, 2600, true));
+        let active = [(0, 300), (2000, 2600)];
+        assert!(first_stall(&page, &active, 0, 2600, true).is_some());
+        assert_eq!(first_stall(&page, &active, 0, 2600, false), None);
+    }
+
+    /// A page that really stops while it can be seen is still reported, and so is one that comes
+    /// back from hidden and then stops.
+    #[test]
+    fn a_page_that_stops_where_you_can_see_it_is_a_stall() {
+        let page = calls(0, 400, true);
+        let found = first_stall(&page, &[(0, 2000)], 0, 2000, false);
+        assert!(matches!(found, Some((t, silent)) if (520..=540).contains(&t) && silent > 120), "{found:?}");
+        let mut back = calls(0, 100, true);
+        back.extend(calls(101, 200, false));
+        back.extend(calls(1000, 1010, true));
+        let found = first_stall(&back, &[(0, 2000)], 0, 2000, false);
+        assert!(matches!(found, Some((t, _)) if (1130..=1150).contains(&t)), "{found:?}");
+        // Nobody at the computer: nothing to report, as before.
+        assert_eq!(first_stall(&page, &[(0, 300)], 0, 2000, false), None);
     }
 
     #[test]

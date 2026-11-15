@@ -330,7 +330,9 @@ async function main(): Promise<void> {
     sensorsBusy = true;
     const asked = switchSeq;
     try {
-      const s = await invoke<NativeSensors>("read_sensors");
+      // Whether the page can be seen: macOS slows a hidden page down and may stop it for minutes
+      // (a locked screen, a display asleep), and the stall check must not call that stuck.
+      const s = await invoke<NativeSensors>("read_sensors", { visible: document.visibilityState === "visible" });
       // The desktop changed while this was being read: its windows and desktop are the old ones.
       const stale = asked !== switchSeq;
       const windows = stale ? world.windows : toWindows(s.windows);
