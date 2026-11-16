@@ -11,6 +11,12 @@
 //! it closes. Return doesn't press the first button, so a key meant for another app can't start
 //! anything; Escape presses the button the caller names. Only one question shows at a time: a
 //! second one waits until the first is answered.
+//!
+//! A modal session greys out every menu item whose target doesn't say it works when modal, and
+//! muda's items didn't, so while a question waited the menu bar menu and the menu on the animal
+//! were dead: no treat, no toy, no model switch (most likely what a friend's first run on 16 Nov
+//! 2026 ran into, with "Get the cat's brain?" waiting). `menus_work_during_questions` teaches them, and the
+//! question opens on the display under the pointer and on every desktop, so it can't wait unseen.
 
 #[cfg(target_os = "macos")]
 use std::sync::mpsc::RecvTimeoutError;
@@ -71,21 +77,74 @@ pub fn short(s: &str, max: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
+/// Lets the app's menu items (muda's) work while a question waits. Call once, after the first
+/// menu is built (muda registers its item class then). Mac only: a Windows task dialog doesn't
+/// stop the tray menu.
+#[cfg(target_os = "macos")]
+pub fn menus_work_during_questions() {
+    session::menus_work_when_modal();
+}
+
 /// The open alert. Main thread only.
 #[cfg(target_os = "macos")]
 mod session {
     use std::cell::RefCell;
     use std::sync::mpsc::Sender;
 
+    use objc2::encode::Encode;
     use objc2::rc::Retained;
-    use objc2::runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel};
+    use objc2::runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Imp, Sel};
     use objc2::{msg_send, sel, MainThreadMarker};
-    use objc2_app_kit::{NSAlert, NSApplication, NSButton, NSModalResponseContinue, NSModalSession};
-    use objc2_foundation::{NSArray, NSRunLoop, NSString};
+    use objc2_app_kit::{NSAlert, NSApplication, NSButton, NSEvent, NSModalResponseContinue, NSModalSession, NSScreen, NSWindow, NSWindowCollectionBehavior};
+    use objc2_foundation::{NSArray, NSPoint, NSRunLoop, NSString};
 
     /// acceptsFirstMouse: that says yes.
     extern "C-unwind" fn yes(_this: &AnyObject, _cmd: Sel, _event: *mut AnyObject) -> Bool {
         Bool::YES
+    }
+
+    /// worksWhenModal that says yes.
+    extern "C-unwind" fn works_when_modal(_this: &AnyObject, _cmd: Sel) -> Bool {
+        Bool::YES
+    }
+
+    /// While a modal session runs, AppKit only enables a menu item whose target answers YES to
+    /// worksWhenModal. muda's items are their own targets, of its class MudaMenuItem, which has no
+    /// such method, so they all went grey while a question waited. Adds it to that class. (Tried
+    /// first in a small AppKit program with an item made the way muda makes them: disabled and
+    /// refusing its action while a session ran, enabled and firing with the method.)
+    pub fn menus_work_when_modal() {
+        let Some(class) = AnyClass::get(c"MudaMenuItem") else {
+            crate::logfile::write("alert: no menu item class yet, so the menu may stop while a question waits");
+            return;
+        };
+        if class.instance_method(sel!(worksWhenModal)).is_some() {
+            return;
+        }
+        let types = std::ffi::CString::new(format!("{}@:", Bool::ENCODING)).expect("no NUL in an encoding");
+        // SAFETY: the function has the signature of -(BOOL)worksWhenModal (self, _cmd, returns BOOL),
+        // which `types` spells out; adding a method to a registered class is what the runtime is for.
+        let added = unsafe {
+            let imp = std::mem::transmute::<extern "C-unwind" fn(&AnyObject, Sel) -> Bool, Imp>(works_when_modal);
+            objc2::ffi::class_addMethod((class as *const AnyClass).cast_mut(), sel!(worksWhenModal), imp, types.as_ptr())
+        };
+        crate::logfile::write(if added.as_bool() { "alert: the menus work while a question waits" } else { "alert: couldn't let the menus work while a question waits" });
+    }
+
+    /// Puts a question in the middle of the display under the pointer, a bit above centre like an
+    /// alert, not always on the main display, where someone working on another monitor may not see it.
+    fn to_pointer_screen(mtm: MainThreadMarker, window: &NSWindow) {
+        let at = NSEvent::mouseLocation();
+        let screens = NSScreen::screens(mtm);
+        let Some(screen) = screens.iter().find(|s| {
+            let f = s.frame();
+            at.x >= f.origin.x && at.x < f.origin.x + f.size.width && at.y >= f.origin.y && at.y < f.origin.y + f.size.height
+        }) else {
+            return;
+        };
+        let v = screen.visibleFrame();
+        let size = window.frame().size;
+        window.setFrameOrigin(NSPoint::new(v.origin.x + (v.size.width - size.width) / 2.0, v.origin.y + (v.size.height - size.height) * 2.0 / 3.0));
     }
 
     /// A subclass of `base` (made once, at run time) whose buttons take the first click.
@@ -174,9 +233,13 @@ mod session {
         ns_app.activateIgnoringOtherApps(true);
         let session = ns_app.beginModalSessionForWindow(&window);
         window.setLevel(LEVEL);
+        // On every desktop and on the display you're looking at, so it can't wait unseen.
+        window.setCollectionBehavior(NSWindowCollectionBehavior::CanJoinAllSpaces | NSWindowCollectionBehavior::FullScreenAuxiliary);
+        to_pointer_screen(mtm, &window);
         window.orderFrontRegardless();
         let seen = state(&ns_app, &alert);
-        crate::logfile::write(&format!("alert: open, app active {}, key {}, level {}", seen.0, seen.1, seen.2));
+        let f = window.frame();
+        crate::logfile::write(&format!("alert: open at {:.0},{:.0} (pointer at {:.0},{:.0}), app active {}, key {}, level {}", f.origin.x, f.origin.y, NSEvent::mouseLocation().x, NSEvent::mouseLocation().y, seen.0, seen.1, seen.2));
         OPEN.with(|o| *o.borrow_mut() = Some(Open { alert, session, buttons: added.len(), tx, since: std::time::Instant::now(), seen, waited: false }));
     }
 

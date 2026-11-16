@@ -2,9 +2,11 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-No more "the cat's page stopped answering" error reports after you lock your computer or wake a sleeping screen. While nobody can see the pet, the system slows it down or pauses it, and the app took that pause for the pet being stuck. Now it knows the difference, and still reports a pet that really gets stuck where you can see it.
+If Felinquent asked you something (like whether to get the local model) and you hadn't answered yet, its menus quietly stopped working: no treat, no toy, no Pet it, and no model either. Now the menus keep working while a question waits, and the question opens on the screen you're looking at, on every desktop, so it's hard to miss.
 
 ## Also new lately
+
+No more "the cat's page stopped answering" error reports after you lock your computer or wake a sleeping screen.
 
 Right-click the pet while it's up on your other monitor and its menu opens right next to it, not down at the bottom of your main screen.
 

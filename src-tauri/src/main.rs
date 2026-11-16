@@ -719,7 +719,75 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         other => control(app, other),
     })
     .build(app)?;
+    // A native question (alert.rs) would grey these out until it's answered.
+    #[cfg(target_os = "macos")]
+    alert::menus_work_during_questions();
+    // FELINQUENT_MENU_CHECK=<s>[,<s>...]: at each of those seconds after launch, has AppKit check a
+    // menu's items the way it does when a menu opens, and logs how many are enabled and whether a
+    // question is open, to see that a waiting question leaves the menus working. The menu is a
+    // small one of muda's items (the class of every item in the tray menu and the menu on the
+    // animal) put in the app menu, which an app with no Dock icon never shows.
+    #[cfg(target_os = "macos")]
+    if let Ok(spec) = std::env::var("FELINQUENT_MENU_CHECK") {
+        let times: Vec<f64> = spec.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+        let items = [MenuItem::with_id(app, "check-treat", "Give a treat", true, None::<&str>)?, MenuItem::with_id(app, "check-toy", "Throw its toy", true, None::<&str>)?];
+        let sub = Submenu::with_items(app, "Check", true, &[&items[0], &items[1]])?;
+        Menu::with_items(app, &[&sub])?.set_as_app_menu()?;
+        let handle = app.handle().clone();
+        std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            for t in times {
+                std::thread::sleep(std::time::Duration::from_secs_f64(t).saturating_sub(start.elapsed()));
+                let _ = handle.run_on_main_thread(menu_check);
+            }
+        });
+    }
     Ok(())
+}
+
+/// For FELINQUENT_MENU_CHECK: validates the app menu's items as AppKit does before showing a menu, and logs.
+#[cfg(target_os = "macos")]
+fn menu_check() {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyObject, Bool};
+    // SAFETY: plain NSApplication, NSMenu and NSMenuItem messages, sent on the main thread.
+    unsafe {
+        let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
+        let main: *mut AnyObject = msg_send![&*app, mainMenu];
+        let Some(main) = main.as_ref() else { return };
+        let top: *mut AnyObject = msg_send![main, itemAtIndex: 0isize];
+        let Some(top) = top.as_ref() else { return };
+        let ns: *mut AnyObject = msg_send![top, submenu];
+        let Some(ns) = ns.as_ref() else { return };
+        let _: () = msg_send![ns, update];
+        let n: isize = msg_send![ns, numberOfItems];
+        let mut on = 0;
+        let mut off = Vec::new();
+        for i in 0..n {
+            let item: *mut AnyObject = msg_send![ns, itemAtIndex: i];
+            let Some(item) = item.as_ref() else { continue };
+            let sep: Bool = msg_send![item, isSeparatorItem];
+            if sep.as_bool() {
+                continue;
+            }
+            let enabled: Bool = msg_send![item, isEnabled];
+            if enabled.as_bool() {
+                on += 1;
+            } else {
+                let title: *mut objc2_foundation::NSString = msg_send![item, title];
+                off.push(title.as_ref().map(|t| t.to_string()).unwrap_or_default());
+            }
+        }
+        // What a click on an item does: muda's action, sent through NSApplication, which refuses
+        // targets that don't work when modal while a question is open.
+        let first: *mut AnyObject = msg_send![ns, itemAtIndex: 0isize];
+        let sent: Bool = match first.as_ref() {
+            Some(item) => msg_send![&*app, sendAction: objc2::sel!(customAction:), to: item, from: item],
+            None => Bool::NO,
+        };
+        let modal: *mut AnyObject = msg_send![&*app, modalWindow];
+        logfile::write(&format!("menu check: question open {}, {on} items enabled, {} greyed out {:?}, a click on one goes through {}", !modal.is_null(), off.len(), off, sent.as_bool()));
+    }
 }
 
 #[cfg(target_os = "macos")]
