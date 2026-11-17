@@ -119,6 +119,48 @@ fn in_bundle() -> bool {
     exe.ancestors().nth(3).is_some_and(|a| a.extension().is_some_and(|e| e == "app"))
 }
 
+/// What the update question adds when a password will be needed.
+const PASSWORD_NOTE: &str = "Felinquent is in a folder only an administrator can change, so macOS will ask for an administrator's password.";
+
+/// macOS asked for a password for an update this run and didn't get it.
+static PASSWORD_ASKED: AtomicBool = AtomicBool::new(false);
+
+/// Putting a new version in place takes an administrator's password: the installed app is where
+/// this account can't change it (a standard account and /Applications, or an app another account
+/// copied in), so macOS asks for one. Never on Windows, where the install is the user's own.
+/// FELINQUENT_NEEDS_PASSWORD=1 says yes, to try the question.
+fn needs_password() -> bool {
+    if std::env::var("FELINQUENT_NEEDS_PASSWORD").as_deref() == Ok("1") || PASSWORD_ASKED.load(Ordering::SeqCst) {
+        return true;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if !in_bundle() {
+            return false;
+        }
+        let exe = std::env::current_exe().unwrap_or_default();
+        let Some(bundle) = exe.ancestors().nth(3) else { return false };
+        // The app is swapped with the new one, which writes in the folder that holds it and in the
+        // app's own folder (its ".." changes).
+        return !(writable(bundle) && bundle.parent().is_some_and(writable));
+    }
+    #[allow(unreachable_code)]
+    false
+}
+
+/// This account may write in that folder (permissions and access lists both count).
+#[cfg(target_os = "macos")]
+fn writable(path: &std::path::Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    extern "C" {
+        fn access(path: *const std::ffi::c_char, mode: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    const W_OK: std::ffi::c_int = 2;
+    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) else { return false };
+    // SAFETY: a valid, NUL-terminated path; access only reads it.
+    unsafe { access(c.as_ptr(), W_OK) == 0 }
+}
+
 /// Makes the menu items. Call `start` once they are in the menu.
 pub fn menu_items(app: &tauri::App) -> tauri::Result<(MenuItem<Wry>, CheckMenuItem<Wry>)> {
     let prefs = load(app.handle());
@@ -245,7 +287,18 @@ fn check(app: &AppHandle, by_hand: bool) {
             if by_hand {
                 offer(app, update);
             } else if p.auto && p.skipped != update.version {
-                quietly(app, update);
+                if needs_password() {
+                    // A quiet install would put macOS's password question up out of nowhere, and
+                    // again every half hour after a Cancel (an error report, 11 Nov 2026). It asks
+                    // like a check by hand instead, and "Later" holds it off for three days.
+                    if now() >= p.ask_after {
+                        offer(app, update);
+                    } else {
+                        logfile::write("update: it needs a password, so it waits to ask after the last \"Later\"");
+                    }
+                } else {
+                    quietly(app, update);
+                }
             }
         }
         Ok(None) => {
@@ -319,8 +372,9 @@ fn offer(app: &AppHandle, update: Update) {
 fn ask_about(app: &AppHandle, update: Update) {
     let current = app.package_info().version.to_string();
     let notes = update.body.as_deref().map(str::trim).filter(|n| !n.is_empty()).map(|n| format!("{}\n\n", short(n, 400))).unwrap_or_default();
+    let password = if needs_password() { format!("\n\n{PASSWORD_NOTE}") } else { String::new() };
     let text = format!(
-        "Version {} is ready. You have {current}.\n\n{notes}It downloads in the background, puts itself in place and restarts the cat. Your cat keeps what it learned.",
+        "Version {} is ready. You have {current}.\n\n{notes}It downloads in the background, puts itself in place and restarts the cat. Your cat keeps what it learned.{password}",
         update.version
     );
     let answer = ask(app, "A new Felinquent is out", &text, &["Update now", "Later", "Skip this version"]);
@@ -382,15 +436,31 @@ fn install(app: &AppHandle, update: Update, asked: bool) {
         }
         Err(e) => {
             logfile::write(&format!("update: install failed: {e}"));
-            crate::report::problem(app, "update", &format!("install of {} failed: {e}", update.version));
+            // macOS asked for an administrator's password to put it in place and didn't get one
+            // (Cancel, or not an administrator): nothing is broken, so no error report, and no
+            // quiet try again in half an hour with the same question.
+            let refused = cfg!(target_os = "macos") && matches!(&e, tauri_plugin_updater::Error::Io(io) if io.kind() == std::io::ErrorKind::PermissionDenied);
+            if refused {
+                PASSWORD_ASKED.store(true, Ordering::SeqCst);
+                logfile::write("update: the password question was cancelled or refused, no report");
+                change(app, |p| p.ask_after = now() + LATER);
+            } else {
+                crate::report::problem(app, "update", &format!("install of {} failed: {e}", update.version));
+            }
             *u.busy.lock().unwrap() = false;
             let _ = u.item.set_enabled(true);
             let _ = u.item.set_text(format!("Update to {}…", update.version));
             if !asked {
-                change(app, |p| p.last_check = now().saturating_sub(EVERY - RETRY));
+                if !refused {
+                    change(app, |p| p.last_check = now().saturating_sub(EVERY - RETRY));
+                }
                 return;
             }
-            let text = format!("{}\n\nThe app you have still works. You can also get the new one from the download page.", short(&e.to_string(), 300));
+            let text = if refused {
+                format!("macOS needs an administrator's password to put the new version in place, because Felinquent is in a folder only an administrator can change.\n\nThe app you have still works. You can also get the new one from the download page and put it in a folder of your own, like Applications in your home folder, where it updates without a password.")
+            } else {
+                format!("{}\n\nThe app you have still works. You can also get the new one from the download page.", short(&e.to_string(), 300))
+            };
             if ask(app, "The update didn't work", &text, &["Open the download page", "Close"]) == 0 {
                 crate::open_url(PAGE);
             }
@@ -419,6 +489,18 @@ mod tests {
         assert_eq!(p.skipped, "0.1.2");
         assert_eq!(p.last_check, 0);
         assert_eq!(p.ran, "");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_folder_of_ones_own_is_writable_and_the_system_is_not() {
+        let dir = std::env::temp_dir().join(format!("felinquent-writable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(writable(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!writable(std::path::Path::new("/System")));
+        // A build from source never needs one.
+        assert!(!needs_password());
     }
 
     #[test]

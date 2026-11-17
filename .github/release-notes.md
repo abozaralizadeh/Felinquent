@@ -2,9 +2,11 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-If Felinquent asked you something (like whether to get the local model) and you hadn't answered yet, its menus quietly stopped working: no treat, no toy, no Pet it, and no model either. Now the menus keep working while a question waits, and the question opens on the screen you're looking at, on every desktop, so it's hard to miss.
+If you unplugged a monitor while Felinquent was running, it could crash and vanish. That's fixed, and monitors can come and go as you like. And if Felinquent sits in a folder only an administrator can change, it now asks before updating and tells you macOS will want a password, instead of a password prompt popping up out of nowhere.
 
 ## Also new lately
+
+Menus keep working while Felinquent waits for an answer to a question (like whether to get the local model), and the question opens on the screen you're looking at.
 
 No more "the cat's page stopped answering" error reports after you lock your computer or wake a sleeping screen.
 

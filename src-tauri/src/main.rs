@@ -616,6 +616,11 @@ fn control(app: &AppHandle, msg: &str) {
         about::show(app);
         return;
     }
+    // Quit too, the way the menu does it (FELINQUENT_MENU_SCRIPT=30:quit, to try a clean quit).
+    if msg == "quit" {
+        app.exit(0);
+        return;
+    }
     let _ = app.emit_to("overlay", "ctl", msg.to_string());
 }
 
@@ -843,7 +848,8 @@ fn follow_spaces(app: &AppHandle) {
             let turn = SWITCHES.fetch_add(1, Ordering::SeqCst) + 1;
             let h = handle.clone();
             let _ = handle.run_on_main_thread(move || {
-                for (_, w) in h.webview_windows() {
+                // Not one kept hidden after its display went (watch_displays).
+                for (_, w) in h.webview_windows().into_iter().filter(|(_, w)| w.is_visible().ok() != Some(false)) {
                     if let Ok(ptr) = w.ns_window() {
                         // SAFETY: Tauri hands us the live NSWindow; we're on the main thread.
                         let ns: &objc2_app_kit::NSWindow = unsafe { &*(ptr as *mut objc2_app_kit::NSWindow) };
@@ -891,6 +897,16 @@ fn reveal(app: &AppHandle, turn: u64) {
     });
 }
 
+/// Puts an overlay window back on screen without making it key or bringing the app forward.
+#[cfg(target_os = "macos")]
+fn order_front(w: &WebviewWindow) {
+    if let Ok(ptr) = w.ns_window() {
+        // SAFETY: Tauri hands us the live NSWindow; we're on the main thread.
+        let ns: &objc2_app_kit::NSWindow = unsafe { &*(ptr as *mut objc2_app_kit::NSWindow) };
+        ns.orderFrontRegardless();
+    }
+}
+
 /// Turns an overlay window into a non-activating panel. macOS only shows a panel like that on top
 /// of another app's full-screen Space; a plain window, even one that joins every Space, stays off
 /// those, so the cat could never come to a desktop that is a full-screen app. A click on a panel
@@ -915,6 +931,9 @@ fn make_panel(ns: &objc2_app_kit::NSWindow) {
             logfile::write(&format!("overlay: not a panel (sizes {} > {})", class.instance_size(), obj.class().instance_size()));
             return;
         }
+        if let Ok(mut was) = PANEL_WAS.lock() {
+            was.push((obj as *const AnyObject as usize, obj.class() as *const AnyClass as usize));
+        }
         // SAFETY: the object is an NSWindow (its class a subclass of NSWindow without extra state we
         // rely on), NSPanel is an NSWindow subclass, and the new class is no bigger than the old one.
         unsafe { AnyObject::set_class(obj, class) };
@@ -925,6 +944,39 @@ fn make_panel(ns: &objc2_app_kit::NSWindow) {
     ns.setHidesOnDeactivate(false);
     // A window joins the Spaces it may be on when it is put on screen, so put it on screen again.
     ns.orderFrontRegardless();
+}
+
+/// The class each overlay window had before make_panel swapped it (window address, class address).
+/// That class is the one key-value observing made for the window ("NSKVONotifying_TaoWindow"),
+/// and its records of who watches the window hang on it. Closing a window that is still a panel
+/// makes WebKit stop watching it, key-value observing can't find the watch under the new class, and
+/// throws, which Rust can't catch, so the whole app aborted every time a monitor was unplugged
+/// (error reports from three Macs, 0.1.19 to 0.1.22).
+#[cfg(target_os = "macos")]
+static PANEL_WAS: std::sync::Mutex<Vec<(usize, usize)>> = std::sync::Mutex::new(Vec::new());
+
+/// Gives an overlay window its own class back, so it can be closed. False when that isn't safe
+/// (its class changed again since), and then the window must stay open.
+#[cfg(target_os = "macos")]
+fn unmake_panel(w: &WebviewWindow) -> bool {
+    use objc2::runtime::{AnyClass, AnyObject};
+    let Ok(ptr) = w.ns_window() else { return true };
+    // SAFETY: Tauri hands us the live NSWindow of this webview window; we're on the main thread.
+    let obj: &AnyObject = unsafe { &*(ptr as *mut AnyObject) };
+    let key = obj as *const AnyObject as usize;
+    let Some(was) = PANEL_WAS.lock().ok().and_then(|mut all| all.iter().position(|(k, _)| *k == key).map(|i| all.remove(i).1)) else {
+        // Never made a panel (FELINQUENT_PANEL=off): nothing to undo.
+        return true;
+    };
+    if Some(obj.class()) != AnyClass::get(c"FelinquentPanel") {
+        logfile::write(&format!("overlay: {} can't be closed safely, its class is {} now", w.label(), obj.class().name().to_string_lossy()));
+        return false;
+    }
+    // SAFETY: the class it was made with, which is no smaller than the panel class (make_panel checked).
+    let was: &AnyClass = unsafe { &*(was as *const AnyClass) };
+    unsafe { AnyObject::set_class(obj, was) };
+    logfile::write(&format!("overlay: {} is a {} again, closing it", w.label(), was.name().to_string_lossy()));
+    true
 }
 
 /// Puts the window exactly over a display. Setting the position the normal way makes macOS
@@ -967,15 +1019,19 @@ fn overlay_window(app: &AppHandle, i: usize) -> tauri::Result<WebviewWindow> {
         .build()
 }
 
-/// The displays the overlay covers. FELINQUENT_DISPLAYS_TEST=<s> keeps to the main display for the
-/// first s seconds, as if the others were plugged in then, to try watch_displays without a cable.
+/// The displays the overlay covers. FELINQUENT_DISPLAYS_TEST=<s>[,<s>...] keeps to the main display
+/// until the first time, as if the others were plugged in then, and goes back and forth at each time
+/// after (unplugged, plugged in again...), to try watch_displays without a cable.
 fn displays_now() -> Vec<sensors::Display> {
     static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
     let all = sensors::displays();
-    let hold = std::env::var("FELINQUENT_DISPLAYS_TEST").ok().and_then(|v| v.parse::<f64>().ok());
-    match hold {
-        Some(s) if START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() < s => all.into_iter().take(1).collect(),
-        _ => all,
+    let Ok(test) = std::env::var("FELINQUENT_DISPLAYS_TEST") else { return all };
+    let t = START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64();
+    let flips = test.split(',').filter_map(|v| v.trim().parse::<f64>().ok()).filter(|s| t >= *s).count();
+    if flips % 2 == 0 {
+        all.into_iter().take(1).collect()
+    } else {
+        all
     }
 }
 
@@ -1027,11 +1083,22 @@ fn watch_displays(app: &AppHandle) {
                 for (i, d) in displays.iter().enumerate() {
                     if let Some(w) = h.get_webview_window(&overlay_label(i)) {
                         fit_to(&w, d);
+                        // One kept hidden when its display went (see below) is back on screen.
+                        #[cfg(target_os = "macos")]
+                        if w.is_visible().ok() == Some(false) {
+                            order_front(&w);
+                        }
                     }
                 }
                 for (label, w) in h.webview_windows() {
                     let gone = label.strip_prefix("overlay-").and_then(|n| n.parse::<usize>().ok()).is_some_and(|n| n >= displays.len());
                     if gone {
+                        // A panel has to be a window again before it's closed, or the app aborts.
+                        #[cfg(target_os = "macos")]
+                        if !unmake_panel(&w) {
+                            let _ = w.hide();
+                            continue;
+                        }
                         let _ = w.destroy();
                     }
                 }
