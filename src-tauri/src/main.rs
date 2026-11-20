@@ -107,6 +107,9 @@ struct Choices {
     /// "Hide from screen sharing" is on.
     #[serde(default)]
     hide_share: bool,
+    /// "No toys or objects" is on (ADR-077): only the animal on the screen, and no toy to throw.
+    #[serde(default)]
+    no_things: bool,
     /// Characters from packages the page could read (ADR-069).
     #[serde(default)]
     packs: Vec<Pack>,
@@ -126,6 +129,9 @@ struct Ticks {
     shoo: CheckMenuItem<Wry>,
     model: CheckMenuItem<Wry>,
     hide_share: CheckMenuItem<Wry>,
+    no_things: CheckMenuItem<Wry>,
+    /// "Throw its toy", greyed out while "No toys or objects" is on.
+    toy: MenuItem<Wry>,
     /// "Model": one item per model Ollama has, rebuilt when that list changes (`listed`).
     llm: Submenu<Wry>,
     listed: std::sync::Mutex<Option<Vec<String>>>,
@@ -212,6 +218,8 @@ async fn show_choices(app: AppHandle, choices: Choices) {
     let _ = t.shoo.set_checked(choices.shoo);
     let _ = t.model.set_checked(choices.model);
     let _ = t.hide_share.set_checked(choices.hide_share);
+    let _ = t.no_things.set_checked(choices.no_things);
+    let _ = t.toy.set_enabled(!choices.no_things);
     // Characters from packages: the submenu's end is rebuilt only when they changed.
     if let Ok(mut shown) = t.packs.lock() {
         if shown.as_ref() != Some(&choices.packs) {
@@ -254,7 +262,7 @@ async fn show_choices(app: AppHandle, choices: Choices) {
     }
     let _ = t.llm.set_text(if choices.llm.is_empty() { "Model".to_string() } else { format!("Model: {}", choices.llm) });
     // Read the ticks back from the menu itself, so the log shows what the user sees.
-    let on: Vec<String> = t.picks.iter().chain([&t.panic, &t.shoo, &t.model, &t.hide_share]).filter(|i| i.is_checked().unwrap_or(false)).map(|i| i.id().as_ref().to_string()).chain(on_pack).chain(on_model).collect();
+    let on: Vec<String> = t.picks.iter().chain([&t.panic, &t.shoo, &t.model, &t.hide_share, &t.no_things]).filter(|i| i.is_checked().unwrap_or(false)).map(|i| i.id().as_ref().to_string()).chain(on_pack).chain(on_model).collect();
     logfile::write(&format!("menu ticks: {} (models: {})", on.join(" "), choices.models.len()));
 }
 
@@ -462,6 +470,8 @@ fn build_pet_menu(app: &AppHandle, cur: Option<&Choices>) -> tauri::Result<Menu<
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let treat = item("treat", "Give a treat")?;
     let toy = item("toy", "Throw its toy")?;
+    // There is no toy while "No toys or objects" is on.
+    toy.set_enabled(!cur.is_some_and(|c| c.no_things))?;
     let pet = item("pet", "Pet it")?;
     let zoomies = item("zoomies", "Zoomies!")?;
     let nap = item("nap", "Nap time")?;
@@ -666,6 +676,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let model = check("model", "Use the local model (needs Ollama)")?;
     // Kept out of screen shares (the page owns it, like the model switch).
     let hide_share = check("hideshare", "Hide from screen sharing")?;
+    // Only the animal on the screen: no toy, nothing on your windows, nothing left behind (ADR-077).
+    let no_things = check("nothings", "No toys or objects")?;
     // Filled with the models Ollama has once the page has asked it (show_choices).
     let looking = MenuItem::with_id(app, "llm-none", "Looking for models\u{2026}", false, None::<&str>)?;
     let llm = Submenu::with_items(app, "Model", true, &[&looking])?;
@@ -688,14 +700,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&version];
     #[cfg(any(target_os = "macos", windows))]
     items.push(&update);
-    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &hide_share, &line2, &model, &llm]);
+    items.extend([&line1 as &dyn IsMenuItem<Wry>, &treat, &toy, &pet, &zoomies, &nap, &character, &chaos, &panic, &shoo, &hide_share, &no_things, &line2, &model, &llm]);
     #[cfg(any(target_os = "macos", windows))]
     items.extend([&login as &dyn IsMenuItem<Wry>, &autoupdate, &reports, &usage]);
     items.extend([&line3 as &dyn IsMenuItem<Wry>, &forget, &logs, &quit]);
     let menu = Menu::with_items(app, &items)?;
 
     app.manage(Current(std::sync::Mutex::new(None)));
-    app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone(), hide_share: hide_share.clone(), llm: llm.clone(), listed: std::sync::Mutex::new(None), character: character.clone(), packs: std::sync::Mutex::new(None) });
+    app.manage(Ticks { picks: [characters, chaos_levels].concat(), panic: panic.clone(), shoo: shoo.clone(), model: model.clone(), hide_share: hide_share.clone(), no_things: no_things.clone(), toy: toy.clone(), llm: llm.clone(), listed: std::sync::Mutex::new(None), character: character.clone(), packs: std::sync::Mutex::new(None) });
     // The model setup shows its progress in this item's text.
     #[cfg(any(target_os = "macos", windows))]
     ollama::menu_item(app, &model);

@@ -241,6 +241,12 @@ export interface Settings {
   llmUrl: string;
   llmModel: string;
   size: "S" | "M" | "L";
+  /**
+   * "No toys or objects" (ADR-077): only the animal is on the screen. It brings out no toy, nothing
+   * stands on your windows, and it leaves nothing behind (no pieces, no fly, no puddles or piles).
+   * Moves that need a thing are off its menu. A treat you give still works (it gets eaten). Off by default.
+   */
+  noThings: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -253,4 +259,5 @@ export const DEFAULT_SETTINGS: Settings = {
   llmUrl: "http://localhost:11434",
   llmModel: "gemma3:1b",
   size: "M",
+  noThings: false,
 };

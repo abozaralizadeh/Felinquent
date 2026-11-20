@@ -43,6 +43,8 @@ Everything is in the cat icon in the menu bar. A tick shows what's on right now.
 | Chaos level | Chill, Normal or Gremlin |
 | Panic: hide the cat | Hides it until you click again. Also Cmd+Opt+Shift+P |
 | Shoo for 1 hour | Keeps it away for an hour. Click again to call it back early |
+| Hide from screen sharing | Keeps it out of your screen shares. On Windows it's left out of every capture; on a Mac it also goes away while your camera or mic is on |
+| No toys or objects | Only the animal on your screen: no toy, no mugs or plants on your windows, nothing it leaves behind (no puddles, no pieces, no fly). The moves that need one of those are skipped and "Throw its toy" is greyed out. A treat still works. Off by default |
 | Use the local model | Lets a small local model pick what the cat wants to do. Needs [Ollama](https://ollama.com) with `gemma3:1b`. If they're missing when you turn it on, the app offers to set them up: it asks first, shows the sizes (Ollama about 230 MB, the model about 815 MB), checks the download and shows the progress right here in the menu. Without it, or with this off, a rules brain does the same job |
 | Model | Every model your Ollama has, the one in use ticked. Pick any of them: `ollama pull <name>` in Terminal, and it shows up here within two minutes. Small ones (1 to 4B) answer in time; a big one gets 20 s per answer and the rules fill in while it thinks |
 | Start at login | Opens Felinquent when you log in. On from the first run since 0.1.16; untick it and it stays off, updates included |

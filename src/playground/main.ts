@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS } from "../core/types";
 import { drawCat } from "./draw";
 import { drawMarks, drawMessFront, drawPropsOnly, preloadProps } from "./mess-draw";
 import { PROP_KINDS } from "../core/mess";
+import { THING_MOVES } from "../core/rules";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -469,6 +470,16 @@ $("shoo").addEventListener("click", () => {
 $("chaos").addEventListener("change", (e) => cat.updateSettings({ chaos: (e.target as HTMLSelectElement).value as ChaosLevel }));
 $("smart").addEventListener("change", (e) => cat.updateSettings({ smartTargeting: (e.target as HTMLInputElement).checked }));
 $("thoughts").addEventListener("change", (e) => cat.updateSettings({ thoughtBubbles: (e.target as HTMLInputElement).checked }));
+// "No toys or objects" (ADR-077): only the animal on the screen. ?nothings=1 starts with it on.
+$("nothings").addEventListener("change", (e) => {
+  const on = (e.target as HTMLInputElement).checked;
+  cat.updateSettings({ noThings: on });
+  log(`no toys or objects ${on ? "on" : "off"}`);
+});
+if (new URLSearchParams(location.search).has("nothings")) {
+  ($("nothings") as HTMLInputElement).checked = true;
+  cat.updateSettings({ noThings: true });
+}
 $("activity").addEventListener("change", (e) => (state.activity = (e.target as HTMLSelectElement).value as Activity));
 $("warp").addEventListener("input", (e) => ($("warpv").textContent = `${(e.target as HTMLInputElement).value}x`));
 let characterId = "tabby";
@@ -517,6 +528,10 @@ $("treat").addEventListener("click", () => {
 });
 /** Drops its toy a little way off, as if you threw it there (you can also drag the toy with the mouse). */
 function throwToy(): void {
+  if (cat.settings.noThings) {
+    log("no toy to throw: No toys or objects is on");
+    return;
+  }
   const w = buildWorld();
   const b = cat.executor.body;
   const side = b.x > w.screen.w / 2 ? -1 : 1;
@@ -527,7 +542,7 @@ $("throwtoy").addEventListener("click", throwToy);
 
 // ---- the menu on the animal (right-click): the same items as in the Mac app ----
 const petMenu = $("petmenu");
-type MenuEntry = { label: string; on?: boolean; run?: () => void; sub?: MenuEntry[] } | "-";
+type MenuEntry = { label: string; on?: boolean; off?: boolean; run?: () => void; sub?: MenuEntry[] } | "-";
 function ask(what: Ask): void {
   cat.ask(buildWorld(), what);
   log(`you asked: ${what}`);
@@ -540,7 +555,8 @@ function petMenuItems(): MenuEntry[] {
   };
   return [
     { label: "Give a treat", run: () => $("treat").click() },
-    { label: "Throw its toy", run: throwToy },
+    // Greyed out while "No toys or objects" is on, like the Mac menu.
+    cat.settings.noThings ? { label: "Throw its toy", off: true } : { label: "Throw its toy", run: throwToy },
     { label: "Pet it", run: () => ask("pet") },
     { label: "Zoomies!", run: () => ask("zoomies") },
     { label: "Nap time", run: () => ask("nap") },
@@ -560,7 +576,7 @@ function menuList(entries: MenuEntry[]): DocumentFragment {
       continue;
     }
     const el = document.createElement("div");
-    el.className = `mi${e.on ? " on" : ""}${e.sub ? " has" : ""}`;
+    el.className = `mi${e.on ? " on" : ""}${e.off ? " off" : ""}${e.sub ? " has" : ""}`;
     el.setAttribute("role", "menuitem");
     el.append(e.label);
     if (e.sub) {
@@ -616,6 +632,8 @@ $("addwin").addEventListener("click", addWindow);
 preloadProps();
 // Mischief on demand, to see it without waiting for the cat to feel like it.
 const doNow = (intent: "knock_off" | "claw" | "hunt" | "zoomies" | "knock_toy" | "play_cursor" | "follow" | "pee" | "poop", target: string): void => {
+  // A move about a thing isn't on its menu while "No toys or objects" is on, so not here either.
+  if (cat.settings.noThings && THING_MOVES.has(intent)) return log(`no ${intent}: No toys or objects is on`);
   start({ intent, target, approach: intent === "zoomies" ? "run" : "walk", stay_sec: 20, mood: "smug" });
   log(`you asked for ${intent}`);
 };
@@ -669,8 +687,8 @@ $("putmug").addEventListener("click", () => {
   const win = w.windows[Math.floor(Math.random() * w.windows.length)];
   if (!win) return;
   const kind = PROP_KINDS[Math.floor(Math.random() * PROP_KINDS.length)] ?? "mug";
-  cat.mess.place(kind, win.id, win.bounds.x + win.bounds.w * (0.3 + Math.random() * 0.4), w.nowMs);
-  log(`a ${kind} on ${win.id}`);
+  const put = cat.mess.place(kind, win.id, win.bounds.x + win.bounds.w * (0.3 + Math.random() * 0.4), w.nowMs);
+  log(put ? `a ${kind} on ${win.id}` : "no mug: No toys or objects is on");
 });
 $("knock").addEventListener("click", () => {
   const ids = cat.mess.windowsWithProps();

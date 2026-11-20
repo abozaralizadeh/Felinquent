@@ -676,6 +676,7 @@ export class Mind {
       toy: this.d.toy?.() ?? null,
       scene: this.d.scene?.() ?? [],
       potty: { ...this.potty },
+      noThings: this.settings.noThings,
     };
   }
 
@@ -691,6 +692,12 @@ export class Mind {
       this.potty = { pee: this.pottyRng.range(0, 0.6), poop: this.pottyRng.range(0, 0.5) };
     }
     const hours = POTTY_HOURS[this.settings.chaos];
+    // With "No toys or objects" on it never has to go (ADR-077): nothing is left on the screen.
+    if (this.settings.noThings) {
+      this.potty = { pee: 0, poop: 0 };
+      this.pottyNoted = false;
+      return;
+    }
     if (!hours) return;
     const [kp, kq] = instinctOf(this.personality).potty ?? [1, 1];
     const slow = this.sleeping ? 0.4 : 1;

@@ -382,7 +382,7 @@ async function main(): Promise<void> {
   });
 
   // What the user chose and what the cat remembers survive a restart (local files only).
-  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number; ollamaModel?: string; hideShare?: boolean } = {};
+  let saved: { character?: string; chaos?: "chill" | "normal" | "gremlin"; model?: boolean; modelAskedMs?: number; ollamaModel?: string; hideShare?: boolean; noThings?: boolean } = {};
   try {
     const text = await invoke<string | null>("load_state", { name: "settings.json" });
     if (text) saved = JSON.parse(text) as typeof saved;
@@ -399,7 +399,8 @@ async function main(): Promise<void> {
   await loadPacks();
   let character = characterById(saved.character ?? DEFAULT_CHARACTER_ID);
   const cat = new Cat({
-    settings: { chaos: saved.chaos ?? "normal" },
+    // "No toys or objects" (ADR-077): off unless the user turned it on.
+    settings: { chaos: saved.chaos ?? "normal", noThings: saved.noThings ?? false },
     personality: character.personality,
     memory,
     log: (message, fields) => say(`${message} ${JSON.stringify(fields ?? {})}`),
@@ -440,7 +441,7 @@ async function main(): Promise<void> {
   }
   if (hideShare) void applyHideShare();
   const saveSettings = (): void =>
-    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel, modelAskedMs, ollamaModel, hideShare }) }).catch(() => {});
+    void invoke("save_state", { name: "settings.json", text: JSON.stringify({ character: character.id, chaos: cat.settings.chaos, model: useModel, modelAskedMs, ollamaModel, hideShare, noThings: cat.settings.noThings }) }).catch(() => {});
   // The menu bar ticks what is current. This page owns that state, so it tells the menu after every change.
   const showChoices = (): void =>
     void invoke("show_choices", {
@@ -453,6 +454,7 @@ async function main(): Promise<void> {
         llm: ollamaModel,
         models: models.map((m) => m.name),
         hide_share: hideShare,
+        no_things: cat.settings.noThings,
         packs: allCharacters()
           .filter((c) => c.pack)
           .map((c) => ({ id: c.id, name: c.name })),
@@ -583,6 +585,11 @@ async function main(): Promise<void> {
       hideShare = !hideShare;
       saveSettings();
       void applyHideShare();
+    } else if (msg === "nothings") {
+      // "No toys or objects": only the animal on the screen. Turned on, what lies about goes at once.
+      cat.updateSettings({ noThings: !cat.settings.noThings });
+      saveSettings();
+      say(`no toys or objects ${cat.settings.noThings ? "on" : "off"}`);
     } else if (msg.startsWith("llm:")) {
       // Picked in the menu's Model list: use that model from now on (and the local model at all).
       const name = msg.slice(4);
@@ -625,7 +632,7 @@ async function main(): Promise<void> {
       say("treat");
     } else if (msg === "toy") {
       cat.throwToy(world);
-      say("toy thrown");
+      say(cat.settings.noThings ? "no toy to throw: No toys or objects is on" : "toy thrown");
     } else if (msg === "report-test") {
       // FELINQUENT_REPORT_CRASH=page: an error the page doesn't catch, to try the error reports.
       setTimeout(() => {

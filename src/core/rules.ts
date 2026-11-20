@@ -43,7 +43,34 @@ export interface RulesContext {
   scene?: SeenThing[];
   /** How badly it has to pee and to poop (mind.ts, ADR-048): from 1 it has to go. */
   potty?: { pee: number; poop: number };
+  /** "No toys or objects" is on (ADR-077): nothing in THING_MOVES is on the menu. */
+  noThings?: boolean;
 }
+
+/**
+ * Moves that are about a thing on the screen (ADR-077): its toy, something on a window, the fly, a
+ * puddle or a pile, and the animals' own props (the chihuahua's blanket, the raccoon's snack box and
+ * rubbish, the squirrel's nut, the fox's dive into a mound, a dog chewing its toy). With "No toys or
+ * objects" on they are never on the menu. Moves where the thing is only a side effect (a dig, the
+ * raccoon washing its hands) stay, and the mess just doesn't make the thing (Mess.bare).
+ */
+export const THING_MOVES: ReadonlySet<IntentName> = new Set<IntentName>([
+  "knock_off",
+  "knock_toy",
+  "fetch",
+  "carry_toy",
+  "stash_toy",
+  "nose_toy",
+  "hunt",
+  "pee",
+  "poop",
+  "chew",
+  "cache",
+  "burrow",
+  "raid",
+  "nut",
+  "mouse",
+]);
 
 const ACTIVE: IntentName[] = ["chase_cursor", "fetch", "carry_toy", "invite_play", "play_cursor", "follow", "knock_off", "claw", "hunt", "wander", "zoomies", "chase_tail", "stalk", "swat", "knock_toy", "perch", "tour", "sit_on", "sit_on_video", "peek", "meow", "headbutt", "nudge_window", "keyboard_walk", "chatter", "cross", "block_dock", "bounce", "tumble", "spook", "sniff", "dig", "roll"];
 /** How much each chaos level changes napping and active behaviors. */
@@ -262,7 +289,9 @@ export function candidates(ctx: RulesContext): Option[] {
   // picks from the menu by its own odds too, so a low score alone would still let it through. The
   // built-in animals' own zeros only make a move rare, as before.
   const never = ctx.personality.weights ?? {};
-  return out.filter((o) => never[o.intent] !== 0 && (!o.trick || (o.kind !== undefined && best.get(o.kind) === o))).sort((x, y) => y.score - x.score);
+  return out
+    .filter((o) => never[o.intent] !== 0 && !(ctx.noThings && THING_MOVES.has(o.intent)) && (!o.trick || (o.kind !== undefined && best.get(o.kind) === o)))
+    .sort((x, y) => y.score - x.score);
 }
 
 export function defaultStay(intent: IntentName, chaos: ChaosLevel, rng: Rng): number {

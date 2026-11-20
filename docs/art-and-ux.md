@@ -184,6 +184,8 @@ Shoo for 1 hour      (ticked while it lasts)
 Panic: hide the cat  (ticked while hidden)
 ```
 
+**No toys or objects (0.1.24).** A switch in the menu bar menu, under Hide from screen sharing, off by default. Ticked, only the animal is drawn: no toy, no clutter on window tops, no props of its own, no pieces, no fly, no puddles or piles. "Throw its toy" is greyed out in both menus while it's on. Claw marks, cracks and the little puffs (fur, dust, crumbs) stay, because they're marks and effects that fade by themselves, not things lying about.
+
 **The About window (0.1.13).** The version line at the top of the menu is clickable ("Felinquent 0.1.13…") and opens a small window, 360 by 510 points, in the site's colours, light or dark with the system:
 
 ```text

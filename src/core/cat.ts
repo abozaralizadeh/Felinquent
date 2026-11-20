@@ -5,7 +5,7 @@ import { Governor } from "./governor";
 import { InMemoryMemory, type Memory } from "./memory";
 import { Mind, toyName, treatName, type MindEvent, type Ask } from "./mind";
 import { RulesBrain, type Brain } from "./brain";
-import type { ToyView } from "./rules";
+import { THING_MOVES, type ToyView } from "./rules";
 import { DEFAULT_PERSONALITY, type Personality } from "./personality";
 import { ReflexDetector, type PointerSample, type ReflexEvent, type ReflexKind } from "./reflexes";
 import { seeded, type Rng } from "./rng";
@@ -163,6 +163,7 @@ export class Cat {
     // The mess has its own dice, so adding it doesn't change what the animal does in a seeded run.
     this.messRng = seeded(7919);
     this.mess = new Mess(this.messRng);
+    this.mess.bare = settings.noThings;
     this.mess.scale = this.executor.size.h / 90;
     this.mess.toyKind = (opts.personality ?? DEFAULT_PERSONALITY).toy ?? "yarn";
     this.fur = (opts.personality ?? DEFAULT_PERSONALITY).fur ?? this.fur;
@@ -245,7 +246,27 @@ export class Cat {
   }
 
   updateSettings(patch: Partial<Settings>): void {
+    const before = this.settings.noThings;
     this.governor.setSettings({ ...this.governor.getSettings(), ...patch });
+    if (this.settings.noThings !== before) this.applyNoThings(this.settings.noThings);
+  }
+
+  /**
+   * "No toys or objects" (ADR-077). Turned on, every thing goes at once (its toy, what stands on
+   * windows, the pieces, the fly, puddles and piles), and a move that is about a thing stops there.
+   */
+  private applyNoThings(on: boolean): void {
+    this.mess.bare = on;
+    if (!on) return;
+    this.mess.clearThings();
+    this.executor.carrying = null;
+    this.blanketId = null;
+    this.snackId = null;
+    const doing = this.executor.intent?.intent;
+    if (doing && THING_MOVES.has(doing)) {
+      this.executor.interrupt();
+      this.mind.notifyDone();
+    }
   }
 
   /** Where clicks are blocked (only while the cat sits on something). */
@@ -613,6 +634,7 @@ export class Cat {
         this.mess.puff("drop", ev.x + dir * sz.w * 0.45, ev.y - 4 * sc, 7, now, { spread: 70, up: 190, color: "#78bfea", overMs: 700, size: 2.2, floor: ev.y });
         break;
       case "item": {
+        if (this.mess.bare) break;
         const m = this.executor.mouth();
         const p = this.mess.holdItem(f.kind, m.x, m.y, now);
         this.executor.carrying = p.id;
@@ -644,6 +666,7 @@ export class Cat {
         break;
       }
       case "trash":
+        if (this.mess.bare) break;
         this.mess.throwOut(this.messRng.pick(TRASH_KINDS), ev.x - dir * sz.w * 0.1, ev.y - sz.h * 0.75, (-dir) as 1 | -1, now);
         break;
       case "snack_done":
@@ -723,6 +746,8 @@ export class Cat {
 
   /** "Throw its toy" (the menu): it drops out of your hand at the cursor, out of hiding if it was buried. */
   throwToy(world: WorldSnapshot): void {
+    // "No toys or objects" is on: there is no toy to throw (the menu greys it out too).
+    if (this.settings.noThings) return;
     if (this.executor.carrying) this.executor.carrying = null;
     if (this.mess.toss(world.cursor.x, world.cursor.y, world.nowMs)) this.toyThrownMs = world.nowMs;
   }

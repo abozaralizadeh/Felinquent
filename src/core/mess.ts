@@ -376,6 +376,12 @@ export class Mess {
   private outbox: MessEvent[] = [];
   /** Size of everything, with the animal's size (S, M, L). */
   scale = 1;
+  /**
+   * "No toys or objects" (ADR-077): nothing new is put on the screen (no clutter on windows, no toy,
+   * no own props, no fly, no puddles, piles or flying earth). A treat you give still comes, and so do
+   * the marks (claws, cracks, a bite) and the little puffs that are gone in a second.
+   */
+  bare = false;
   /** The left and right edges of all the displays: things bounce off them instead of falling out of sight. */
   private wallL = -Infinity;
   private wallR = Infinity;
@@ -393,6 +399,14 @@ export class Mess {
     this.fly = null;
     this.spots = [];
     this.puffs = [];
+  }
+
+  /** "No toys or objects" turned on: every thing goes at once, the marks stay and fade as usual. */
+  clearThings(): void {
+    this.props = this.props.filter((p) => p.treat);
+    this.shards = [];
+    this.fly = null;
+    this.spots = [];
   }
 
   /**
@@ -437,6 +451,8 @@ export class Mess {
   unstash(st: MessState | undefined, add = false): void {
     if (!add) this.clear();
     if (!st) return;
+    // Put away before "No toys or objects" was turned on: the things stay away.
+    if (this.bare) st = { ...st, props: st.props.filter((p) => p.treat), shards: [], fly: null, spots: [] };
     // Another animal's toy, left there before you switched animals, is put away, and so is a
     // second toy (it has one, and it is out on another display already).
     const hasToy = this.props.some((p) => p.toy);
@@ -455,7 +471,7 @@ export class Mess {
    */
   relieve(kind: SpotKind, windowId: string | null, x: number, nowMs: number, sec = 5): Spot | null {
     const world = this.world;
-    if (!world) return null;
+    if (!world || this.bare) return null;
     const win = windowId ? world.windows.find((w) => w.id === windowId) : undefined;
     if (windowId && !win) return null;
     const y = win ? win.bounds.y : this.floorAt(x, world);
@@ -588,6 +604,7 @@ export class Mess {
 
   /** Puts a thing on a window top now (also used by tests and the playground). */
   place(kind: PropKind, windowId: string, x: number, nowMs: number): Prop | null {
+    if (this.bare) return null;
     const world = this.world;
     const win = world?.windows.find((w) => w.id === windowId);
     if (!win) return null;
@@ -682,6 +699,7 @@ export class Mess {
 
   /** A fly comes in from that side and buzzes about (x, y). */
   flyIn(x: number, y: number, from: 1 | -1, willBeCaught: boolean, nowMs: number): void {
+    if (this.bare) return;
     this.fly = { x: x + from * 320, y: y - 160, homeX: x, homeY: y, t: 0, state: "buzz", willBeCaught, bornMs: nowMs };
   }
 
@@ -961,6 +979,7 @@ export class Mess {
    * screen nearer the animal, as if it had been under the sofa all along.
    */
   bringToy(nearX: number, nowMs: number): Prop | null {
+    if (this.bare) return null;
     const have = this.toy;
     if (have) return have;
     // Buried: it digs it up again instead.
@@ -1197,6 +1216,7 @@ export class Mess {
   }
 
   private spawn(world: WorldSnapshot, chaos: ChaosLevel, catX: number | null): void {
+    if (this.bare) return;
     const now = world.nowMs;
     const c = CLUTTER[chaos];
     // Chill: no clutter. What stands about fades away.
@@ -1397,7 +1417,7 @@ export class Mess {
    */
   putOwn(kind: PropKind, windowId: string | null, x: number, nowMs: number, stayMs = 120_000): Prop | null {
     const world = this.world;
-    if (!world) return null;
+    if (!world || this.bare) return null;
     const win = windowId ? world.windows.find((w) => w.id === windowId) : undefined;
     if (windowId && !win) return null;
     const p: Prop = {
@@ -1496,6 +1516,7 @@ export class Mess {
 
   /** Earth or water flung out: dir is the way it flies (behind a digging animal), n bits. */
   spray(kind: "soil" | "water", x: number, y: number, dir: 1 | -1, n: number, nowMs: number): void {
+    if (this.bare) return;
     for (let i = 0; i < n && this.shards.length < MAX_SHARDS; i++) {
       const s = this.rng.range(2, 4.5) * this.scale;
       this.shards.push({

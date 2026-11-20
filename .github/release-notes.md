@@ -2,9 +2,11 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-If you unplugged a monitor while Felinquent was running, it could crash and vanish. That's fixed, and monitors can come and go as you like. And if Felinquent sits in a folder only an administrator can change, it now asks before updating and tells you macOS will want a password, instead of a password prompt popping up out of nowhere.
+Want only the pet on your screen? Tick **No toys or objects** in the menu. It stops bringing out its toy, nothing shows up on your windows anymore, and it leaves nothing behind: no mess, no broken pieces, no puddles. It's off by default, so nothing changes unless you turn it on. Treats still work (it eats them).
 
 ## Also new lately
+
+If you unplugged a monitor while Felinquent was running, it could crash and vanish. That's fixed, and monitors can come and go as you like. And if Felinquent sits in a folder only an administrator can change, it now asks before updating and tells you macOS will want a password, instead of a password prompt popping up out of nowhere.
 
 Menus keep working while Felinquent waits for an answer to a question (like whether to get the local model), and the question opens on the screen you're looking at.
 
