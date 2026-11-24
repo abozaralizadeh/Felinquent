@@ -197,6 +197,7 @@ The nine built-in animals are drawn on sheets of nine poses (three rows of three
    ```bash
    tools/build-sprites.py art all --pack pickle=biscuit --out build/frames
    ```
+   If your character wears green (a green sweater, a plant it holds), run this with `FELINQUENT_CUT_INSIDE=1` in front. Then only the pixels right next to the background are cut away and everything inside the outline stays solid; without it green clothes come out a little see-through and greyed.
 3. **Make the blink** from the sitting drawing with the eyes closed:
    ```bash
    tools/patch-blink.py build/frames/pickle

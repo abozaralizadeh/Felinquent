@@ -2,7 +2,7 @@
 """Cuts a frame sheet on a flat green background into transparent WebP sprites.
 
 Usage: tools/cut-sprites.py <sheet.png> <out-dir> name1 ... nameN
-           [--scale 0.6] [--ref-dim w|h --ref-val N --ref-count K | --ref-pick 1,5] [--solo] [--cells 3]
+           [--scale 0.6] [--ref-dim w|h --ref-val N --ref-count K | --ref-pick 1,5] [--solo] [--cells 3] [--inside]
 
 Frames are read in grid order (left to right, top to bottom). Rows are found from where the
 frames sit, so a sheet can have any number of columns and a short last row. A name of "-" skips
@@ -11,6 +11,7 @@ mass sits in the middle (so a walk cycle does not slide). With --ref-dim and --r
 width or height of the first K kept frames is scaled to N (in sheet pixels), so sheets drawn at
 slightly different sizes match. --ref-pick names the grid positions to measure instead.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -47,6 +48,9 @@ if solo:
 # figure (a planted flag, juggling balls, a cloud overhead) goes with the figure nearest to it, so
 # props stay. Nothing is dropped as a loose bit then.
 cells = int(opt("--cells", "0") or 0)
+inside = "--inside" in args or os.environ.get("FELINQUENT_CUT_INSIDE") == "1"
+if "--inside" in args:
+    args.remove("--inside")
 if cells:
     solo = False
 sheet, out_dir, names = Path(args[0]), Path(args[1]), args[2:]
@@ -60,9 +64,18 @@ spill = g - np.maximum(r, b)
 alpha = np.clip(1.0 - (spill - 30.0) / 90.0, 0.0, 1.0)
 alpha[spill < 30.0] = 1.0
 
+# --inside (or FELINQUENT_CUT_INSIDE=1): for a character who wears green (a green sweater, a plant
+# in her hands). Only pixels within a few pixels of the bright background are keyed; everything
+# further in keeps full alpha and its own colour, because the bold outline always sits between the
+# two. Without it a green sweater comes out a little see-through and greyed.
+near = None
+if inside:
+    near = ndimage.binary_dilation((spill > 120) & (g > 150), iterations=3)
+    alpha[~near] = 1.0
+
 # Remove green tint from soft edge pixels.
 cap = np.maximum(r, b)
-g2 = np.where(spill > 0, np.minimum(g, cap + 6.0), g)
+g2 = np.where((spill > 0) & (near if near is not None else True), np.minimum(g, cap + 6.0), g)
 rgb = np.stack([r, g2, b], axis=-1)
 
 mask = alpha > 0.5
