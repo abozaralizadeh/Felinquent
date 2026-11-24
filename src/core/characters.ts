@@ -40,7 +40,21 @@ export interface Character {
   personality: Personality;
   /** Added from a package by the user (ADR-069), not built in. */
   pack?: boolean;
+  /** Where it goes in the menus (ADR-078): "Cats", "Dogs", "Wild ones", or a package's own ("Big tech"). */
+  category?: string;
+  /** A package's copy number (a catalog offers a newer one). */
+  version?: number;
 }
+
+/** The menus' groups of the built-in animals, in order (ADR-078). A package names its own, else "Yours". */
+export const BUILTIN_CATEGORY: Readonly<Record<string, string>> = {
+  tabby: "Cats", inky: "Cats", pearl: "Cats",
+  biscuit: "Dogs", chili: "Dogs",
+  mochi: "Wild ones", bandit: "Wild ones", clover: "Wild ones", hazel: "Wild ones",
+};
+export const CATEGORY_ORDER: readonly string[] = ["Cats", "Dogs", "Wild ones"];
+/** The group a character goes in. */
+export const categoryOf = (c: Pick<Character, "id" | "category" | "pack">): string => BUILTIN_CATEGORY[c.id] ?? c.category ?? "Yours";
 
 const stock = (p: Omit<Personality, "voice"> & { voice?: Personality["voice"] }): Personality => p;
 

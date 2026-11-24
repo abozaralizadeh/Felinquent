@@ -2,7 +2,8 @@ import { FakeLlmClient, LlmBrain, OllamaClient, isLocalUrl, type Brain } from ".
 import { Cat } from "../core/cat";
 import { generateDiary, InMemoryMemory } from "../core/memory";
 import type { Ask, MindEvent } from "../core/mind";
-import { allCharacters, characterById, type Character } from "../core/characters";
+import { actIntent } from "../core/acts";
+import { allCharacters, categoryOf, characterById, type Character } from "../core/characters";
 import { loadDevPack } from "./dev-pack";
 import { ARCHETYPES, DEFAULT_PERSONALITY } from "../core/personality";
 import { seeded } from "../core/rng";
@@ -491,7 +492,19 @@ const devPack = await loadDevPack().catch((e: unknown) => (console.warn(String(e
 function label(c: Character): string {
   return c.pack ? c.name : `${c.name} (${c.species})`;
 }
-for (const c of allCharacters()) characterSelect.add(new Option(label(c), c.id));
+// Grouped like the app's menu: Cats, Dogs, Wild ones, then a package's own category (ADR-078).
+const groups = new Map<string, HTMLOptGroupElement>();
+for (const c of allCharacters()) {
+  const name = categoryOf(c);
+  let g = groups.get(name);
+  if (!g) {
+    g = document.createElement("optgroup");
+    g.label = name;
+    groups.set(name, g);
+    characterSelect.append(g);
+  }
+  g.append(new Option(label(c), c.id));
+}
 function pickCharacter(id: string): void {
   const c = characterById(id);
   characterId = c.id;
@@ -809,6 +822,16 @@ if (scene) {
       const target = pick === "nibble" || pick === "cling" ? win.id : pick === "raid" ? "dock" : "here";
       start({ intent: pick, target, approach: "walk", stay_sec: 20, mood: "playful" });
       log(`you asked for ${pick}`);
+    }
+    else if (scene === "act") {
+      // ?scene=act&do=<move> does one of a package's own moves (ADR-078), with its first line.
+      const p = characterById(characterId).personality;
+      const want = new URLSearchParams(location.search).get("do");
+      const a = p.acts?.find((x) => x.id === want) ?? p.acts?.[0];
+      if (a) {
+        start(actIntent(a, p.poses ?? {}, { intent: "act", act: a.id, target: "here", approach: "walk", stay_sec: 10, mood: "playful" }, a.say[0] ?? null));
+        log(`you asked for ${a.id}`);
+      } else log("this character has no moves of its own");
     }
     else if (scene === "trick") {
       const seed = Number(new URLSearchParams(location.search).get("seed") ?? "0");

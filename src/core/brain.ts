@@ -1,3 +1,4 @@
+import { optionName } from "./acts";
 import { pickBout, type BoutKind } from "./bouts";
 import { intentFromOption, type RulesContext } from "./rules";
 import { buildPlanPrompt, buildPlanSchema, buildPlanSummary, buildSchema, buildSummary, buildSystemPrompt, type BoutChoice, type IntentSchema } from "./summary";
@@ -131,7 +132,8 @@ export function parseIntent(text: string, options: Option[]): Intent | null {
   }
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  const option = options.find((o) => o.intent === r.intent);
+  // Its own moves go by their own names ("keynote"), the rest by the intent's.
+  const option = options.find((o) => optionName(o) === r.intent);
   if (!option) return null;
   const target = typeof r.target === "string" && option.targets.includes(r.target) ? r.target : (option.targets[0] as string);
   const approach = typeof r.approach === "string" && APPROACH_SET.has(r.approach) ? (r.approach as Approach) : "walk";
@@ -139,6 +141,7 @@ export function parseIntent(text: string, options: Option[]): Intent | null {
   const stay = typeof r.stay_sec === "number" ? r.stay_sec : 20;
   const out: Intent = { intent: option.intent as IntentName, target, approach, stay_sec: stay, mood };
   if (option.trick) out.trick = option.trick;
+  if (option.act) out.act = option.act;
   if (typeof r.thought === "string" && r.thought.trim()) out.thought = r.thought;
   return out;
 }
@@ -203,8 +206,8 @@ export function parsePlan(text: string, bouts: BoutChoice[]): Plan | null {
   // bout; then the bout follows its first step, so the label and the steps agree.
   let chosen = bouts.find((b) => b.kind === bout) as BoutChoice;
   const first = Array.isArray(r.steps) ? (r.steps[0] as Record<string, unknown> | undefined)?.intent : undefined;
-  if (typeof first === "string" && !chosen.options.some((o) => o.intent === first)) {
-    const other = bouts.find((b) => b.options.some((o) => o.intent === first));
+  if (typeof first === "string" && !chosen.options.some((o) => optionName(o) === first)) {
+    const other = bouts.find((b) => b.options.some((o) => optionName(o) === first));
     if (other) chosen = other;
   }
   const all = chosen.options;
@@ -214,7 +217,7 @@ export function parsePlan(text: string, bouts: BoutChoice[]): Plan | null {
     if (typeof st !== "object" || st === null) continue;
     const one = parseIntent(JSON.stringify({ mood, ...st }), all);
     // "nap, nap, nap" is one nap, and "hunt, chase_tail, hunt" is a hunt and a tail chase.
-    if (one && !steps.some((x) => x.intent === one.intent)) steps.push(one);
+    if (one && !steps.some((x) => optionName(x) === optionName(one))) steps.push(one);
   }
   if (steps.length === 0) return null;
   const out: Plan = { bout: chosen.kind, steps };
@@ -292,12 +295,13 @@ export class LlmBrain implements Brain {
       settings: ctx.settings,
       bouts,
       meanings: ctx.personality.meanings,
+      ...(ctx.personality.acts ? { acts: ctx.personality.acts } : {}),
       memory: ctx.memory,
       happened: ctx.happened,
       catWhere: ctx.catWhere,
       catDoing: ctx.catDoing,
       lastBout: ctx.lastBout,
-      recent: ctx.rules.recent,
+      recent: [...(ctx.rules.recentNames ?? ctx.rules.recent)],
       busyForMin: ctx.busyForMin,
       things: ctx.things ?? [],
       catPos: ctx.rules.catPos,

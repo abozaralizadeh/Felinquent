@@ -199,7 +199,9 @@ export type IntentName =
   | "nibble"
   | "nut"
   | "cling"
-  | "leave";
+  | "leave"
+  /** One of the character's own moves from its package (acts.ts, ADR-078). Which one is in Intent.act. */
+  | "act";
 
 export interface Intent {
   intent: IntentName;
@@ -217,6 +219,8 @@ export interface Intent {
   trick?: string;
   /** "follow" the cursor because you hold a treat: it begs under it instead of just tagging along. */
   treat?: boolean;
+  /** For "act": which of its own moves (an id from its package, acts.ts). */
+  act?: string;
 }
 
 export interface Option {
@@ -227,6 +231,10 @@ export interface Option {
   /** For "trick": which trick, and the bout it belongs to. */
   trick?: string;
   kind?: "rest" | "explore" | "play" | "social" | "mischief";
+  /** For "act": which of its own moves (acts.ts). */
+  act?: string;
+  /** Everything the move asks for is true right now (acts.ts actFit), for the model. */
+  fits?: boolean;
 }
 
 export interface Settings {

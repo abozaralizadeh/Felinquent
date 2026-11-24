@@ -1,3 +1,4 @@
+import { optionName, type ActDef } from "./acts";
 import { BOUT_MEANING, type BoutKind } from "./bouts";
 import type { Personality } from "./personality";
 import type { ToyView } from "./rules";
@@ -57,7 +58,7 @@ export function buildSummary(args: {
       trust: Math.round(needs.trust),
     },
     memory: args.memory.slice(0, 5),
-    options: options.map((o) => o.intent),
+    options: options.map(optionName),
   };
 }
 
@@ -73,7 +74,7 @@ export function buildSchema(options: Option[]): IntentSchema {
   return {
     type: "object",
     properties: {
-      intent: { type: "string", enum: options.map((o) => o.intent) },
+      intent: { type: "string", enum: options.map(optionName) },
       target: { type: "string", enum: targets },
       approach: { type: "string", enum: ["walk", "saunter", "sneak", "run"] },
       stay_sec: { type: "integer", minimum: 5, maximum: 300 },
@@ -135,6 +136,8 @@ export interface PlanSummary {
   /** The bout it plans gets each move with what it means; the others just the names. */
   bouts: Record<string, { fits: number; means: string; options: string[] | Record<string, string> }>;
   suggested: BoutKind;
+  /** Its own move that fits the suggested bout best right now (ADR-078), when it has one it didn't just do. */
+  your_move?: string;
 }
 
 /** The screen in words, from the animal's point of view (no titles: those only go in "windows" with smart targeting). */
@@ -195,6 +198,8 @@ export function buildPlanSummary(args: {
   bouts: BoutChoice[];
   /** What each move means for this character (a package's own words, ADR-069). */
   meanings?: Partial<Record<IntentName, string>>;
+  /** Its own moves (ADR-078): what each means, marked as its own, and whether it fits right now. */
+  acts?: readonly ActDef[];
   memory: string[];
   happened: string[];
   catWhere: string;
@@ -216,14 +221,27 @@ export function buildPlanSummary(args: {
   const best = Math.max(0.0001, ...args.bouts.map((b) => b.weight));
   const bouts: PlanSummary["bouts"] = {};
   const suggested = [...args.bouts].sort((a, b) => b.weight - a.weight)[0]?.kind ?? "rest";
+  const meaning = (o: Option): string => {
+    if (o.act) {
+      const a = args.acts?.find((x) => x.id === o.act);
+      return `${a?.means ?? o.act.replace(/_/g, " ")} (your own move${o.fits ? ", fits now" : ""})`;
+    }
+    return args.meanings?.[o.intent] ?? MOVE_MEANING[o.intent] ?? o.intent.replace(/_/g, " ");
+  };
+  // Own moves first, the ones that fit now before the rest: a small model leans to what it reads first.
+  const ownFirst = (o: Option): number => (o.act ? (o.fits ? 0 : 1) : 2);
   for (const b of args.bouts) {
-    const names = b.options.map((o) => o.intent);
+    const sorted = [...b.options].sort((x, y) => ownFirst(x) - ownFirst(y));
+    const names = sorted.map(optionName);
     // Meanings cost tokens, so only for the bout it is most likely to plan (or the only one).
-    const options = b.kind === suggested || args.bouts.length === 1 ? Object.fromEntries(names.map((n) => [n, args.meanings?.[n] ?? MOVE_MEANING[n] ?? n.replace(/_/g, " ")])) : names;
+    const options = b.kind === suggested || args.bouts.length === 1 ? Object.fromEntries(sorted.map((o) => [optionName(o), meaning(o)])) : names;
     bouts[b.kind] = { fits: Math.round((b.weight / best) * 10) / 10, means: BOUT_MEANING[b.kind], options };
   }
+  const yourMove = pickYourMove(args.bouts.find((b) => b.kind === suggested)?.options ?? [], args.acts ?? [], args.recent);
   const about = thoughtTopic({ world, happened: args.happened, things: args.things ?? [], bout: suggested, busyForMin: args.busyForMin });
   return {
+    // First, before everything else: a small model leans on what it reads first.
+    ...(yourMove ? { your_move: yourMove } : {}),
     thought_about: about,
     now: `${DAYS[d.getDay()]} ${hh}:${mm}, ${PART_OF_DAY(d.getHours())}`,
     user: {
@@ -263,10 +281,24 @@ export function buildPlanSummary(args: {
   };
 }
 
+/**
+ * The own move to hint at (ADR-078): small models follow a named suggestion far better than a
+ * marker inside a long list. One that fits now beats one that doesn't, then the one it likes most;
+ * never one of the last few things it did, so the hint moves on and the model still picks.
+ */
+export function pickYourMove(options: readonly Option[], acts: readonly ActDef[], recent: readonly string[]): string | undefined {
+  const done = new Set(recent.slice(-3));
+  const own = options.filter((o) => o.act && !done.has(o.act));
+  if (own.length === 0) return undefined;
+  const weight = (o: Option): number => acts.find((a) => a.id === o.act)?.weight ?? 1;
+  const rank = (o: Option): number => (o.fits ? 10 : 0) + weight(o) + o.score * 0.01;
+  return [...own].sort((a, b) => rank(b) - rank(a))[0]?.act;
+}
+
 /** Built per request, so the bout, every intent and every target can only be values valid right now. */
 export function buildPlanSchema(bouts: BoutChoice[]): IntentSchema {
   const options = bouts.flatMap((b) => b.options);
-  const intents = [...new Set(options.map((o) => o.intent))];
+  const intents = [...new Set(options.map(optionName))];
   const targets = [...new Set(["here", ...options.flatMap((o) => o.targets)])];
   return {
     type: "object",
@@ -303,6 +335,12 @@ export function buildPlanPrompt(p: Personality, trust: number): string {
     "Your day is made of bouts that last a few minutes each: rest, explore, play, social, mischief.",
     'You get the situation as JSON. Your body already chose the bout: it is in "bouts", with what it means and its options.',
     "Pick 1 to 3 steps from that bout's options, in the order you'll do them, and where each happens. Make the steps a tiny story that fits what just happened and what your human is doing. Don't just repeat what you just did.",
+    ...(p.acts?.length
+      ? [
+          'Options marked "your own move" are what make you YOU: use one in most bouts, the one that fits best ("fits now" means the moment is just right for it), but never the same one twice in a row. Mix them with the ordinary moves.',
+          'When the situation starts with "your_move", that is your own move and the moment is right for it: make it your FIRST step, then add an ordinary move or two. Only skip it when something that just happened needs every step.',
+        ]
+      : []),
     'Your "wildness" is set by your human. At gremlin you are a menace.',
     'If knock_off is an option, its target is the window from "things_on_windows".',
     '"trick" is one of your own made-up tricks, the one that fits this bout.',

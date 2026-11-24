@@ -1,4 +1,5 @@
 import { OWN_ANIMS, SHAKE_SEC, TURN_SEC, type Anim } from "../core/executor";
+import type { PoseDef, PoseStep } from "../core/acts";
 import type { PackageDecal } from "../core/package";
 import { SCRATCH_SEC } from "../core/scenes";
 import { GAIT_STRIDE } from "./gaits";
@@ -379,8 +380,13 @@ export interface PackArt {
   heads?: Record<string, readonly [number | null, number | null, number | null]>;
   /** A badge printed on the drawings (package.ts PackageDecal), and where its picture is. */
   decal?: PackageDecal & { url: string };
+  /** Its own poses (acts.ts, ADR-078): played as programs for the anim "pose:<name>". */
+  poses?: Readonly<Record<string, PoseDef>>;
 }
 const packUrl = new Map<string, (key: string) => string>();
+/** Each package character's own poses, and their programs once built (play, then loop). */
+const POSES = new Map<string, Readonly<Record<string, PoseDef>>>();
+const posePrograms = new Map<string, { play: Seg[]; loop: Seg[]; first: SpriteKey; sit: boolean }>();
 
 /**
  * Package badges (ADR-069): a mascot's logo is not in its drawings (the image model never draws a
@@ -405,6 +411,20 @@ export function registerSprites(a: PackArt): void {
   else delete GROUND[a.id];
   if (a.heads) HEADS[a.id] = a.heads;
   else delete HEADS[a.id];
+  if (a.poses) POSES.set(a.id, a.poses);
+  else POSES.delete(a.id);
+  for (const k of [...posePrograms.keys()]) if (k.startsWith(`${a.id}/`)) posePrograms.delete(k);
+  // The in-betweens of its poses' moves (<from>_<to>_1, _2) take their size and mouth from their two drawings.
+  for (const pose of Object.values(a.poses ?? {})) {
+    for (const st of [...pose.play, ...pose.loop]) {
+      if (st[0] !== "move") continue;
+      const keys = st[1];
+      for (let i = 0; i + 1 < keys.length; i++) {
+        const [x, y] = [keys[i] as SpriteKey, keys[i + 1] as SpriteKey];
+        for (let j = 1; j <= 2; j++) BETWEEN.set(`${x}_${y}_${j}`, [x, y, j / 3]);
+      }
+    }
+  }
   DECALS.delete(a.id);
   for (const k of [...printed.keys()]) if (k.startsWith(`${a.id}/`)) printed.delete(k);
   if (a.decal && typeof Image !== "undefined") {
@@ -422,7 +442,7 @@ function load(id: string): Promise<void> {
   if (have) return have;
   const img = {} as Record<SpriteKey, HTMLImageElement>;
   // A few hundred frames: ask for them a few at a time (a dev server drops a flood), and retry a failure once.
-  const all = [...SPRITE_KEYS, ...(OWN_KEYS[id] ?? [])];
+  const all = [...new Set([...SPRITE_KEYS, ...(OWN_KEYS[id] ?? [])])];
   const queue = [...all];
   const results: boolean[] = [];
   const worker = async (): Promise<void> => {
@@ -688,6 +708,12 @@ const CALLING: Seg[] = [move(link("sit", "meow2", "w"), 0.2, false, 1), hold("me
 export function planFor(anim: Anim, t: number, vy = 0, phase = 0, trot = false, id = ""): SpritePlan {
   const rabbit = id === "clover";
   anim = ownOr(id, anim);
+  if (anim.startsWith("pose:")) {
+    // One of its own poses (ADR-078); poseShot plays its steps. Without it (another character), a proud look.
+    const prog = poseProgram(id, anim.slice(5));
+    if (!prog) return { key: "proud", group: "proud", head: HEAD_SIT, motion: STILL };
+    return { key: prog.first, group: anim, head: prog.sit ? HEAD_SIT : HEAD_SIDE, motion: M({ breath: 0.018, breathHz: 2.4 }), fade: 0.16 };
+  }
   switch (anim) {
     case "keyboard": return { key: pick(GW, phase), group: "walk", head: HEAD_SIDE, motion: M({ breath: 0 }) };
     case "walk": return { key: pick(trot ? GT : GW, phase), group: trot ? "trot" : "walk", head: HEAD_SIDE, motion: M({ breath: 0, lean: trot ? 0.01 : 0 }) };
@@ -1214,6 +1240,59 @@ const BINKY: Seg[] = [
 /** Each animal's own pace for the noisy things: a chihuahua yaps fast, a rabbit squeaks seldom. */
 const YAPPY = new Set(["chili"]);
 
+/**
+ * A package's own pose (acts.ts, ADR-078) as a program: its steps as holds, glides (through the
+ * in-betweens made for a pair, when there are any, else a short blend), swaps, hops and shakes.
+ * Built once per character and pose. Null when it has no such pose.
+ */
+function poseProgram(id: string, name: string): { play: Seg[]; loop: Seg[]; first: SpriteKey; sit: boolean } | null {
+  const slot = `${id}/${name}`;
+  const have = posePrograms.get(slot);
+  if (have) return have;
+  const def = POSES.get(id)?.[name];
+  if (!def) return null;
+  const glide = (keys: readonly string[]): { keys: SpriteKey[]; drawn: boolean } => {
+    const out: SpriteKey[] = [keys[0] as SpriteKey];
+    let drawn = true;
+    for (let i = 0; i + 1 < keys.length; i++) {
+      const [a, b] = [keys[i] as string, keys[i + 1] as string];
+      if (hasOwn(id, `${a}_${b}_1` as SpriteKey)) out.push(`${a}_${b}_1` as SpriteKey, `${a}_${b}_2` as SpriteKey);
+      else if (hasOwn(id, `${b}_${a}_1` as SpriteKey)) out.push(`${b}_${a}_2` as SpriteKey, `${b}_${a}_1` as SpriteKey);
+      else drawn = false;
+      out.push(b as SpriteKey);
+    }
+    return { keys: out, drawn };
+  };
+  const seg = (st: PoseStep): Seg => {
+    switch (st[0]) {
+      case "hold":
+        return hold(st[1] as SpriteKey, st[2]);
+      case "shake":
+        return hold(st[1] as SpriteKey, st[2], st[3] ?? 0.05);
+      case "steps":
+        return steps(st[1] as SpriteKey[], st[2]);
+      case "hop": {
+        const h = st[3];
+        return lifted(hold(st[1] as SpriteKey, st[2]), (u) => h * Math.sin(Math.PI * u));
+      }
+      case "move": {
+        const g = glide(st[1]);
+        // Without drawn in-betweens the two drawings cross-fade for a little longer, never a double image for long.
+        return move(g.keys, st[2], false, g.drawn ? FAR : 0.45);
+      }
+    }
+  };
+  const play = def.play.map(seg);
+  const loop = def.loop.map(seg);
+  const firstStep = def.play[0] ?? def.loop[0];
+  const firstKey = (firstStep ? (Array.isArray(firstStep[1]) ? firstStep[1][0] : firstStep[1]) : "stand") as SpriteKey;
+  const last = [...def.play].reverse().find(Boolean);
+  const lastKey = (last ? (Array.isArray(last[1]) ? last[1][last[1].length - 1] : last[1]) : firstKey) as SpriteKey;
+  const prog = { play, loop: loop.length > 0 && lengthOf(loop) > 0.05 ? loop : [hold(lastKey, 1)], first: firstKey, sit: def.base === "sit" };
+  posePrograms.set(slot, prog);
+  return prog;
+}
+
 /** Plays `entry` once, then `loop` over and over. */
 function looped(entry: readonly Seg[], loop: readonly Seg[], e: number): Shot | null {
   const a = lengthOf(entry);
@@ -1229,6 +1308,10 @@ function looped(entry: readonly Seg[], loop: readonly Seg[], e: number): Shot | 
 export function poseShot(anim: Anim, id: string, e: number): Shot | null {
   const yappy = YAPPY.has(id);
   anim = ownOr(id, anim);
+  if (anim.startsWith("pose:")) {
+    const prog = poseProgram(id, anim.slice(5));
+    return prog ? looped(prog.play, prog.loop, Math.max(0, e)) : null;
+  }
   switch (anim) {
     case "shake_off": {
       // Head to tail, the way a wet dog shakes (Dickerson et al. 2012: about 5 twists a second at

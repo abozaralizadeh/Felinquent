@@ -219,8 +219,11 @@ export interface Spot {
  * wet paws, crumbs and shell bits, and the short lines of a shiver or a thump. Drawn, never kept.
  */
 export interface Puff {
-  /** tremble: the marks either side of a shivering body; impact: the lines where a foot hits the ground. */
-  kind: "fur" | "dust" | "drop" | "crumb" | "tremble" | "impact";
+  /**
+   * tremble: the marks either side of a shivering body; impact: the lines where a foot hits the
+   * ground; spark and heart: what a character's own move gives off (ADR-078), floating up.
+   */
+  kind: "fur" | "dust" | "drop" | "crumb" | "tremble" | "impact" | "spark" | "heart";
   x: number;
   y: number;
   vx: number;
@@ -1610,6 +1613,11 @@ export class Mess {
         f.vx *= Math.pow(0.05, dt);
         f.vy *= Math.pow(0.05, dt);
         f.size += 9 * this.scale * dt;
+      } else if (f.kind === "spark" || f.kind === "heart") {
+        // Light: up and out, slowing, a heart swaying as it rises.
+        f.vx *= Math.pow(0.08, dt);
+        f.vy *= Math.pow(f.kind === "heart" ? 0.5 : 0.12, dt);
+        if (f.kind === "heart") f.x += Math.sin((now - f.bornMs) / 260 + f.seed * 7) * 14 * dt * this.scale;
       } else continue;
       f.x += f.vx * dt;
       f.y += f.vy * dt;

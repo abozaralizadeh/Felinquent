@@ -1,3 +1,4 @@
+import { actFit } from "./acts";
 import { BY_INTENT, CHAOS_PARAMS } from "./behaviors";
 import type { Habits } from "./habits";
 import type { Personality } from "./personality";
@@ -45,6 +46,10 @@ export interface RulesContext {
   potty?: { pee: number; poop: number };
   /** "No toys or objects" is on (ADR-077): nothing in THING_MOVES is on the menu. */
   noThings?: boolean;
+  /** When it last did each of its own moves (acts.ts), ms. */
+  actsDone?: Readonly<Record<string, number>>;
+  /** The last few things it did by name, its own moves by their own (acts.ts optionName), newest last. */
+  recentNames?: readonly string[];
 }
 
 /**
@@ -263,6 +268,21 @@ export function candidates(ctx: RulesContext): Option[] {
     out.push({ intent: "trick", targets: ["here"], score: 0.14, trick: t.id, kind: t.kind });
   }
 
+  // Its own moves from its package (ADR-078): about as likely as one of the livelier built-in moves,
+  // times how much it likes it, and much more when the moment fits (the hour, what you are doing, its
+  // mood). Not again until its rest is over. No rude ones at chill, nothing lively when worn out.
+  const actOptions: Option[] = [];
+  for (const act of p.acts ?? []) {
+    if (act.weight <= 0) continue;
+    const done = ctx.actsDone?.[act.id];
+    if (done !== undefined && w.nowMs - done < act.restMin * 60_000) continue;
+    if (act.bout === "mischief" && (ctx.chaos ?? "normal") === "chill") continue;
+    if ((act.bout === "play" || act.bout === "mischief") && e < 0.3) continue;
+    const fit = actFit(act, w, n, catDist);
+    const toYou = act.beats.some((b) => "go" in b && b.go === "cursor");
+    actOptions.push({ intent: "act", act: act.id, kind: act.bout, targets: [toYou ? "cursor" : "here"], score: 0.3 * act.weight * fit.mult, ...(fit.fits ? { fits: true } : {}) });
+  }
+
   // A sulking cat avoids you. A tired one doesn't bother.
   for (const o of out) {
     const cat = BY_INTENT.get(o.intent)?.category;
@@ -281,6 +301,18 @@ export function candidates(ctx: RulesContext): Option[] {
     if (o.intent === "nap" || o.intent === "nap_warm" || o.intent === "cozy") o.score *= pace.nap;
     else if (ACTIVE.includes(o.intent)) o.score *= pace.active;
     o.score *= ctx.rng.range(0.8, 1.2);
+  }
+  // Its own moves get the same treatment, by their own names: what it just did is far less likely
+  // again, what you like (habits, "act:<id>") more, and a little chance.
+  const lastNames = (ctx.recentNames ?? []).slice(-10);
+  for (const o of actOptions) {
+    if (n.mood === "sulky" && o.kind === "social") o.score *= 0.3;
+    if (lastNames[lastNames.length - 1] === o.act) o.score *= 0.2;
+    for (const r of lastNames) if (r === o.act) o.score *= 0.7;
+    if (ctx.habits) o.score *= ctx.habits.multiplier(`act:${o.act}`, ctx.world.nowMs, ctx.rng);
+    o.score *= PACE[ctx.chaos ?? "normal"].active;
+    o.score *= ctx.rng.range(0.8, 1.2);
+    out.push(o);
   }
   // Of its tricks, only the best of each kind right now is on the menu.
   const best = new Map<string, Option>();
@@ -377,6 +409,7 @@ export function intentFromOption(o: Option, ctx: RulesContext, chaos: ChaosLevel
     mood,
   };
   if (o.trick) intent.trick = o.trick;
+  if (o.act) intent.act = o.act;
   const lines = ctx.personality.voice?.[o.intent] ?? MOOD_THOUGHTS[o.intent];
   if (withThought && lines && ctx.rng.next() < 0.15) intent.thought = ctx.rng.pick(lines);
   return intent;

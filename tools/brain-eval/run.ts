@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { FakeLlmClient, LlmBrain, OllamaClient, RulesBrain, type Brain } from "../../src/core/brain";
+import { parsePackage } from "../../src/core/package";
 import { RotatingLogger } from "../../src/node/logger";
 import { evaluate, evaluatePlans, G1_RELAXED, G1_STRICT, makePlanScenarios, makeScenarios, passesGateG1 } from "./evaluate";
 
@@ -38,10 +41,15 @@ async function main(): Promise<number> {
 
   if (arg("mode", "pick") === "plan") {
     // The bout planner (ADR-031): a bout, 1 to 3 steps and a thought per request.
-    const p = await evaluatePlans(brain, makePlanScenarios(n, Number(arg("seed", "1"))));
+    // --pack <folder>: every scenario is that package's character (its own moves on the menu, ADR-078).
+    const pack = arg("pack", "");
+    const only = pack ? parsePackage(JSON.parse(readFileSync(pack.endsWith(".json") ? pack : join(pack, "character.json"), "utf8"))).character.personality : undefined;
+    const p = await evaluatePlans(brain, makePlanScenarios(n, Number(arg("seed", "1")), only));
     const { sample, ...row } = p;
     logger.info("plan eval", { ...row });
-    console.table([{ ...row, validRate: `${(p.validRate * 100).toFixed(1)}%`, withThought: `${(p.withThought * 100).toFixed(0)}%`, followedSuggested: `${(p.followedSuggested * 100).toFixed(0)}%`, avgSteps: p.avgSteps.toFixed(1) }]);
+    const { actCounts, ...table } = row;
+    console.table([{ ...table, validRate: `${(p.validRate * 100).toFixed(1)}%`, withThought: `${(p.withThought * 100).toFixed(0)}%`, followedSuggested: `${(p.followedSuggested * 100).toFixed(0)}%`, avgSteps: p.avgSteps.toFixed(1), withAct: `${(p.withAct * 100).toFixed(0)}%`, actFit: `${(p.actFit * 100).toFixed(0)}%` }]);
+    if (actCounts) console.log(`own moves picked: ${actCounts}`);
     // Thoughts are printed here (a test run on made-up scenarios), never logged.
     for (const line of sample) console.log(`  ${line}`);
     const ok = p.validRate >= G1_RELAXED.minValidRate && p.p95Ms < 8000;

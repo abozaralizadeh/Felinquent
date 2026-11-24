@@ -2,9 +2,15 @@ A desktop cat for your Mac, and now your Windows PC. It naps on your windows, si
 
 ## What's new
 
-Want only the pet on your screen? Tick **No toys or objects** in the menu. It stops bringing out its toy, nothing shows up on your windows anymore, and it leaves nothing behind: no mess, no broken pieces, no puddles. It's off by default, so nothing changes unless you turn it on. Treats still work (it eats them).
+More characters, and you can download them right from the menu. Open **Character > Get more characters** and pick one: it downloads, gets checked and moves in. The Character menu is grouped now too: Cats, Dogs, Wild ones, and whatever you added.
+
+The first ones up there are **Big tech**: eight tiny tech bosses with nicknames. Jacket holds up a new chip like at a keynote and signs your laptop. Rocket carries a sink in and launches tiny rockets. Bookworm reads, eats a cheeseburger and does the big jump. Brisket trains, smokes meat and puts on way too much sunscreen. Parcel laughs like a foghorn and delivers boxes. Earlybird says good morning to everyone. Cricket talks about empathy and drinks tea. Lucky says AI in every sentence. They're parodies of public personas, not the real people, and not affiliated with them or their companies.
+
+Each of them has moves nobody else has, and those moves are just data in the character's file, so anyone making a character can give it their own: which drawings play, when the move fits (the time of day, what you're doing, its mood), what it means and what it says. With the local model on, it sees those moves by name and picks the one that fits the moment.
 
 ## Also new lately
+
+Want only the pet on your screen? Tick **No toys or objects** in the menu. It stops bringing out its toy, nothing shows up on your windows anymore, and it leaves nothing behind. It's off by default.
 
 If you unplugged a monitor while Felinquent was running, it could crash and vanish. That's fixed, and monitors can come and go as you like. And if Felinquent sits in a folder only an administrator can change, it now asks before updating and tells you macOS will want a password, instead of a password prompt popping up out of nowhere.
 
@@ -14,7 +20,7 @@ No more "the cat's page stopped answering" error reports after you lock your com
 
 Right-click the pet while it's up on your other monitor and its menu opens right next to it, not down at the bottom of your main screen.
 
-Want your own pet in there? There's a guide for making your own character, starting from just two drawings, plus a tool that checks it and packs it into a .felinquent file.
+Want your own pet in there? There's a guide for making your own character, starting from just two drawings, plus a tool that checks it and packs it into a .felinquent file. Since this version the guide also shows how to give it moves of its own.
 
 Plug in a monitor while Felinquent is running and the pet can go there, no restart needed. Unplug it while the pet is up there and it lands back on your laptop's Dock. It can also leap from the Dock straight up onto a monitor that sits above your laptop, even when there's no window to climb on.
 

@@ -215,7 +215,8 @@ describe("every behavior can be chosen and runs to the end", () => {
   });
 
   it("covers every behavior in the catalog table", () => {
-    const covered = new Set<string>([...Object.keys(SITUATIONS), "ignore", "sulk", "leave", "react", "eat"]);
+    // A package's own moves ("act") need a package character: tests/acts.test.ts covers them.
+    const covered = new Set<string>([...Object.keys(SITUATIONS), "ignore", "sulk", "leave", "react", "eat", "act"]);
     expect(BEHAVIORS.map((b) => b.intent).filter((i) => !covered.has(i))).toEqual([]);
   });
 });

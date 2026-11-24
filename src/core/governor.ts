@@ -179,6 +179,8 @@ export class Governor {
     // A trick planned earlier may not be the one on offer now: any trick option allows it.
     const option = options.find((o) => o.intent === raw.intent && (raw.trick === undefined || o.trick === raw.trick)) ?? options.find((o) => o.intent === raw.intent);
     if (!option) return null;
+    // One of its own moves (ADR-078) must be the very one on offer: it may be resting from it.
+    if (raw.intent === "act" && !options.some((o) => o.intent === "act" && o.act === raw.act)) return null;
     if (!this.intentAllowed(raw.intent, world, needs)) return null;
     const allowedTargets = option.targets.filter((t) => this.targetAllowed(raw.intent, t, world));
     const target = allowedTargets.includes(raw.target) ? raw.target : allowedTargets[0];
@@ -195,6 +197,7 @@ export class Governor {
       mood: MOODS.includes(raw.mood) ? raw.mood : needs.mood,
     };
     if (raw.intent === "trick") out.trick = raw.trick ?? option.trick;
+    if (raw.intent === "act" && raw.act) out.act = raw.act;
     if (this.settings.thoughtBubbles && raw.thought && world.nowMs - this.lastThoughtMs >= THOUGHT_GAP_MS[this.settings.chaos]) {
       const t = stripUrls(raw.thought).slice(0, MAX_THOUGHT_CHARS).trim();
       if (t) out.thought = t;

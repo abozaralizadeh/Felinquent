@@ -91,6 +91,8 @@ export const BEHAVIORS: readonly BehaviorDef[] = [
   { id: "B-70", intent: "flop", annoy: 0, category: "ambient", minChaos: "chill", perm: "none", maxStay: 300, minStay: 20, combo: true },
   { id: "B-71", intent: "nibble", annoy: 1, category: "mischief", minChaos: "normal", perm: "none", maxStay: 25, minStay: 6, combo: true },
   { id: "B-72", intent: "nut", annoy: 0, category: "ambient", minChaos: "chill", perm: "none", maxStay: 40, minStay: 10, combo: true },
+  // A character's own move from its package (acts.ts, ADR-078): which one is in Intent.act.
+  { id: "B-74", intent: "act", annoy: 1, category: "attention", minChaos: "chill", perm: "none", maxStay: 60, minStay: 3, combo: true },
   { id: "B-73", intent: "cling", annoy: 0, category: "ambient", minChaos: "chill", perm: "none", maxStay: 25, minStay: 6, combo: true },
   { id: "B-48", intent: "play_cursor", annoy: 1, category: "attention", minChaos: "chill", perm: "none", maxStay: 40, minStay: 10, combo: true },
   { id: "RF-10", intent: "react", annoy: 0, category: "response", minChaos: "chill", perm: "none", maxStay: 60, minStay: 3 },

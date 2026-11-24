@@ -355,6 +355,14 @@
     .who h3 small { font: 500 .75rem "JetBrains Mono", monospace; color: var(--ink-soft); letter-spacing: 0; text-transform: lowercase; }
     .who p { color: var(--ink-soft); margin-top: 8px; font-size: 1rem; }
     .who q { display: block; margin-top: auto; padding-top: 16px; font: italic 500 .86rem/1.5 "JetBrains Mono", ui-monospace, monospace; color: var(--ink); quotes: "\201C" "\201D"; }
+    .more { margin-top: 88px; }
+    .more h3 { font-size: clamp(1.6rem, 3vw, 2.1rem); }
+    .more .note { display: inline-flex; align-items: center; gap: 10px; margin-top: 18px; padding: 10px 14px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); font: 500 .84rem/1.45 "JetBrains Mono", ui-monospace, monospace; color: var(--ink-soft); max-width: 46em; }
+    .cast.small { grid-template-columns: repeat(4, 1fr); margin-top: 36px; }
+    .cast.small .who { padding: 22px 20px 20px; }
+    .cast.small .portrait { width: calc(var(--fw) * .5px); height: calc(var(--fh) * .5px); margin-top: calc(138px - var(--fh) * .5px); }
+    .cast.small .who h3 { font-size: 1.3rem; }
+    .cast.small .who p { font-size: .94rem; }
 
     .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; margin-top: 56px; }
     .card { grid-column: span 2; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 28px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px; }
@@ -502,6 +510,7 @@
     @media (max-width: 960px) {
       .steps { grid-template-columns: 1fr; max-width: 560px; }
       .cast { grid-template-columns: repeat(2, 1fr); }
+      .cast.small { grid-template-columns: repeat(2, 1fr); }
       .bento { grid-template-columns: repeat(2, 1fr); }
       .card, .card.wide { grid-column: span 1; }
       .card.wide, .card.full { grid-column: span 2; }
@@ -523,6 +532,7 @@
       .browser-bar span { display: none; }
       .clip-toggle { width: 34px; height: 34px; right: 10px; bottom: 10px; }
       .cast { grid-template-columns: 1fr; gap: 14px; }
+      .cast.small { grid-template-columns: 1fr; }
       .who { flex-direction: row; align-items: center; gap: 18px; padding: 18px 18px; }
       .who .portrait { margin: 0; flex: none; width: calc(var(--fw) * .44px); height: calc(var(--fh) * .44px); }
       .who q { padding-top: 10px; }
@@ -736,6 +746,46 @@
           <div class="portrait" role="img" aria-label="Hazel, a red squirrel" style="--src:url(assets/card-hazel.webp);--fw:226;--fh:234"></div>
           <div><h3>Hazel <small>squirrel</small></h3><p>A red squirrel with a huge tail. Can't sit still, eats nuts sitting up, hangs off windows head down, and tells you off about it.</p><q>chk chk chk. i'm telling you off.</q></div>
         </article>
+      </div>
+      <div class="more">
+        <p class="kicker reveal">more to get</p>
+        <h3 class="reveal">Big tech, the tiny edition</h3>
+        <p class="lead reveal">Since 0.1.25 the menu has <strong>Get more characters</strong>. The first ones there are eight tech bosses shrunk to desk size, each with moves nobody else has. Pick one and it downloads, gets checked and moves in.</p>
+        <p class="note reveal">Parodies of public personas with made-up nicknames. Not the real people, and not affiliated with them or their companies.</p>
+        <div class="cast small">
+          <article class="who reveal" style="--tint:#E9E4DA">
+            <div class="portrait" role="img" aria-label="Jacket, a tiny chip boss in a black leather jacket" style="--src:url(assets/card-jacket.webp);--fw:242;--fh:255"></div>
+            <div><h3>Jacket <small>chip boss</small></h3><p>A chip boss in a black leather jacket. Holds up a new chip like at a keynote, then signs your laptop. Flips pancakes in the morning.</p><q>the more you buy, the more you save.</q></div>
+          </article>
+          <article class="who reveal" style="--tint:#DCE3EE">
+            <div class="portrait" role="img" aria-label="Rocket, a tiny rocket and car billionaire in a dark jacket" style="--src:url(assets/card-rocket.webp);--fw:222;--fh:298"></div>
+            <div><h3>Rocket <small>rockets and cars</small></h3><p>Carries a sink in, posts from his phone at 3 am and launches tiny rockets across your screen. Done by next year, promise.</p><q>let that sink in.</q></div>
+          </article>
+          <article class="who reveal" style="--tint:#F1DADB">
+            <div class="portrait" role="img" aria-label="Bookworm, a tiny software billionaire in a red sweater and glasses" style="--src:url(assets/card-bookworm.webp);--fw:177;--fh:223"></div>
+            <div><h3>Bookworm <small>software and books</small></h3><p>Reads fifty books a year, rocks back and forth when he thinks, loves a cheeseburger and can still do the big jump.</p><q>fascinating. footnotes!</q></div>
+          </article>
+          <article class="who reveal" style="--tint:#DFE3EA">
+            <div class="portrait" role="img" aria-label="Brisket, a tiny social network founder with curly hair" style="--src:url(assets/card-brisket.webp);--fw:201;--fh:238"></div>
+            <div><h3>Brisket <small>social networks</small></h3><p>Trains like a fighter, smokes his own meat, wears the goggles a bit too often and puts on sunscreen. Very human.</p><q>smoked it for fourteen hours.</q></div>
+          </article>
+          <article class="who reveal" style="--tint:#E4E9DC">
+            <div class="portrait" role="img" aria-label="Parcel, a tiny bald online shopping billionaire" style="--src:url(assets/card-parcel.webp);--fw:219;--fh:264"></div>
+            <div><h3>Parcel <small>parcels</small></h3><p>Bald, buff and laughs like a foghorn. Delivers boxes, wears a cowboy hat on big days and says it's always day one.</p><q>HA! HA! HAHAHA!</q></div>
+          </article>
+          <article class="who reveal" style="--tint:#DCE4F0">
+            <div class="portrait" role="img" aria-label="Earlybird, a tiny phone company boss with grey hair" style="--src:url(assets/card-earlybird.webp);--fw:207;--fh:257"></div>
+            <div><h3>Earlybird <small>phones</small></h3><p>Says good morning to everyone, is up at four and calls every new thing the best one yet. You're going to love it.</p><q>good morning!</q></div>
+          </article>
+          <article class="who reveal" style="--tint:#DBE3F0">
+            <div class="portrait" role="img" aria-label="Cricket, a tiny software company boss with glasses" style="--src:url(assets/card-cricket.webp);--fw:222;--fh:284"></div>
+            <div><h3>Cricket <small>software</small></h3><p>Calm, kind and talks about empathy, then quietly makes the others dance. Mad about cricket and a good cup of tea.</p><q>howzat!</q></div>
+          </article>
+          <article class="who reveal" style="--tint:#E1E8DE">
+            <div class="portrait" role="img" aria-label="Lucky, a tiny search company boss with a calm smile" style="--src:url(assets/card-lucky.webp);--fw:228;--fh:251"></div>
+            <div><h3>Lucky <small>search</small></h3><p>Gentle and very calm. Says AI in every sentence, searches for everything and loves a bit of football.</p><q>ai. ai. ai. did i mention ai?</q></div>
+          </article>
+        </div>
       </div>
     </div>
   </section>

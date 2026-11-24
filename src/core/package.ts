@@ -1,3 +1,6 @@
+import { parseActs, parsePoses, type PoseDef } from "./acts";
+import { BY_INTENT } from "./behaviors";
+import { BOUT_INTENTS } from "./bouts";
 import { CHARACTERS, type Character, type Palette, type Species } from "./characters";
 import { TOY_KINDS, TREAT_KINDS, type ToyKind, type TreatKind } from "./mess";
 import type { Personality } from "./personality";
@@ -22,6 +25,8 @@ export interface PackageArt {
   ground?: Record<string, number>;
   heads?: Record<string, readonly [number | null, number | null, number | null]>;
   decal?: PackageDecal;
+  /** Its own poses (acts.ts, ADR-078), for the drawings: the same as the personality's. */
+  poses?: Record<string, PoseDef>;
 }
 
 /**
@@ -113,6 +118,14 @@ export function parsePackage(json: unknown): Package {
     for (const [k, m] of Object.entries(json.meanings)) if (KEY.test(k)) meanings[k as IntentName] = text(m, `meanings.${k}`, 80) as string;
   }
   const persona = text(json.persona, "persona", 240, false);
+  // Its own poses and moves as data (ADR-078). A move can't take a built-in move's name.
+  const poses = parsePoses(json.poses);
+  const taken = new Set<string>([...BY_INTENT.keys(), ...Object.values(BOUT_INTENTS).flat(), "act", "trick", "react", "eat", "leave"]);
+  const acts = parseActs(json.moves, poses, taken);
+  // Where it goes in the menus ("Big tech"), and which copy this is (a catalog offers newer ones).
+  const category = text(json.category, "category", 24, false);
+  const version = json.version ?? 1;
+  if (!num(version) || !Number.isInteger(version) || version < 1 || version > 9999) throw new Error("version must be a whole number from 1");
   const treat = json.treat;
   if (treat !== undefined && !(TREAT_KINDS as readonly unknown[]).includes(treat)) throw new Error(`treat must be one of ${TREAT_KINDS.join(", ")}`);
   const fur = json.fur ?? color;
@@ -134,6 +147,8 @@ export function parsePackage(json: unknown): Package {
     ...(Object.keys(meanings).length ? { meanings } : {}),
     ...(persona ? { persona } : {}),
     ...(treat !== undefined ? { treat: treat as TreatKind } : {}),
+    ...(acts.length ? { acts } : {}),
+    ...(Object.keys(poses).length ? { poses } : {}),
   };
   const character: Character = {
     id,
@@ -145,8 +160,12 @@ export function parsePackage(json: unknown): Package {
     size,
     personality,
     pack: true,
+    ...(category ? { category } : {}),
+    version,
   };
-  return { character, art: parseArt(json.art) };
+  const art = parseArt(json.art);
+  if (Object.keys(poses).length) art.poses = poses;
+  return { character, art };
 }
 
 function parseArt(v: unknown): PackageArt {

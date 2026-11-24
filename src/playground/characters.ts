@@ -53,7 +53,11 @@ if (q.has("film") && (q.has("anim") || q.has("seq"))) {
   const anim = q.get("anim") as Anim;
   const from = (q.get("from") ?? "idle_sit") as Anim;
   const at = Number(q.get("at") ?? "0.5");
-  const seq = (q.get("seq") ?? "").split(",").filter(Boolean).map((s) => ({ a: s.split(":")[0] as Anim, sec: Number(s.split(":")[1] ?? "2") }));
+  // "name:seconds", where a package's pose name has a colon of its own ("pose:launch:3").
+  const seq = (q.get("seq") ?? "").split(",").filter(Boolean).map((s) => {
+    const m = /^(.*):(\d+(?:\.\d+)?)$/.exec(s);
+    return { a: (m ? m[1] : s) as Anim, sec: Number(m ? m[2] : "2") };
+  });
   const animAt = (ft: number): Anim => {
     if (ft < at) return from;
     let u = ft - at;

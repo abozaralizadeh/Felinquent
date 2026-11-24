@@ -2,6 +2,10 @@
 """Packs the real sprites into the small images the website uses (site/assets/).
 
 Usage: tools/build-site-assets.py
+       tools/build-site-assets.py --card <id> <frames-dir> <frame> [--card ...]
+
+The second form only makes the cards of characters from packages: their sit and <frame> (what they
+do when you hover the card) from <frames-dir>, the folder of their cut drawings.
 
 Each animation becomes one horizontal strip. Every frame sits on the same canvas, anchored at the
 bottom centre like the player draws it, so the page can step through a strip with background-position
@@ -56,8 +60,22 @@ def save(im: Image.Image, name: str) -> None:
     print(f"{name}: {im.width}x{im.height}, {path.stat().st_size // 1024} KB")
 
 
+def card(frames: list[Image.Image], name: str) -> None:
+    """A cast card: sitting, then the hover pose, on one canvas."""
+    cw, ch = max(f.width for f in frames), max(f.height for f in frames)
+    save(strip(frames, cw, ch, 0.8), name)
+    print(f"  --fw:{round(cw * 0.8)};--fh:{round(ch * 0.8)}")
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
+    args = sys.argv[1:]
+    if args[:1] == ["--card"]:
+        while args[:1] == ["--card"] and len(args) >= 4:
+            cid, folder, pose = args[1:4]
+            card([Image.open(Path(folder) / f"{n}.webp").convert("RGBA") for n in ("sit", pose)], f"card-{cid}.webp")
+            args = args[4:]
+        return 0
 
     # One canvas for every hero frame, so all strips share a frame size.
     hero = {k: [load("tabby", n) for n in names] for k, names in HERO.items()}
@@ -69,9 +87,7 @@ def main() -> int:
 
     # Character cards: sitting, then the face it makes when you pet it.
     for c in CHARACTERS:
-        frames = [load(c, "sit"), load(c, "love")]
-        cw, ch = max(f.width for f in frames), max(f.height for f in frames)
-        save(strip(frames, cw, ch, 0.8), f"card-{c}.webp")
+        card([load(c, "sit"), load(c, "love")], f"card-{c}.webp")
 
     # Single poses for the little desktop in the hero, the feature cards and the footer.
     singles = [("pearl", "loaf"), ("mochi", "peek"), ("biscuit", "sleep"), ("inky", "sleep"), ("tabby", "dangle"), ("mochi", "startled"), ("biscuit", "joy")]

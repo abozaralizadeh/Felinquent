@@ -1,16 +1,17 @@
 # Privacy notice
 
-Last updated: 10 November 2026, for Felinquent 0.1.16 and later (the Mac and Windows app) and its website.
+Last updated: 24 November 2026, for Felinquent 0.1.25 and later (the Mac and Windows app) and its website.
 
 Felinquent is made by Abozar Alizadeh ([github.com/abozaralizadeh](https://github.com/abozaralizadeh)). For questions about this notice, open an issue at [github.com/abozaralizadeh/Felinquent/issues](https://github.com/abozaralizadeh/Felinquent/issues).
 
 ## The short version
 
-Felinquent runs on your computer and keeps what it learns there. Three things can leave your computer:
+Felinquent runs on your computer and keeps what it learns there. Four things can leave your computer:
 
 1. **Usage counts, on by default.** One anonymous ping a day, so the project can count installs and users. No ID, nothing about you. Turn it off in the menu.
 2. **Error reports, only after you say yes.** When something breaks, the app asks once whether it may send them.
 3. **Update checks.** A small file from GitHub every few hours. You can turn these off too.
+4. **The character list.** A small file from GitHub every few hours, listing characters you can add. A character downloads only when you pick it.
 
 It never takes screenshots, never reads what you type, and never sends window titles, file names or anything from your screen. The full list of what it looks at, and what it keeps, is in [docs/safety-and-privacy.md](docs/safety-and-privacy.md).
 
@@ -55,6 +56,7 @@ Reports go to the same relay, which files each one as an issue in the developer'
 
 - **Updates.** A minute after it starts and then every 3 hours, the app downloads `latest.json` from the project's latest GitHub release. Nothing about you is in the request. With **Update automatically** on, a newer version downloads from GitHub and installs while you're away. Turn **Update automatically** off and it never checks by itself.
 - **The local model (optional).** Only if you turn on the model and say yes, the app downloads Ollama from GitHub and Ollama downloads the model from its own registry.
+- **The character list.** About 20 seconds after it starts and then every 6 hours, the app downloads a small list of characters you can add (`catalog.json`, from the project's `characters` release on GitHub). A character downloads from the same place only when you pick it in Get more characters, or when the list has a newer version of one you already got. Nothing about you is in these requests.
 - **The About window** has buttons that open the website and the code in your own browser.
 
 GitHub, Ollama and your browser have their own privacy policies. They see your IP address, as with any download.

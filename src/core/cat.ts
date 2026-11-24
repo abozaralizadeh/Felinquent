@@ -682,6 +682,17 @@ export class Cat {
         this.mess.puff("impact", x, ev.y - 6 * sc, 1, now, { size: 7, w: 0, h: 0, ttlMs: 320 });
         break;
       }
+      case "act": {
+        // What one of its own moves gives off (ADR-078): sparkles at a big moment, hearts, a puff of
+        // smoke, sweat off a workout, dust off a stamp. Drawn only, like a shake's fur.
+        const head = ev.y - sz.h * 0.88;
+        if (f.kind === "spark") this.mess.puff("spark", ev.x + dir * sz.w * 0.2, head, 7, now, { spread: 70, up: 55, overMs: 500, size: 4.5, ttlMs: 900, w: sz.w * 0.6 / sc, h: 30 });
+        else if (f.kind === "heart") this.mess.puff("heart", ev.x + dir * sz.w * 0.1, head, 4, now, { spread: 26, up: 45, overMs: 900, size: 5.5, ttlMs: 1500 });
+        else if (f.kind === "smoke") this.mess.puff("dust", ev.x + dir * sz.w * 0.3, head, 6, now, { spread: 35, up: 55, color: "#d2d2d2", overMs: 900, size: 5 });
+        else if (f.kind === "sweat") this.mess.puff("drop", ev.x + dir * sz.w * 0.05, head, 4, now, { spread: 60, up: 120, color: "#a8dcf6", overMs: 900, size: 1.8, floor: ev.y });
+        else this.mess.puff("dust", ev.x, ev.y - 2 * sc, 6, now, { spread: 90, up: 22, size: 4, overMs: 600 });
+        break;
+      }
       case "nibble":
         if (ev.windowId) this.mess.biteMark(ev.windowId, ev.x + dir * sz.w * 0.42, now);
         this.mess.puff("crumb", ev.x + dir * sz.w * 0.42, ev.y - 2 * sc, 4, now, { spread: 40, up: 50, color: "#b9b2a6", size: 1.6, overMs: 500, floor: ev.y });

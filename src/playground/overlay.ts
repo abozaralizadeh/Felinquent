@@ -7,7 +7,7 @@ import { Cat } from "../core/cat";
 import type { CatBody } from "../core/executor";
 import type { Activity, Rect, WindowInfo, WorldSnapshot } from "../core/types";
 import { makeWorld } from "../core/world";
-import { allCharacters, characterById, DEFAULT_CHARACTER_ID, forgetCharacter, registerCharacter } from "../core/characters";
+import { allCharacters, categoryOf, characterById, DEFAULT_CHARACTER_ID, forgetCharacter, registerCharacter } from "../core/characters";
 import { parsePackage } from "../core/package";
 import { InMemoryMemory } from "../core/memory";
 import { drawCat } from "./draw";
@@ -457,7 +457,7 @@ async function main(): Promise<void> {
         no_things: cat.settings.noThings,
         packs: allCharacters()
           .filter((c) => c.pack)
-          .map((c) => ({ id: c.id, name: c.name })),
+          .map((c) => ({ id: c.id, name: c.name, category: categoryOf(c) })),
       },
     }).catch(() => {});
   let memoryJson = memory.exportJson();

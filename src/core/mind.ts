@@ -1,3 +1,4 @@
+import { actIntent, optionName } from "./acts";
 import { behavior } from "./behaviors";
 import { BOUT_INTENTS, BOUT_KINDS, PAUSE, PAUSE_BY_CHAOS, boutLengthMs, boutWeights, openingMove, pickBout, type BoutKind } from "./bouts";
 import { weighted, type Brain, type BrainContext, type Plan, type PlanContext } from "./brain";
@@ -181,6 +182,10 @@ export class Mind {
   sleeping = false;
   current: Intent | null = null;
   recent: IntentName[] = [];
+  /** The same, by name: its own moves (acts.ts) by their own ("keynote"), newest last. */
+  recentNames: string[] = [];
+  /** When it last did each of its own moves, so it rests from one (acts.ts restMin). */
+  private actsDone: Record<string, number> = {};
   stats = { decisions: 0, llm: 0, rules: 0, fallbacks: 0, safe: 0 };
 
   private lastDecisionMs = -Infinity;
@@ -480,14 +485,16 @@ export class Mind {
   private setCurrent(intent: Intent, _now: number, source: "llm" | "rules" | "respect" | "reflex" | "safe", events: MindEvent[]): void {
     this.current = intent;
     if (source === "llm" || source === "rules") {
-      // A trick is learned about on its own, not as "trick".
-      const key = intent.trick ? `trick:${intent.trick}` : intent.intent;
+      // A trick (and its own move) is learned about on its own, not as "trick" (or "act").
+      const key = intent.trick ? `trick:${intent.trick}` : intent.act ? `act:${intent.act}` : intent.intent;
       this.lastChosen = { intent: key, atMs: _now };
       this.d.memory.habits?.used(key, _now);
     }
     if (intent.intent !== "react") {
       this.recent.push(intent.intent);
       if (this.recent.length > 10) this.recent.shift();
+      this.recentNames.push(optionName(intent));
+      if (this.recentNames.length > 10) this.recentNames.shift();
     }
     events.push({ type: "intent", intent, source });
     this.d.log?.("intent", { intent: intent.intent, target: intent.target, source, mood: intent.mood });
@@ -677,6 +684,8 @@ export class Mind {
       scene: this.d.scene?.() ?? [],
       potty: { ...this.potty },
       noThings: this.settings.noThings,
+      actsDone: this.actsDone,
+      recentNames: this.recentNames,
     };
   }
 
@@ -805,7 +814,7 @@ export class Mind {
     const menu = [...options, ...BASICS.filter((b) => !options.some((o) => o.intent === b.intent))];
     let intent: Intent | null = revisit;
     let source: "llm" | "rules" = revisit ? "rules" : (this.bout?.source ?? "rules");
-    while (!intent && this.bout && this.bout.steps.length > 0) intent = this.withTrick(gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs), world);
+    while (!intent && this.bout && this.bout.steps.length > 0) intent = this.withAct(this.withTrick(gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs), world), world);
     // The plan ran out but the bout goes on: a few more steps of the same bout.
     if (!intent && this.bout && options.length > 0) {
       const more = await this.planBout(world, options, brainCtx, this.bout.kind);
@@ -813,7 +822,7 @@ export class Mind {
         source = more.source;
         this.bout.steps = more.plan.steps;
         if (more.plan.thought && this.bout.steps[0]) this.bout.steps[0] = { ...this.bout.steps[0], thought: more.plan.thought };
-        while (!intent && this.bout.steps.length > 0) intent = this.withTrick(gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs), world);
+        while (!intent && this.bout.steps.length > 0) intent = this.withAct(this.withTrick(gov.validate(this.bout.steps.shift() as Intent, menu, world, this.needs), world), world);
       } else {
         // Nothing left that fits this bout: end it, the next decision starts another.
         this.bout.untilMs = now;
@@ -840,8 +849,8 @@ export class Mind {
     const w = boutWeights({ last: this.lastBout, chaos: this.settings.chaos, needs: this.needs, kind: ins.kind, world });
     // Never plan what it just did again: a small model asked for "more of this bout" will happily
     // say "hunt" four times in a row. With nothing else left, the bout ends.
-    const last = this.recent[this.recent.length - 1];
-    const fresh = options.filter((o) => o.intent !== last);
+    const last = this.recentNames[this.recentNames.length - 1];
+    const fresh = options.filter((o) => optionName(o) !== last);
     const bouts = BOUT_KINDS.map((kind) => ({ kind, weight: w[kind], options: fresh.filter((o) => BOUT_INTENTS[kind].includes(o.intent) && (o.kind === undefined || o.kind === kind)) })).filter(
       (b) => (b.weight > 0 || b.kind === fixed) && b.options.length > 0,
     );
@@ -910,6 +919,20 @@ export class Mind {
     if (first && this.settings.thoughtBubbles) out.thought = `new trick: ${t.name}`;
     if (first) this.note(world.nowMs, `showed you my new trick, ${t.name}`);
     return out;
+  }
+
+  /**
+   * One of its own moves (ADR-078) gets its scene from the package: the walk over, its poses, what it
+   * gives off. A line of its own for the bubble now and then, unless the model already thought of one.
+   * A move that is gone (another package was loaded) is skipped.
+   */
+  private withAct(intent: Intent | null, world: WorldSnapshot): Intent | null {
+    if (!intent || intent.intent !== "act") return intent;
+    const a = this.personality.acts?.find((x) => x.id === intent.act);
+    if (!a) return null;
+    this.actsDone[a.id] = world.nowMs;
+    const say = this.settings.thoughtBubbles && a.say.length > 0 && this.d.rng.next() < 0.55 ? this.d.rng.pick([...a.say]) : null;
+    return actIntent(a, this.personality.poses ?? {}, intent, say);
   }
 
   /**

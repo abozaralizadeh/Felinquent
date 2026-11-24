@@ -37,7 +37,9 @@ export type Anim =
   | "listen" | "mouse_leap" | "mouse_in" | "mouse_out" | "nose_push"
   | "wash_hands" | "inspect" | "rummage" | "toss" | "hold"
   | "binky_air" | "thump" | "flop" | "nibble"
-  | "nut" | "cheeks" | "pat" | "flick" | "cling" | "cling_down";
+  | "nut" | "cheeks" | "pat" | "flick" | "cling" | "cling_down"
+  // A character's own pose from its package (acts.ts, ADR-078): sprites.ts plays its steps.
+  | `pose:${string}`;
 
 /** Every move only some animals have drawings for (sprites.ts falls back for the others). */
 export const OWN_ANIMS: ReadonlySet<Anim> = new Set<Anim>([
@@ -92,7 +94,9 @@ export type Fx =
   | { fx: "shiver" }
   | { fx: "thud" }
   /** A bite out of the edge of the window in front of it. */
-  | { fx: "nibble" };
+  | { fx: "nibble" }
+  // A character's own move gives something off (acts.ts): sparkles, hearts, a puff of smoke, sweat, dust.
+  | { fx: "act"; kind: "spark" | "heart" | "smoke" | "sweat" | "dust" };
 
 /** What it does with its toy: bring it back to you, take it off somewhere, bury it, or give it a sniff and a nudge. */
 export type ToyTask = "fetch" | "carry" | "stash" | "nose" | "chew" | "cache";

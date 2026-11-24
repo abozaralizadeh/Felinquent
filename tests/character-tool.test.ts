@@ -48,6 +48,19 @@ function unzip(b: Buffer): Map<string, Buffer> {
 }
 
 describe("the character tool", () => {
+  it("keeps the drawings of its own poses and their in-betweens, and says when one is missing (ADR-078)", () => {
+    const json = {
+      ...JSON_OK,
+      poses: { flip: { base: "stand", play: [["move", ["stand", "flip1", "flip2"], 0.6]], loop: [["hold", "flip2", 1]] }, wave2: { play: [["hold", "wave9", 1]] } },
+      moves: { pancake: { means: "flips a pancake", bout: "play", beats: [{ do: "flip", sec: 2 }] } },
+    };
+    const r = check(folder(json, ["sit", "stand", "flip1", "flip2", "flip1_flip2_1", "flip2_flip1_2", "walk1"]));
+    expect(r.errors).toEqual(["pose wave2 plays wave9, but there's no sprites/wave9.webp"]);
+    expect(r.own).toEqual(expect.arrayContaining(["flip1", "flip2", "flip1_flip2_1", "flip2_flip1_2"]));
+    expect(r.files.has("sprites/flip1_flip2_1.webp")).toBe(true);
+    expect(r.files.has("sprites/walk1.webp")).toBe(false);
+  });
+
   it("passes a folder with a sit and a stand, and lists what's missing", () => {
     const r = check(folder(JSON_OK, ["sit", "stand"]));
     expect(r.errors).toEqual([]);

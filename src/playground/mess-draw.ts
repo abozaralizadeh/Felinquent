@@ -401,9 +401,56 @@ function drawPuffs(ctx: CanvasRenderingContext2D, snap: MessSnapshot, scale: num
     else if (f.kind === "drop") drawDrop(ctx, f, a, scale);
     else if (f.kind === "crumb") drawCrumb(ctx, f, a, scale);
     else if (f.kind === "tremble") drawTremble(ctx, f, a, scale);
+    else if (f.kind === "spark") drawSpark(ctx, f, a, scale);
+    else if (f.kind === "heart") drawHeart(ctx, f, a, scale);
     else drawImpact(ctx, f, a, scale);
     ctx.restore();
   }
+}
+
+/** A sparkle (a character's own move, ADR-078): a four-pointed star that twinkles and fades. */
+function drawSpark(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = Math.min(1, a * 1.6);
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.seed * 0.8);
+  const r = f.size * (0.7 + 0.45 * Math.sin(f.u * Math.PI * 3 + f.seed * 9));
+  const k = r * 0.28;
+  ctx.beginPath();
+  ctx.moveTo(0, -r);
+  ctx.quadraticCurveTo(k, -k, r, 0);
+  ctx.quadraticCurveTo(k, k, 0, r);
+  ctx.quadraticCurveTo(-k, k, -r, 0);
+  ctx.quadraticCurveTo(-k, -k, 0, -r);
+  ctx.fillStyle = f.color ?? "#ffd84a";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(150,100,10,0.7)";
+  ctx.lineWidth = 0.7 * scale;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** A little heart (a character's own move, ADR-078), rising and swaying. */
+function drawHeart(ctx: CanvasRenderingContext2D, f: PuffView, a: number, scale: number): void {
+  ctx.globalAlpha = Math.min(1, a * 1.8);
+  ctx.translate(f.x, f.y);
+  ctx.rotate((f.seed - 0.5) * 0.5);
+  const r = f.size;
+  ctx.beginPath();
+  ctx.moveTo(0, r * 0.9);
+  ctx.bezierCurveTo(-r * 1.3, r * 0.1, -r * 0.9, -r * 1.0, 0, -r * 0.35);
+  ctx.bezierCurveTo(r * 0.9, -r * 1.0, r * 1.3, r * 0.1, 0, r * 0.9);
+  ctx.fillStyle = f.color ?? "#ff6f91";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(120,20,50,0.6)";
+  ctx.lineWidth = 0.7 * scale;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.beginPath();
+  ctx.arc(-r * 0.4, -r * 0.3, r * 0.18, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 /** A tuft of loose fur: pointed at both ends, turning slowly as it floats down. */

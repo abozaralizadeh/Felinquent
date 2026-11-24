@@ -114,6 +114,18 @@ export function check(folder: string, spritesDir?: string): Report {
   const kind = r.pkg?.character.personality.kind ?? "cat";
   const like = OWN_LIKE[kind];
   const ownKeys = new Set<string>(like ? OWN_KEYS[like] : []);
+  // Its own poses (ADR-078): every drawing a pose plays, and the in-betweens of a "move" step
+  // (<from>_<to>_1, _2, _3, either way round), load with the rest of its own frames.
+  for (const [name, pose] of Object.entries(r.pkg?.art.poses ?? {})) {
+    for (const step of [...pose.play, ...pose.loop]) {
+      const keys = typeof step[1] === "string" ? [step[1]] : [...step[1]];
+      for (const k of keys) {
+        if (!have.has(k)) r.errors.push(`pose ${name} plays ${k}, but there's no sprites/${k}.webp`);
+        ownKeys.add(k);
+      }
+      if (step[0] === "move") for (let i = 1; i < keys.length; i++) for (const n of [1, 2, 3]) for (const [x, y] of [[keys[i - 1], keys[i]], [keys[i], keys[i - 1]]]) ownKeys.add(`${x}_${y}_${n}`);
+    }
+  }
   r.own = r.frames.filter((k) => ownKeys.has(k));
   const art = r.pkg?.art;
   for (const k of art?.own ?? []) if (!have.has(k)) r.warnings.push(`art.own lists ${k}, but there's no sprites/${k}.webp`);

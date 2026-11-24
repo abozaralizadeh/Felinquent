@@ -19,6 +19,8 @@ for dir in "${dirs[@]}"; do
   # LIKE=<id>: a package character (ADR-069) whose own moves are drawn like that animal's.
   case ${LIKE:-$id} in
     biscuit)
+      # A package whose own sheet holds poses of its own (ADR-078) has no chew or wag to link.
+      [ -f "${dir}chew1.webp" ] || continue
       rm -f "$dir"{chew1,chew2,chew3,wag1,wag2,wag3}[tux][0-9].webp "$dir"loafx[0-9].webp
       $A "$dir" chew1 chew2 chew3 --min-iou 0.6
       $A "$dir" wag1 wag2 wag3 --min-iou 0.6

@@ -5,6 +5,8 @@
 #[cfg(any(target_os = "macos", windows))]
 mod about;
 mod alert;
+#[cfg(any(target_os = "macos", windows))]
+mod catalog;
 mod characters;
 mod logfile;
 #[cfg(any(target_os = "macos", windows))]
@@ -119,6 +121,9 @@ struct Choices {
 struct Pack {
     id: String,
     name: String,
+    /// Its group in the menu ("Big tech"; "Yours" when the package names none).
+    #[serde(default)]
+    category: String,
 }
 
 /// The menu items that carry a tick. The page owns the state and the menu only shows it.
@@ -135,18 +140,72 @@ struct Ticks {
     /// "Model": one item per model Ollama has, rebuilt when that list changes (`listed`).
     llm: Submenu<Wry>,
     listed: std::sync::Mutex<Option<Vec<String>>>,
-    /// "Character": the built-in ones, then the ones from packages, rebuilt when those change.
+    /// "Character": the built-in ones by kind, then the ones from packages, rebuilt when those change.
     character: Submenu<Wry>,
     packs: std::sync::Mutex<Option<Vec<Pack>>>,
 }
 
-/// The end of the Character submenu, after the built-in characters: the ones from packages, "Add a
-/// character…" and "Remove a character" (ADR-069). Picking one sends `character:<id>` like the rest.
-fn fill_packs(app: &AppHandle, menu: &Submenu<Wry>, packs: &[Pack]) -> tauri::Result<()> {
-    for item in menu.items()?.into_iter().skip(CHARACTERS.len()) {
+/// The built-in characters by kind, as submenus ("Cats", "Dogs", "Wild ones"), and their items.
+fn character_groups(app: &AppHandle, on: &dyn Fn(&str) -> bool) -> tauri::Result<(Vec<Submenu<Wry>>, Vec<CheckMenuItem<Wry>>)> {
+    let (mut menus, mut all) = (Vec::new(), Vec::new());
+    let mut from = 0;
+    for (name, n) in GROUPS {
+        let items = CHARACTERS[from..from + n].iter().map(|(id, text)| CheckMenuItem::with_id(app, *id, *text, true, on(id), None::<&str>)).collect::<tauri::Result<Vec<_>>>()?;
+        let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect();
+        menus.push(Submenu::with_items(app, name, true, &refs)?);
+        all.extend(items);
+        from += n;
+    }
+    Ok((menus, all))
+}
+
+/// The name of the character in use, for the submenu's title ("Character: Tabby").
+fn character_name(id: &str, packs: &[Pack]) -> Option<String> {
+    let item = format!("character:{id}");
+    CHARACTERS.iter().find(|(i, _)| *i == item).map(|(_, text)| text.split(" (").next().unwrap_or(text).to_string()).or_else(|| packs.iter().find(|p| p.id == id).map(|p| alert::short(&p.name, 24)))
+}
+
+/// Sets the text of a menu item anywhere in the Character submenu (a download's progress).
+#[cfg(any(target_os = "macos", windows))]
+pub fn set_menu_text(app: &AppHandle, id: &str, text: String) {
+    let Some(t) = app.try_state::<Ticks>() else { return };
+    fn find(items: Vec<tauri::menu::MenuItemKind<Wry>>, id: &str, text: &str) -> bool {
+        for item in items {
+            if let Some(sub) = item.as_submenu() {
+                if find(sub.items().unwrap_or_default(), id, text) {
+                    return true;
+                }
+            } else if item.id().as_ref() == id {
+                if let Some(m) = item.as_menuitem() {
+                    let _ = m.set_text(text);
+                }
+                return true;
+            }
+        }
+        false
+    }
+    find(t.character.items().unwrap_or_default(), id, &text);
+}
+
+/// Builds the package part of the Character submenu again (the list of characters to get changed).
+#[cfg(any(target_os = "macos", windows))]
+pub fn refresh_character_menu(app: &AppHandle) {
+    let Some(t) = app.try_state::<Ticks>() else { return };
+    let packs = t.packs.lock().ok().and_then(|p| p.clone()).unwrap_or_default();
+    let on = app.try_state::<Current>().and_then(|c| c.0.lock().ok().and_then(|g| g.as_ref().map(|c| c.character.clone())));
+    if let Err(e) = fill_packs(app, &t.character, &packs, on.as_deref()) {
+        logfile::write(&format!("menu: characters: {e}"));
+    }
+}
+
+/// The end of the Character submenu, after the built-in groups: the ones from packages by category,
+/// "Get more characters", "Add a character…" and "Remove a character" (ADR-069, ADR-078). Picking
+/// one sends `character:<id>` like the rest.
+fn fill_packs(app: &AppHandle, menu: &Submenu<Wry>, packs: &[Pack], on: Option<&str>) -> tauri::Result<()> {
+    for item in menu.items()?.into_iter().skip(GROUPS.len()) {
         menu.remove(&item)?;
     }
-    for item in pack_items(app, packs, None)? {
+    for item in pack_items(app, packs, on)? {
         menu.append(item.as_ref())?;
     }
     Ok(())
@@ -156,12 +215,56 @@ fn fill_packs(app: &AppHandle, menu: &Submenu<Wry>, packs: &[Pack]) -> tauri::Re
 fn pack_items(app: &AppHandle, packs: &[Pack], on: Option<&str>) -> tauri::Result<Vec<Box<dyn IsMenuItem<Wry>>>> {
     let packs: Vec<&Pack> = packs.iter().filter(|p| characters::id_ok(&p.id)).collect();
     let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![Box::new(PredefinedMenuItem::separator(app)?)];
+    // Installed packages by category, in the order they first show up; "Yours" for the ones with none.
+    let group = |p: &Pack| if p.category.trim().is_empty() { "Yours".to_string() } else { alert::short(p.category.trim(), 24) };
+    let mut groups: Vec<String> = Vec::new();
     for p in &packs {
-        let name = alert::short(&p.name, 24);
-        items.push(Box::new(CheckMenuItem::with_id(app, format!("character:{}", p.id), name, true, on == Some(p.id.as_str()), None::<&str>)?));
+        let g = group(p);
+        if !groups.contains(&g) {
+            groups.push(g);
+        }
+    }
+    for g in &groups {
+        let sub = Submenu::new(app, g, true)?;
+        #[cfg(any(target_os = "macos", windows))]
+        if let Some(note) = catalog::note(g) {
+            sub.append(&MenuItem::new(app, note, false, None::<&str>)?)?;
+        }
+        for p in packs.iter().filter(|p| &group(p) == g) {
+            sub.append(&CheckMenuItem::with_id(app, format!("character:{}", p.id), alert::short(&p.name, 24), true, on == Some(p.id.as_str()), None::<&str>)?)?;
+        }
+        items.push(Box::new(sub));
     }
     if !packs.is_empty() {
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
+    // Characters on the list that aren't here yet (catalog.rs), each under a line naming its group.
+    #[cfg(any(target_os = "macos", windows))]
+    {
+        let (offered, notes) = catalog::offered(app);
+        if !offered.is_empty() {
+            let more = Submenu::with_id(app, "getchars", "Get more characters", true)?;
+            let mut seen: Vec<&str> = Vec::new();
+            for e in &offered {
+                if seen.contains(&e.category.as_str()) {
+                    continue;
+                }
+                seen.push(&e.category);
+                if !more.items()?.is_empty() {
+                    more.append(&PredefinedMenuItem::separator(app)?)?;
+                }
+                let head = match notes.get(&e.category) {
+                    Some(n) => format!("{} ({n})", e.category),
+                    None => e.category.clone(),
+                };
+                more.append(&MenuItem::new(app, head, false, None::<&str>)?)?;
+                for x in offered.iter().filter(|x| x.category == e.category) {
+                    let text = if x.about.is_empty() { x.name.clone() } else { format!("{} ({})", x.name, x.about) };
+                    more.append(&MenuItem::with_id(app, format!("getchar:{}", x.id), text, true, None::<&str>)?)?;
+                }
+            }
+            items.push(Box::new(more));
+        }
     }
     items.push(Box::new(MenuItem::with_id(app, "addchar", "Add a character\u{2026}", true, None::<&str>)?));
     if !packs.is_empty() {
@@ -223,7 +326,7 @@ async fn show_choices(app: AppHandle, choices: Choices) {
     // Characters from packages: the submenu's end is rebuilt only when they changed.
     if let Ok(mut shown) = t.packs.lock() {
         if shown.as_ref() != Some(&choices.packs) {
-            match fill_packs(&app, &t.character, &choices.packs) {
+            match fill_packs(&app, &t.character, &choices.packs, Some(&choices.character)) {
                 Ok(()) => *shown = Some(choices.packs.clone()),
                 Err(e) => logfile::write(&format!("menu: characters: {e}")),
             }
@@ -231,15 +334,25 @@ async fn show_choices(app: AppHandle, choices: Choices) {
     }
     let picked = format!("character:{}", choices.character);
     let mut on_pack = None;
-    for item in t.character.items().unwrap_or_default().into_iter().skip(CHARACTERS.len()) {
-        if let Some(c) = item.as_check_menuitem() {
-            let here = c.id().as_ref() == picked;
-            let _ = c.set_checked(here);
-            if here {
-                on_pack = Some(picked.clone());
+    // The packages sit in submenus by category.
+    fn tick(items: Vec<tauri::menu::MenuItemKind<Wry>>, picked: &str, on: &mut Option<String>) {
+        for item in items {
+            if let Some(sub) = item.as_submenu() {
+                tick(sub.items().unwrap_or_default(), picked, on);
+            } else if let Some(c) = item.as_check_menuitem() {
+                let here = c.id().as_ref() == picked;
+                let _ = c.set_checked(here);
+                if here {
+                    *on = Some(picked.to_string());
+                }
             }
         }
     }
+    tick(t.character.items().unwrap_or_default().into_iter().skip(GROUPS.len()).collect(), &picked, &mut on_pack);
+    let _ = t.character.set_text(match character_name(&choices.character, &choices.packs) {
+        Some(name) => format!("Character: {name}"),
+        None => "Character".to_string(),
+    });
     // The Model submenu: rebuilt only when Ollama's list changed, then the one in use ticked.
     if let Ok(mut listed) = t.listed.lock() {
         if listed.as_ref() != Some(&choices.models) {
@@ -459,10 +572,15 @@ fn build_pet_menu(app: &AppHandle, cur: Option<&Choices>) -> tauri::Result<Menu<
     fn as_items(v: &[CheckMenuItem<Wry>]) -> Vec<&dyn IsMenuItem<Wry>> {
         v.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect()
     }
-    let characters = group(&CHARACTERS)?;
+    let (kinds, _) = character_groups(app, &on)?;
     let chaos_levels = group(&CHAOS)?;
-    let character = Submenu::with_items(app, "Character", true, &as_items(&characters))?;
     let packs = cur.map(|c| c.packs.clone()).unwrap_or_default();
+    let title = match cur.and_then(|c| character_name(&c.character, &packs)) {
+        Some(name) => format!("Character: {name}"),
+        None => "Character".to_string(),
+    };
+    let kinds: Vec<&dyn IsMenuItem<Wry>> = kinds.iter().map(|k| k as &dyn IsMenuItem<Wry>).collect();
+    let character = Submenu::with_items(app, title, true, &kinds)?;
     for item in pack_items(app, &packs, cur.map(|c| c.character.as_str()))? {
         character.append(item.as_ref())?;
     }
@@ -631,21 +749,29 @@ fn control(app: &AppHandle, msg: &str) {
         app.exit(0);
         return;
     }
+    // A character from the list (FELINQUENT_MENU_SCRIPT=30:getchar:<id>, to try a download).
+    #[cfg(any(target_os = "macos", windows))]
+    if let Some(id) = msg.strip_prefix("getchar:") {
+        catalog::get(app, id);
+        return;
+    }
     let _ = app.emit_to("overlay", "ctl", msg.to_string());
 }
 
-// Keep this list in step with src/core/characters.ts (a test checks it).
+// Keep these lists in step with src/core/characters.ts (a test checks them): the built-in
+// characters in the order of their groups, and the groups (BUILTIN_CATEGORY) with how many each.
 const CHARACTERS: [(&str, &str); 9] = [
     ("character:tabby", "Tabby (orange cat)"),
     ("character:inky", "Inky (black cat)"),
     ("character:pearl", "Pearl (white cat)"),
-    ("character:mochi", "Mochi (fox)"),
-    ("character:bandit", "Bandit (raccoon)"),
     ("character:biscuit", "Biscuit (puppy)"),
     ("character:chili", "Chili (chihuahua)"),
+    ("character:mochi", "Mochi (fox)"),
+    ("character:bandit", "Bandit (raccoon)"),
     ("character:clover", "Clover (rabbit)"),
     ("character:hazel", "Hazel (squirrel)"),
 ];
+const GROUPS: [(&str, usize); 3] = [("Cats", 3), ("Dogs", 2), ("Wild ones", 4)];
 const CHAOS: [(&str, &str); 3] = [("chaos:chill", "Chill"), ("chaos:normal", "Normal"), ("chaos:gremlin", "Gremlin")];
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
@@ -655,11 +781,12 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     fn as_items(v: &[CheckMenuItem<Wry>]) -> Vec<&dyn IsMenuItem<Wry>> {
         v.iter().map(|i| i as &dyn IsMenuItem<Wry>).collect()
     }
-    let characters = group(&CHARACTERS)?;
+    let (kinds, characters) = character_groups(app.handle(), &|_| false)?;
     let chaos_levels = group(&CHAOS)?;
-    let character = Submenu::with_items(app, "Character", true, &as_items(&characters))?;
+    let kinds: Vec<&dyn IsMenuItem<Wry>> = kinds.iter().map(|k| k as &dyn IsMenuItem<Wry>).collect();
+    let character = Submenu::with_items(app, "Character", true, &kinds)?;
     // "Add a character…" from the start; the page fills in the ones from packages (show_choices).
-    fill_packs(app.handle(), &character, &[])?;
+    fill_packs(app.handle(), &character, &[], None)?;
     let chaos = Submenu::with_items(app, "Chaos level", true, &as_items(&chaos_levels))?;
 
     // The version line opens the About window (ADR-062).
@@ -732,6 +859,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         "usage" => usage::on_menu(),
         "addchar" => characters::pick_and_add(app),
         id if id.starts_with("removechar:") => characters::remove(app, &id["removechar:".len()..]),
+        #[cfg(any(target_os = "macos", windows))]
+        id if id.starts_with("getchar:") => catalog::get(app, &id["getchar:".len()..]),
         // The rest is the page's business. It answers with show_choices, which moves the ticks.
         other => control(app, other),
     })
@@ -1206,6 +1335,9 @@ fn main() {
             update::start(app.handle());
             #[cfg(any(target_os = "macos", windows))]
             ollama::start(app.handle());
+            // The list of characters to download (ADR-078), before the menu is first opened.
+            #[cfg(any(target_os = "macos", windows))]
+            catalog::start(app.handle());
             // The panic hotkey. A listener only: it never sends keys to anything.
             if let Err(e) = app.global_shortcut().register("CmdOrCtrl+Alt+Shift+P") {
                 println!("[overlay] could not register the panic hotkey: {e}");

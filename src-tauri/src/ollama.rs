@@ -402,12 +402,12 @@ fn look(url: &str, model: &str) -> Need {
     }
 }
 
-fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
+pub(crate) fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
     tauri::async_runtime::block_on(f)
 }
 
 /// reqwest is built with rustls but no crypto provider; the updater installs ring the same way.
-fn tls_ready() {
+pub(crate) fn tls_ready() {
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
@@ -640,7 +640,7 @@ fn install_in(app: &AppHandle, work: &Path) -> Result<PathBuf, String> {
 }
 
 /// Every request to GitHub: https only, and redirects only to GitHub's own hosts.
-fn github_client(follow: bool) -> Result<reqwest::Client, String> {
+pub(crate) fn github_client(follow: bool) -> Result<reqwest::Client, String> {
     tls_ready();
     let policy = if follow {
         reqwest::redirect::Policy::custom(|attempt| {
@@ -737,7 +737,7 @@ async fn download(app: &AppHandle, url: &str, to: &Path) -> Result<String, Strin
     Ok(hex(hash.finish().as_ref()))
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 

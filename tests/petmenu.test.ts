@@ -53,7 +53,7 @@ describe("the menu on the animal (right-click)", () => {
     const page = fs.readFileSync("src/playground/overlay.ts", "utf8");
     for (const id of ids) expect(page, id).toContain(`"${id}"`);
     // Characters and chaos levels come from the same lists as the menu bar menu.
-    expect(body).toContain("group(&CHARACTERS)");
+    expect(body).toContain("character_groups(app, &on)");
     expect(body).toContain("group(&CHAOS)");
     // Short: no more than about ten things to pick.
     expect(ids.length + 2).toBeLessThanOrEqual(10);

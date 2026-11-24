@@ -35,7 +35,7 @@ fn key_ok(k: &str) -> bool {
     (1..=32).contains(&k.len()) && k.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_')
 }
 
-fn built_in(id: &str) -> bool {
+pub fn built_in(id: &str) -> bool {
     crate::CHARACTERS.iter().any(|(item, _)| item.strip_prefix("character:") == Some(id))
 }
 

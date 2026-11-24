@@ -1,3 +1,4 @@
+import type { ActDef, PoseDef } from "./acts";
 import type { ToyKind, TreatKind } from "./mess";
 import type { Kind } from "./species";
 import type { IntentName } from "./types";
@@ -30,6 +31,9 @@ export interface Personality {
   persona?: string;
   /** Its treat, when its kind's (TREAT_FOR in cat.ts) doesn't fit it: a mascot doesn't eat a dog biscuit. */
   treat?: TreatKind;
+  /** Its own moves as data, from its package (acts.ts, ADR-078), and the poses they play. */
+  acts?: readonly ActDef[];
+  poses?: Readonly<Record<string, PoseDef>>;
   /** All traits go from 0 to 1. */
   laziness: number;
   neediness: number;

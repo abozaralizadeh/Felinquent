@@ -142,6 +142,52 @@ Every kind of animal has a few moves only it does, and a character of that kind 
 
 A cat has none. Until you draw a kind's own moves, the animal does those moves in a near shared pose. `pack` lists the ones you drew in `character.json` for you.
 
+### Moves only yours has
+
+On top of its kind's moves, a character can have moves nobody else has, written as data in `character.json`: no code. A chip boss holding up a new chip, a mascot taking a selfie, a robot doing a little dance. Two parts:
+
+**`poses`**: how a drawing (or a few) plays. Each pose is a list of steps, `play` once and then `loop` for as long as the move lasts:
+
+| Step | What it does |
+|---|---|
+| `["hold", "chip1", 1.2]` | Shows `chip1` for 1.2 seconds |
+| `["move", ["stand", "chip1"], 0.4]` | Goes from one drawing to the next in 0.4 s, through in-betweens if there are any (see below) |
+| `["steps", ["cook1", "cook2"], 0.25]` | Flips between drawings, no blending, 0.25 s each |
+| `["hop", "cook1", 0.5, 30]` | A little jump 30 px high on `cook1`, 0.5 s |
+| `["shake", "sign1", 0.4, 0.05]` | Wiggles the drawing for 0.4 s (the last number is how much, up to 0.3) |
+
+`"base": "sit"` says a pose starts from sitting (standing is the default). Frame names are any drawings in `sprites/`.
+
+**`moves`**: what the animal does and when. Each move has a name (not the name of a built-in move), what it `means` in a few words (the local model reads this), the `bout` it belongs to (`rest`, `explore`, `play`, `social` or `mischief`), a `weight` from 0 to 5 (1 is like any other move), and `beats`, done one after another:
+
+| Beat | What it does |
+|---|---|
+| `{ "do": "keynote", "sec": 4.5 }` | Plays one of its poses (or a shared one like `happy`, `proud`, `bark`, `love`, `stretch`) for 4.5 s. Add `"face": "cursor"` to face your pointer, `"fx": "spark"` (or `heart`, `smoke`, `sweat`, `dust`) and `"fx_at": 1.8` for a little effect at 1.8 s |
+| `{ "go": "cursor", "by": 300, "speed": "walk" }` | Walks up to 300 px toward your pointer first (`away` walks off, `stroll` wanders). Speeds: `sneak`, `saunter`, `walk`, `run` |
+
+Optional: `when` says when a move fits best (`moods`, `human` for what you're doing, `hours` like `[6, 11]`, `energy` `low` or `high`, `near: "cursor"`), `say` gives it a few lines for its thought bubble, and `rest_min` is how long before it does that move again (10 minutes unless set).
+
+```json
+"poses": {
+  "keynote": { "play": [["move", ["stand", "chip1"], 0.4], ["hold", "chip1", 1.2]], "loop": [["hold", "chip1", 1.4], ["shake", "chip1", 0.5]] }
+},
+"moves": {
+  "keynote": {
+    "means": "hold up a shiny new chip like at a big keynote",
+    "bout": "social",
+    "weight": 1.8,
+    "when": { "human": ["idle", "reading"] },
+    "beats": [{ "go": "cursor", "by": 320 }, { "do": "keynote", "sec": 4.5, "face": "cursor", "fx": "spark", "fx_at": 1.8 }, { "do": "proud", "sec": 2 }],
+    "say": ["and one more thing: more chips."],
+    "rest_min": 12
+  }
+}
+```
+
+The rules pick these moves like any other, a bit more when `when` fits, and never the same one twice in a row. With the local model on, it sees each one by its name and what it means, and is asked to use one in most bouts, the one that fits the moment best. Up to 40 poses and 16 moves.
+
+For a smooth `move` step, put in-betweens next to the drawings: `chip1_chip2_1` and `chip1_chip2_2` are the two drawings between `chip1` and `chip2` (the art tools' `tween-sprites.py <folder> 2 once chip1 chip2 --tag _chip2_` makes them). Without them the app blends the two drawings. `check` makes sure every drawing a pose plays is there, and `pack` keeps them in the package.
+
 ## The art tools: how the built-in animals are made
 
 The nine built-in animals are drawn on sheets of nine poses (three rows of three, on a flat green background) and finished by the tools in `tools/`. You can use the same pipeline for your character. It's more work to set up, but it gives you every in-between, lick and nod, and evens out sizes. Paths here are absolute where a tool needs it; run them from the repo root.
@@ -211,6 +257,9 @@ Everything but `format`, `id` and `name` is optional.
 | `meanings` | What a move means for it, up to 80 characters, for the local model (`"groom": "checks its phone"`) |
 | `voice` | Lines for its thought bubble, per move: up to 12 lines of up to 120 characters each (`"nap": ["five more minutes"]`) |
 | `persona` | Who it is in one or two sentences, up to 240 characters, for the local model |
+| `category` | Its group in the Character menu, up to 24 characters ("Robots"). Without it, "Yours" |
+| `version` | A whole number, 1 unless set. Bump it when you share a new copy |
+| `poses`, `moves` | Moves only it has, as data (see "Moves only yours has" above) |
 | `art` | The tables the art tools measure (`own`, `gaits`, `ground`, `heads`). Let `npm run character -- art` and `pack` fill these in rather than writing them by hand |
 | `size` | Accepted, but it doesn't change anything yet: the size comes from the drawings |
 
