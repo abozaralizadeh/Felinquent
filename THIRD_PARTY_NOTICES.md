@@ -340,6 +340,18 @@ These are only used to build, test or prepare the project. None of them end up i
 | SciPy (sprite tools) | BSD-3-Clause |
 | OpenCV (`opencv-python-headless`, sprite tools) | Apache-2.0 |
 
+## Mascot fan art (the "Open source" characters)
+
+Three of the characters in **Get more characters** are fan art of free software mascots, redrawn in Felinquent's own style. They're not made or endorsed by the projects behind them.
+
+| Character | Based on | Terms |
+|---|---|---|
+| Ferris | Ferris the Rustacean, by Karen Rustad Tölva ([rustacean.net](https://rustacean.net)) | Free to use without asking, as the Rust project says |
+| Tux | Tux, by Larry Ewing (lewing@isc.tamu.edu), made with [The GIMP](https://www.gimp.org) | "Permission to use and/or modify this image is granted provided you acknowledge me lewing@isc.tamu.edu and The GIMP if someone asks" |
+| Gopher | The Go gopher, by [Renée French](https://reneefrench.blogspot.com) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Redrawn and animated for Felinquent |
+
+Lora the llama is Felinquent's own and isn't based on any project's logo.
+
 ## The website (`site/`)
 
 The page loads three fonts from Google Fonts when you visit it: [Fraunces](https://fonts.google.com/specimen/Fraunces), [Instrument Sans](https://fonts.google.com/specimen/Instrument+Sans) and [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono), all under the SIL Open Font License 1.1. The app itself loads no fonts from the web.

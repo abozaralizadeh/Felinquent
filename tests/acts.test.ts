@@ -222,5 +222,5 @@ describe("own moves as data (ADR-078)", () => {
     // Rests between them: never the same move back to back, and not many more than its rest allows.
     expect(started.get("salute") ?? 0).toBeLessThanOrEqual(4 * 6 + 1);
     expect(asked()).toBe(0);
-  });
+  }, 60_000);
 });

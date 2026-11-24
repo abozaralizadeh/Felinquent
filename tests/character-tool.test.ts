@@ -59,6 +59,16 @@ describe("the character tool", () => {
     expect(r.own).toEqual(expect.arrayContaining(["flip1", "flip2", "flip1_flip2_1", "flip2_flip1_2"]));
     expect(r.files.has("sprites/flip1_flip2_1.webp")).toBe(true);
     expect(r.files.has("sprites/walk1.webp")).toBe(false);
+    expect(r.warnings.filter((w) => w.startsWith("pose "))).toEqual([]);
+  });
+
+  it("notes a pose drawing named like one of the app's own frames", () => {
+    const json = { ...JSON_OK, poses: { tunnel: { base: "stand", play: [["move", ["stand", "dig1"], 0.4]], loop: [["hold", "chew1", 1]] } } };
+    const r = check(folder(json, ["sit", "stand", "dig1", "chew1"]));
+    const notes = r.warnings.filter((w) => w.startsWith("pose "));
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toMatch(/plays dig1, which is also one of the app's own frames/);
+    expect(notes[1]).toMatch(/plays chew1/);
   });
 
   it("passes a folder with a sit and a stand, and lists what's missing", () => {

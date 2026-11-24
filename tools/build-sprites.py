@@ -254,6 +254,9 @@ for cid in IDS:
             continue
         scales = []
         solo = ["--solo"] if cid in NEW_IDS or kind in NEW_SHEETS else []
+        # A package's own sheet keeps its props whole, even the ones drawn apart from the body.
+        if pack and kind == "sig":
+            solo = ["--cells", "3"]
         for names, base, pick, *dim in passes:
             if base == "mid":
                 mid = (scales[0] * scales[1]) ** 0.5

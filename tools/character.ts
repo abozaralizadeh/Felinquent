@@ -114,6 +114,10 @@ export function check(folder: string, spritesDir?: string): Report {
   const kind = r.pkg?.character.personality.kind ?? "cat";
   const like = OWN_LIKE[kind];
   const ownKeys = new Set<string>(like ? OWN_KEYS[like] : []);
+  // A pose drawing named like one of the app's own frames is that frame: the app's own move plays it
+  // too (a "dig1" of yours becomes every dig). Sit and stand are where poses start, so they're fine.
+  const shared = new Set<string>([...SPRITE_KEYS, ...ownKeys]);
+  const named = new Set<string>(["sit", "stand"]);
   // Its own poses (ADR-078): every drawing a pose plays, and the in-betweens of a "move" step
   // (<from>_<to>_1, _2, _3, either way round), load with the rest of its own frames.
   for (const [name, pose] of Object.entries(r.pkg?.art.poses ?? {})) {
@@ -121,6 +125,10 @@ export function check(folder: string, spritesDir?: string): Report {
       const keys = typeof step[1] === "string" ? [step[1]] : [...step[1]];
       for (const k of keys) {
         if (!have.has(k)) r.errors.push(`pose ${name} plays ${k}, but there's no sprites/${k}.webp`);
+        if (shared.has(k) && !named.has(k)) {
+          named.add(k);
+          r.warnings.push(`pose ${name} plays ${k}, which is also one of the app's own frames, so the app's own move shows that drawing too; fine if you mean it, otherwise give yours a name of its own`);
+        }
         ownKeys.add(k);
       }
       if (step[0] === "move") for (let i = 1; i < keys.length; i++) for (const n of [1, 2, 3]) for (const [x, y] of [[keys[i - 1], keys[i]], [keys[i], keys[i - 1]]]) ownKeys.add(`${x}_${y}_${n}`);

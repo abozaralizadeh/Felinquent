@@ -156,7 +156,7 @@ On top of its kind's moves, a character can have moves nobody else has, written 
 | `["hop", "cook1", 0.5, 30]` | A little jump 30 px high on `cook1`, 0.5 s |
 | `["shake", "sign1", 0.4, 0.05]` | Wiggles the drawing for 0.4 s (the last number is how much, up to 0.3) |
 
-`"base": "sit"` says a pose starts from sitting (standing is the default). Frame names are any drawings in `sprites/`.
+`"base": "sit"` says a pose starts from sitting (standing is the default). Frame names are any drawings in `sprites/`, but give yours names of their own: a drawing called `dig1` or `chew1` is also what the app plays for its kind's own digging or chewing, so it would show up there too. `check` says when a pose plays one of those names (`sit` and `stand` are fine, poses start there).
 
 **`moves`**: what the animal does and when. Each move has a name (not the name of a built-in move), what it `means` in a few words (the local model reads this), the `bout` it belongs to (`rest`, `explore`, `play`, `social` or `mischief`), a `weight` from 0 to 5 (1 is like any other move), and `beats`, done one after another:
 

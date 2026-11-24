@@ -2,7 +2,7 @@
 """Cuts a frame sheet on a flat green background into transparent WebP sprites.
 
 Usage: tools/cut-sprites.py <sheet.png> <out-dir> name1 ... nameN
-           [--scale 0.6] [--ref-dim w|h --ref-val N --ref-count K | --ref-pick 1,5]
+           [--scale 0.6] [--ref-dim w|h --ref-val N --ref-count K | --ref-pick 1,5] [--solo] [--cells 3]
 
 Frames are read in grid order (left to right, top to bottom). Rows are found from where the
 frames sit, so a sheet can have any number of columns and a short last row. A name of "-" skips
@@ -43,6 +43,12 @@ ref_pick = [int(v) - 1 for v in (opt("--ref-pick", "") or "").split(",") if v]
 solo = "--solo" in args
 if solo:
     args.remove("--solo")
+# --cells N: the sheet is an N by N grid with one figure per cell, and every bit drawn apart from a
+# figure (a planted flag, juggling balls, a cloud overhead) goes with the figure nearest to it, so
+# props stay. Nothing is dropped as a loose bit then.
+cells = int(opt("--cells", "0") or 0)
+if cells:
+    solo = False
 sheet, out_dir, names = Path(args[0]), Path(args[1]), args[2:]
 out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -64,6 +70,30 @@ mask = alpha > 0.5
 # affects the labelling. Thin real parts (whiskers, tail tips) come back through the dilation.
 solid = ndimage.binary_opening(mask, structure=np.ones((9, 9)))
 blobs, n = ndimage.label(ndimage.binary_dilation(solid, iterations=14))
+if cells:
+    # The biggest blob in each grid cell is that cell's figure. Every other blob goes with the figure
+    # nearest to it, not with the cell it happens to sit in: a fish tossed up from the bottom row can
+    # reach over the line into the cell above.
+    H, W = mask.shape
+    area = ndimage.sum(solid, blobs, range(1, n + 1))
+    centres = ndimage.center_of_mass(solid, blobs, range(1, n + 1))
+    best: dict[int, int] = {}
+    for i, (cy, cx) in enumerate(centres, 1):
+        if np.isnan(cy):
+            continue
+        cell = min(cells - 1, int(cy * cells // H)) * cells + min(cells - 1, int(cx * cells // W))
+        if cell not in best or area[i - 1] > area[best[cell] - 1]:
+            best[cell] = i
+    big = float(np.median([area[b - 1] for b in best.values()]))
+    figures = [b for _, b in sorted(best.items()) if area[b - 1] >= 0.25 * big]
+    lut = np.zeros(n + 1, dtype=np.int32)
+    near = np.stack([ndimage.distance_transform_edt(blobs != f) for f in figures])
+    for i in range(1, n + 1):
+        if area[i - 1] == 0:
+            continue
+        lut[i] = figures.index(i) + 1 if i in figures else 1 + int(np.argmin(near[:, blobs == i].min(axis=1)))
+    blobs = lut[blobs]
+    n = len(figures)
 if n < len(names):
     sys.exit(f"found only {n} poses, expected {len(names)}")
 sizes = ndimage.sum(solid, blobs, index=range(1, n + 1))

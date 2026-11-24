@@ -47,6 +47,8 @@ ctx.font = "600 13px system-ui";
 // draws a window top that many pixels above the feet, to line up the hang off a ledge. ?mouth=1
 // rings the mouth, where a carried toy is drawn. ?seq=chew:4,wag:3,idle_sit:2 plays those moves one
 // after the other from ?at (each for that many seconds, instead of ?anim), to check the hand-offs.
+// ?cellh=170 makes each moment that many pixels tall (115 unless set), for a big character or a
+// prop drawn high above the head.
 if (q.has("film") && (q.has("anim") || q.has("seq"))) {
   const c = (list[0] ?? CHARACTERS[0]) as (typeof CHARACTERS)[number];
   const n = Number(q.get("film"));
@@ -81,7 +83,7 @@ if (q.has("film") && (q.has("anim") || q.has("seq"))) {
     return { x: 160 * Math.cos(a), y: -45 - 160 * Math.sin(a) };
   };
   const cellW = 130 * zoom;
-  const cellH = 115 * zoom;
+  const cellH = Number(q.get("cellh") ?? 115) * zoom;
   canvas.width = cols * cellW;
   canvas.height = Math.ceil(n / cols) * cellH;
   void spritesReady().then(() => {
